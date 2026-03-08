@@ -25,5 +25,6 @@ urlpatterns = [
     path("accounts/", include("config.apps.accounts.urls")),
     path("pending/", include("config.apps.pending.urls")),
     path("tutoring/", include("config.apps.tutoring.urls")),
+    path("cash/", include("config.apps.cash.urls")),
     path("", include("config.apps.chat_app.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

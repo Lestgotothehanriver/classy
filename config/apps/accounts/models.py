@@ -44,6 +44,7 @@ class User(AbstractUser):
     sex = models.CharField(max_length=10, choices = sex_choices, blank=True)
     birth_date = models.DateField(null=True, blank=True)  # 생년월일  
     region = models.CharField(max_length=50, blank=True)  
+    cash = models.PositiveIntegerField(default=0)  # 캐시 잔액
 
 
 class Student(models.Model):
