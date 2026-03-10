@@ -65,6 +65,18 @@ class TutoringPost(models.Model):
     is_active = models.BooleanField(default=True)
     view_count = models.PositiveIntegerField(default=0)
 
+class TutoringPostLike(models.Model):
+    """
+    강사가 과외 공고를 좋아요하는 모델.
+    - 강사와 공고 모두 1:N 관계
+    """
+    instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name='post_likes')
+    tutoring_post = models.ForeignKey(TutoringPost, on_delete=models.CASCADE, related_name='liked_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('instructor', 'tutoring_post')
+
 class TutoringProposal(models.Model):
     # 과외 제안서 모델
     tutoring_post = models.ForeignKey(TutoringPost, on_delete=models.CASCADE, related_name="proposal")

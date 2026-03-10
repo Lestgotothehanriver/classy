@@ -87,6 +87,7 @@ class Instructor(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     instruction = models.TextField(blank=True, default="")  # 자기소개 같은 용도로 쓰는 필드
     student_number = models.CharField(max_length=20, blank=True)  # 학번 (인증에 필요하면 추가)
+    is_tutoring = models.BooleanField(default=False)  # 과외 진행 중 여부
     
 
 class InstructorLike(models.Model):

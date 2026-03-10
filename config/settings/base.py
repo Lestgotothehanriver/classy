@@ -10,10 +10,15 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# .env 파일에서 환경변수 로드 (프로젝트 루트의 .env)
+load_dotenv(BASE_DIR.parent / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -157,7 +162,6 @@ AUTH_USER_MODEL = "accounts.User"
 # ──────────────────────────────────────────────
 # In-App Purchase (IAP) Settings
 # ──────────────────────────────────────────────
-import os
 
 # Apple App Store
 APPLE_IAP_SHARED_SECRET = os.environ.get('APPLE_IAP_SHARED_SECRET', '')

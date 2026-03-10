@@ -285,6 +285,7 @@ class InstructorUpdateSerializer(serializers.Serializer):
     region = serializers.CharField(required=False, allow_blank=True)
 
     instruction = serializers.CharField(required=False, allow_blank=True)
+    is_tutoring = serializers.BooleanField(required=False)
 
     instructorsubject = serializers.ListField(
         child=serializers.IntegerField(),
@@ -328,8 +329,9 @@ class InstructorUpdateSerializer(serializers.Serializer):
 
         instructor = instance.instructor_profile
 
-        if "instruction" in validated_data:
-            setattr(instructor, "instruction", validated_data["instruction"])
+        for field in ["instruction", "is_tutoring"]:
+            if field in validated_data:
+                setattr(instructor, field, validated_data[field])
         instructor.save()
 
         if subject_ids is not None:

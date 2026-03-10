@@ -15,6 +15,10 @@ from .views import (
     InstructorProposeToStudentAPIView,
     TutoringProposalViewSet,
 
+    # ── 좋아요 ──────────────────────────────────────
+    InstructorLikeAPIView,
+    TutoringPostLikeAPIView,
+
     # ── CDP ViewSets ─────────────────────────────────
     InstructorInfoViewSet,
     InstructorReviewViewSet,
@@ -72,6 +76,12 @@ urlpatterns = [
     # ____________________________________________________________________________________
     path("propose-to-instructor/", StudentProposeToInstructorAPIView.as_view(), name="propose-to-instructor"),
     path("propose-to-student/", InstructorProposeToStudentAPIView.as_view(), name="propose-to-student"),
+
+    # ____________________________________________________________________________________
+    # 좋아요 생성/삭제
+    # ____________________________________________________________________________________
+    path("instructors/<int:instructor_id>/like/", InstructorLikeAPIView.as_view(), name="instructor-like"),
+    path("posts/<int:post_id>/like/", TutoringPostLikeAPIView.as_view(), name="tutoringpost-like"),
 
     # ── ViewSet URLs (CDP) ───────────────────────────
     path("", include(router.urls)),

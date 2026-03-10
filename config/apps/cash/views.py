@@ -46,14 +46,36 @@ def verify_apple_receipt(receipt_data: str, expected_product_id: str) -> tuple:
     """
     Apple verifyReceipt API를 호출하여 영수증을 검증합니다.
     
+    Args:
+        receipt_data (str): iOS 클라이언트에서 전달받은 Base64 인코딩된 영수증 문자열.
+
     Apple 권장 흐름:
       1. Production URL로 먼저 요청
       2. status 21007 → Sandbox URL로 재시도
+
+    Apple verifyReceipt API 응답 예시:
+    {
+    "status": 0,
+    "environment": "Production",
+    "receipt": {
+        "bundle_id": "com.example.app",
+        "in_app": [
+        {
+            "product_id": "cash_5000",
+            "transaction_id": "1000001234567890",
+            "original_transaction_id": "1000001234567890",
+            "purchase_date": "2026-03-09 10:10:10 Etc/GMT",
+            "quantity": "1"
+        }
+        ]
+    }
+    }
     
     Returns:
         (is_valid: bool, transaction_id: str | None, error_msg: str)
     """
     shared_secret = getattr(settings, 'APPLE_IAP_SHARED_SECRET', None)
+    # App Store Connect shared secret = 애플 구독 영수증 검증할 때 서버 인증용 비밀번호
     if not shared_secret:
         logger.error("APPLE_IAP_SHARED_SECRET is not configured.")
         return False, None, "Server configuration error."
@@ -135,6 +157,15 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
       - GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: 서비스 계정 JSON 파일 경로
       - ANDROID_PACKAGE_NAME: 앱의 패키지명
       
+    Google Play Store API 응답 예시:
+    {
+    "purchaseState": 0,
+    "orderId": "GPA.1234-5678-9012-34567",
+    "productId": "cash_5000",
+    "purchaseTimeMillis": "1710000000000",
+    "acknowledgementState": 1
+    }
+
     Returns:
         (is_valid: bool, transaction_id: str | None, error_msg: str)
     """

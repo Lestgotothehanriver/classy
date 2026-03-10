@@ -72,7 +72,7 @@ def extract_subject_ids(owner_obj):
 # ____________________________________________________________________________________
 class InstructorListSerializer(SafeModelSerializer):
     subject_ids = serializers.SerializerMethodField()
-    like_count = serializers.IntegerField(read_only=True)
+    like_count = serializers.IntegerField(read_only=True, default=0)
     sex = serializers.CharField(source='user.sex', read_only=True)
     region = serializers.CharField(source='user.region', read_only=True)
     user_name = serializers.CharField(source='user.user_name', read_only=True)

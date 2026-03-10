@@ -67,7 +67,7 @@ def apply_subject_filter(qs, owner_model, subject_ids, prefix=""):  # prefix는 
 
 # ____________________________________________________________________________________
 # 학생 페이지
-# 1) 강사 list (좋아요순)
+# 1) 강사 list (최신순 기본, 좋아요순 선택)
 # 2) 강사 조회(필터)
 # ____________________________________________________________________________________
 class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
@@ -76,6 +76,7 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
         - GET /tutoring/instructors/
 
         Query Params (선택)
+        - ordering=latest|likes    # 정렬 기준 (기본: latest)
         - subject=1,2,3            # 콤마로 여러 과목 id
         - region=서울|강남구
         - cost=200000              # 해당 금액 이하 (gte에서 lte 기반으로 변경)
@@ -84,10 +85,11 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
         - age=25                   # 5살 단위 버킷 (user__birth_date 연도 계산 기반)
         - min_rating=4
         - university=UNIST
+        - department=컴퓨터공학       # 학과 부분검색
         - student_id=2024
 
         Example Request
-        - GET /tutoring/instructors/?subject=1,3&region=2&cost=200000&method=대면&sex=여성&age=25&min_rating=4&university=UNIST&student_id=2024
+        - GET /tutoring/instructors/?subject=1,3&region=2&cost=200000&method=대면&sex=여성&age=25&min_rating=4&university=UNIST&department=컴퓨터공학&student_id=2024
 
         Example Response (200)
         [
@@ -130,9 +132,14 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
                 )
             ),
             review_count=Count("instructor_reviews", distinct=True),  # InstructorReview 개수
+            like_count=Count("liked_by", distinct=True),  # InstructorLike 좋아요 개수 (항상 어노테이트)
         )  # annotate 결과는 serializer에서 읽기 전용으로 사용
 
-        qs = order_by_likes(qs, Instructor)  # 좋아요 기반 정렬을 가능한 범위에서 적용
+        ordering = self.request.query_params.get("ordering", "latest")  # 기본값: 최신순
+        if ordering == "likes":  # ?ordering=likes 이면 좋아요순
+            qs = qs.order_by("-like_count", "-id")  # 좋아요순 → 동률이면 최신순
+        else:  # latest(기본값) 또는 기타 → 최신순
+            qs = qs.order_by("-id")
 
         subject_ids = parse_int_list(self.request.query_params.get("subject"))  # ?subject=1,2 같은 값 파싱
         qs = apply_subject_filter(qs, Instructor, subject_ids)  # Instructor의 Subject 구조를 자동 탐색해 필터
@@ -175,6 +182,10 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
                 if has_field(Instructor, f):  # 실제로 있으면
                     qs = qs.filter(**{f"{f}__icontains": university})  # 부분검색
                     break  # 첫 매칭 필드로만 적용하고 종료
+
+        department = self.request.query_params.get("department")  # ?department=컴퓨터공학 같은 값
+        if department:  # 값이 있으면
+            qs = qs.filter(department__icontains=department)  # Instructor.department 부분검색
 
         student_no = self.request.query_params.get("student_id")  # ?student_id=2024 같은 값(학번)
         if student_no:  # 값이 있으면
@@ -284,7 +295,7 @@ class InstructorReviewListAPIView(generics.ListAPIView):  # GET /tutoring/instru
 
 # ____________________________________________________________________________________
 # 강사 페이지
-# 1) 공고 list (좋아요순, 실제 리소스는 TutoringPost)
+# 1) 공고 list (최신순 기본, 좋아요순 선택, 실제 리소스는 TutoringPost)
 # 2) 공고 조회(필터)
 # ____________________________________________________________________________________
 class TutoringPostListAPIView(generics.ListAPIView):  # GET /tutoring/posts/
@@ -293,6 +304,7 @@ class TutoringPostListAPIView(generics.ListAPIView):  # GET /tutoring/posts/
     - GET /tutoring/posts/
 
     Query Params (선택)
+    - ordering=latest|likes    # 정렬 기준 (기본: latest)
     - subject=1,2,3
     - region=서울|강남구
     - cost=200000              # 해당 금액 이하 (gte에서 lte 기반으로 변경)
@@ -338,9 +350,14 @@ class TutoringPostListAPIView(generics.ListAPIView):  # GET /tutoring/posts/
         qs = qs.annotate(  # 학생 리뷰 통계(학생 프로필에 붙여서 보여주기 위함)
             student_avg_rating=Avg("student__student_reviews__rating"),  # StudentReview.rating 평균
             student_review_count=Count("student__student_reviews", distinct=True),  # StudentReview 개수
+            like_count=Count("liked_by", distinct=True),  # TutoringPostLike 좋아요 개수 (항상 어노테이트)
         )  # annotate 결과는 serializer에서 read_only로 사용
 
-        qs = order_by_likes(qs, TutoringPost)  # 좋아요 기반 정렬(가능하면)
+        ordering = self.request.query_params.get("ordering", "latest")  # 기본값: 최신순
+        if ordering == "likes":  # ?ordering=likes 이면 좋아요순
+            qs = qs.order_by("-like_count", "-id")  # 좋아요순 → 동률이면 최신순
+        else:  # latest(기본값) 또는 기타 → 최신순
+            qs = qs.order_by("-id")
 
         subject_ids = parse_int_list(self.request.query_params.get("subject"))  # ?subject=1,2 (StudentSubject 기반)
         qs = apply_subject_filter(qs, Student, subject_ids, prefix="student__")  # student 쪽 subject 구조로 필터
@@ -917,3 +934,117 @@ class TutoringProposalViewSet(mixins.CreateModelMixin,
     def perform_create(self, serializer):
         instructor = get_object_or_404(Instructor, user=self.request.user)
         serializer.save(instructor=instructor)
+
+
+# ____________________________________________________________________________________
+# 강사 좋아요 (InstructorLike) — 학생이 강사를 좋아요/취소
+# ____________________________________________________________________________________
+
+from config.apps.accounts.models import InstructorLike
+
+class InstructorLikeAPIView(APIView):
+    """
+    POST   /tutoring/instructors/<int:instructor_id>/like/    강사 좋아요
+    DELETE /tutoring/instructors/<int:instructor_id>/like/    강사 좋아요 취소
+
+    Path Params:
+    - instructor_id: Instructor id
+
+    Example Request (POST):
+    - POST /tutoring/instructors/12/like/
+
+    Example Response (POST 201):
+    { "detail": "좋아요 완료" }
+
+    Example Response (DELETE 204):
+    (빈 응답)
+
+    Example Response (POST 409 - 이미 좋아요):
+    { "detail": "이미 좋아요한 강사입니다." }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, instructor_id):
+        try:
+            student = Student.objects.get(user=request.user)
+        except Student.DoesNotExist:
+            return Response({"detail": "학생 계정만 좋아요할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        instructor = get_object_or_404(Instructor, id=instructor_id)
+
+        _, created = InstructorLike.objects.get_or_create(student=student, instructor=instructor)
+        if not created:
+            return Response({"detail": "이미 좋아요한 강사입니다."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"detail": "좋아요 완료"}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, instructor_id):
+        try:
+            student = Student.objects.get(user=request.user)
+        except Student.DoesNotExist:
+            return Response({"detail": "학생 계정만 사용할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        instructor = get_object_or_404(Instructor, id=instructor_id)
+
+        deleted, _ = InstructorLike.objects.filter(student=student, instructor=instructor).delete()
+        if not deleted:
+            return Response({"detail": "좋아요한 적이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ____________________________________________________________________________________
+# 공고 좋아요 (TutoringPostLike) — 강사가 공고를 좋아요/취소
+# ____________________________________________________________________________________
+
+from .models import TutoringPostLike
+
+class TutoringPostLikeAPIView(APIView):
+    """
+    POST   /tutoring/posts/<int:post_id>/like/    공고 좋아요
+    DELETE /tutoring/posts/<int:post_id>/like/    공고 좋아요 취소
+
+    Path Params:
+    - post_id: TutoringPost id
+
+    Example Request (POST):
+    - POST /tutoring/posts/101/like/
+
+    Example Response (POST 201):
+    { "detail": "좋아요 완료" }
+
+    Example Response (DELETE 204):
+    (빈 응답)
+
+    Example Response (POST 409 - 이미 좋아요):
+    { "detail": "이미 좋아요한 공고입니다." }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, post_id):
+        try:
+            instructor = Instructor.objects.get(user=request.user)
+        except Instructor.DoesNotExist:
+            return Response({"detail": "강사 계정만 좋아요할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        post = get_object_or_404(TutoringPost, id=post_id)
+
+        _, created = TutoringPostLike.objects.get_or_create(instructor=instructor, tutoring_post=post)
+        if not created:
+            return Response({"detail": "이미 좋아요한 공고입니다."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"detail": "좋아요 완료"}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, post_id):
+        try:
+            instructor = Instructor.objects.get(user=request.user)
+        except Instructor.DoesNotExist:
+            return Response({"detail": "강사 계정만 사용할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        post = get_object_or_404(TutoringPost, id=post_id)
+
+        deleted, _ = TutoringPostLike.objects.filter(instructor=instructor, tutoring_post=post).delete()
+        if not deleted:
+            return Response({"detail": "좋아요한 적이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
