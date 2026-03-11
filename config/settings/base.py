@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "config.apps.main",
     "config.apps.notification",
     "config.apps.tutoring",
+    "config.apps.report",
 ]
 
 MIDDLEWARE = [
