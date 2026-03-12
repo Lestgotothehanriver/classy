@@ -18,7 +18,10 @@ class Lecture(models.Model):
     is_preview = models.BooleanField(default=False)
     view_count = models.PositiveIntegerField(default=0)
     likes = models.ManyToManyField(Student, blank=True, related_name="liked_lectures")
+    rental_period = models.PositiveIntegerField(default=30, help_text="대여 기간 (일)")
     created_at = models.DateTimeField(auto_now_add=True)
+    is_delete = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.title
@@ -60,3 +63,21 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author} on {self.lecture}"
+
+
+class SearchHistory(models.Model):
+    """검색 기록 모델 — 학생별 최근 검색 키워드를 최대 5개까지 보관."""
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="search_histories",
+    )
+    query = models.CharField(max_length=255)  # 검색 키워드
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]  # 최신순 정렬
+
+    def __str__(self):
+        return f"{self.student} — {self.query}"

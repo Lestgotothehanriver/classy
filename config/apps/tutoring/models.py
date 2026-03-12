@@ -64,6 +64,7 @@ class TutoringPost(models.Model):
     etc = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
     view_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class TutoringPostLike(models.Model):
     """

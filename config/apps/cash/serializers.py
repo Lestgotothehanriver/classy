@@ -13,3 +13,7 @@ class CashPurchaseSerializer(serializers.Serializer):
         if platform == 'google' and not data.get('purchase_token'):
             raise serializers.ValidationError("purchase_token is required for Google purchases.")
         return data
+
+class LectureRentalSerializer(serializers.Serializer):
+    lecture_id = serializers.IntegerField(help_text="대여할 강의 ID")
+

@@ -25,6 +25,7 @@ from .views import (
     TutoringPostViewSet,
     StudentReviewViewSet,
     TutoringResourceViewSet,
+    StudentMyPostAPIView,
 )
 
 router = SimpleRouter()
@@ -82,6 +83,8 @@ urlpatterns = [
     # ____________________________________________________________________________________
     path("instructors/<int:instructor_id>/like/", InstructorLikeAPIView.as_view(), name="instructor-like"),
     path("posts/<int:post_id>/like/", TutoringPostLikeAPIView.as_view(), name="tutoringpost-like"),
+    
+    path("my-posts/", StudentMyPostAPIView.as_view(), name="student-my-posts"),
 
     # ── ViewSet URLs (CDP) ───────────────────────────
     path("", include(router.urls)),

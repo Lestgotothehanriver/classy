@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Count
 
 from config.apps.accounts.models import Subject
-from .models import Lecture, Comment
+from .models import Lecture, Comment, SearchHistory
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -21,7 +21,9 @@ def _sync_subjects(manager, numbers):
 class LectureListSerializer(serializers.ModelSerializer):
     """강의 목록 — video 필드 제외."""
     like_count = serializers.IntegerField(read_only=True, default=0)
+    is_liked = serializers.BooleanField(read_only=True, default=False)
     instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
+    subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
 
     class Meta:
         model = Lecture
@@ -39,6 +41,9 @@ class LectureStreamSerializer(serializers.ModelSerializer):
 class LectureDetailSerializer(serializers.ModelSerializer):
     """강의 상세 — 모든 필드 반환."""
     like_count = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
+    is_liked = serializers.BooleanField(read_only=True, default=False)
+    subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
 
     class Meta:
         model = Lecture
@@ -47,9 +52,13 @@ class LectureDetailSerializer(serializers.ModelSerializer):
     def get_like_count(self, obj):
         return obj.likes.count()
 
+    def get_comment_count(self, obj):
+        return obj.comments.count()
+
 
 class LecturePreviewSerializer(serializers.ModelSerializer):
     """프리뷰 강의 — 같은 강사의 is_preview=True 영상."""
+    subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
 
     class Meta:
         model = Lecture
@@ -59,6 +68,7 @@ class LecturePreviewSerializer(serializers.ModelSerializer):
 class LectureRecommendSerializer(serializers.ModelSerializer):
     """추천 강의 — video 필드 제외, 좋아요 수 포함."""
     like_count = serializers.IntegerField(read_only=True, default=0)
+    subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
 
     class Meta:
         model = Lecture
@@ -155,3 +165,16 @@ class CommentWriteSerializer(serializers.ModelSerializer):
                     {"parent": "대댓글에 대한 답글은 허용되지 않습니다."}
                 )
         return attrs
+
+
+# ────────────────────────────────────────────────────────────────────
+# SearchHistory Serializer
+# ────────────────────────────────────────────────────────────────────
+
+class SearchHistorySerializer(serializers.ModelSerializer):
+    """검색 기록 직렬화 — student는 뷰에서 자동 할당하므로 클라이언트에 노출하지 않는다."""
+
+    class Meta:
+        model = SearchHistory
+        fields = ["id", "query", "created_at"]
+        read_only_fields = ["id", "created_at"]

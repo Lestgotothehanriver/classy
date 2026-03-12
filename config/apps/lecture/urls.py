@@ -8,7 +8,11 @@ from .views import (
     LectureDetailAPIView,
     CommentListCreateAPIView,
     CommentUpdateDeleteAPIView,
+    SearchHistoryCreateAPIView,
+    SearchHistoryDeleteAPIView,
+    LectureLikeAPIView,
 )
+
 
 router = SimpleRouter()
 
@@ -27,11 +31,19 @@ urlpatterns = [
     # ── 강의 스트리밍 ──────────────────────────────────────────
     path("<int:pk>/stream/", LectureStreamAPIView.as_view(), name="lecture-stream"),
 
+    # ── 강의 좋아요 ──────────────────────────────────────────
+    path("<int:pk>/like/", LectureLikeAPIView.as_view(), name="lecture-like"),
+
+
     # ── 댓글 목록 + 작성 ─────────────────────────────────────
     path("<int:lecture_id>/comments/", CommentListCreateAPIView.as_view(), name="comment-list-create"),
 
     # ── 댓글 수정 + 삭제 ─────────────────────────────────────
     path("comments/<int:pk>/", CommentUpdateDeleteAPIView.as_view(), name="comment-update-delete"),
+
+    # ── 검색 기록 생성 + 삭제 ─────────────────────────────────────
+    path("search-history/", SearchHistoryCreateAPIView.as_view(), name="search-history-create"),
+    path("search-history/<int:pk>/", SearchHistoryDeleteAPIView.as_view(), name="search-history-delete"),
 
     # ── ViewSet URLs (write) ─────────────────────────────────
     path("", include(router.urls)),

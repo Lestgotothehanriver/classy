@@ -37,7 +37,7 @@ class SubjectSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subject
-        fields = ["id", "label"]
+        fields = ["number", "label"]
 
     def get_label(self, obj):
         return str(obj)
@@ -58,12 +58,12 @@ class RegionSimpleSerializer(serializers.ModelSerializer):
 
 
 # ____________________________________________________________________________________
-# 공통 유틸: Student/Instructor의 subjects M2M 필드에서 id 리스트 반환
+# 공통 유틸: Student/Instructor의 subjects M2M 필드에서 number 리스트 반환
 # ____________________________________________________________________________________
-def extract_subject_ids(owner_obj):
-    """Student/Instructor의 subjects M2M 필드에서 Subject id 목록을 반환."""
+def extract_subject_numbers(owner_obj):
+    """Student/Instructor의 subjects M2M 필드에서 Subject number 목록을 반환."""
     if hasattr(owner_obj, 'subjects'):
-        return list(owner_obj.subjects.values_list("id", flat=True))
+        return list(owner_obj.subjects.values_list("number", flat=True))
     return []
 
 
@@ -71,8 +71,9 @@ def extract_subject_ids(owner_obj):
 # 학생 페이지: 강사 리스트/세부에 쓰는 Serializer
 # ____________________________________________________________________________________
 class InstructorListSerializer(SafeModelSerializer):
-    subject_ids = serializers.SerializerMethodField()
+    subjects = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True, default=0)
+    is_liked = serializers.BooleanField(read_only=True, default=False)
     sex = serializers.CharField(source='user.sex', read_only=True)
     region = serializers.CharField(source='user.region', read_only=True)
     user_name = serializers.CharField(source='user.user_name', read_only=True)
@@ -81,8 +82,8 @@ class InstructorListSerializer(SafeModelSerializer):
         model = Instructor
         exclude = ["instruction"]
 
-    def get_subject_ids(self, obj):
-        return extract_subject_ids(obj)
+    def get_subjects(self, obj):
+        return extract_subject_numbers(obj)
 
 
 
@@ -129,7 +130,7 @@ class InstructorReviewSerializer(serializers.ModelSerializer):
 # 강사 페이지: 공고 리스트/세부 (TutoringPost)
 # ____________________________________________________________________________________
 class StudentPublicSerializer(SafeModelSerializer):
-    subject_ids = serializers.SerializerMethodField()
+    subjects = serializers.SerializerMethodField()
     avg_rating = serializers.FloatField(read_only=True)
     review_count = serializers.IntegerField(read_only=True)
 
@@ -137,8 +138,8 @@ class StudentPublicSerializer(SafeModelSerializer):
         model = Student
         fields = "__all__"
 
-    def get_subject_ids(self, obj):
-        return extract_subject_ids(obj)
+    def get_subjects(self, obj):
+        return extract_subject_numbers(obj)
 
 
 class TutoringPostListSerializer(serializers.ModelSerializer):
@@ -346,3 +347,61 @@ class TutoringResourceSerializer(serializers.ModelSerializer):
         model = TutoringResource
         fields = "__all__"
 
+class TutoringResourceListSerializer(serializers.ModelSerializer):
+    """수업 리소스 목록/상세 조회용 Serializer"""
+    student_user_name = serializers.CharField(source='student.user.user_name', read_only=True)
+    student_first_name = serializers.CharField(source='student.user.first_name', read_only=True)
+    student_last_name = serializers.CharField(source='student.user.last_name', read_only=True)
+    
+    instructor_user_name = serializers.CharField(source='instructor.user.user_name', read_only=True)
+    instructor_first_name = serializers.CharField(source='instructor.user.first_name', read_only=True)
+    instructor_last_name = serializers.CharField(source='instructor.user.last_name', read_only=True)
+
+    class Meta:
+        from .models import TutoringResource
+        model = TutoringResource
+        exclude = [
+            'payback_bank',
+            'payback_account_number',
+            'payback_account_holder',
+            'fee_confirmation_file'
+        ]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        if request and request.user.is_authenticated:
+            # 강사가 요청한 경우 자기 자신(강사)의 이름/닉네임은 제거하고 학생 정보만 남김
+            if instance.instructor.user == request.user:
+                ret.pop('instructor_user_name', None)
+                ret.pop('instructor_first_name', None)
+                ret.pop('instructor_last_name', None)
+            # 학생이 요청한 경우 자기 자신(학생)의 이름/닉네임은 제거하고 강사 정보만 남김
+            elif instance.student.user == request.user:
+                ret.pop('student_user_name', None)
+                ret.pop('student_first_name', None)
+                ret.pop('student_last_name', None)
+                
+        return ret
+
+class StudentMyPostSerializer(serializers.ModelSerializer):
+    """
+    학생이 올린 본인의 공고 조회용 Serializer
+    """
+    days_since_upload = serializers.SerializerMethodField()
+    subjects = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TutoringPost
+        fields = ['id', 'subjects', 'view_count', 'days_since_upload', 'created_at']
+        
+    def get_days_since_upload(self, obj):
+        from django.utils import timezone
+        if obj.created_at:
+            delta = timezone.now() - obj.created_at
+            return delta.days
+        return 0
+
+    def get_subjects(self, obj):
+        return [str(subject) for subject in obj.subjects.all()]

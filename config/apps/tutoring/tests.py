@@ -69,6 +69,67 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
         inst3_data = next(d for d in data if d["id"] == self.inst3.id)
         self.assertEqual(inst3_data["like_count"], 0)
 
+    def test_liked_true_filter(self):
+        """?liked=true → 자신이 좋아요한 강사만 반환"""
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.student_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        
+        resp = self.client.get("/tutoring/instructors/", {"liked": "true"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        
+        # student1은 inst1, inst2를 좋아요함
+        self.assertEqual(len(data), 2)
+        liked_ids = {item["id"] for item in data}
+        self.assertIn(self.inst1.id, liked_ids)
+        self.assertIn(self.inst2.id, liked_ids)
+        self.assertNotIn(self.inst3.id, liked_ids)
+        
+        # is_liked 필드가 모두 True여야 함
+        for item in data:
+            self.assertTrue(item["is_liked"])
+
+    def test_liked_false_filter(self):
+        """?liked=false → 자신이 좋아요하지 않은 강사만 반환"""
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.student_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        
+        resp = self.client.get("/tutoring/instructors/", {"liked": "false"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        
+        # student1은 inst3만 좋아요하지 않음
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], self.inst3.id)
+        self.assertFalse(data[0]["is_liked"])
+        
+    def test_is_liked_field_in_response(self):
+        """응답에 is_liked 필드가 존재하고 값이 정확한지 확인"""
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.student_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        
+        resp = self.client.get("/tutoring/instructors/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        
+        # 기본 정렬(최신순)이므로 inst3 > inst2 > inst1
+        self.assertEqual(len(data), 3)
+        likes_map = {item["id"]: item["is_liked"] for item in data}
+        self.assertEqual(likes_map[self.inst1.id], True)
+        self.assertEqual(likes_map[self.inst2.id], True)
+        self.assertEqual(likes_map[self.inst3.id], False)
+
+    def test_unauthenticated_liked_false(self):
+        """비인증 사용자는 is_liked가 모두 false"""
+        resp = self.client.get("/tutoring/instructors/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        for item in data:
+            self.assertFalse(item["is_liked"])
+
 
 class TutoringPostLikeSortingTest(LikeSortingTestBase):
     """TutoringPostListAPIView의 좋아요 기반 정렬 테스트"""

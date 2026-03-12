@@ -13,6 +13,7 @@ from .serializers import (  # 우리가 만든 serializers
     TutoringPostListSerializer,
     TutoringPostDetailSerializer,
     StudentReviewSerializer,
+    StudentMyPostSerializer,
 )
 
 
@@ -117,10 +118,27 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
     serializer_class = InstructorListSerializer  # 리스트용 serializer 지정
 
     def get_queryset(self):  # 리스트에서 사용할 queryset을 만드는 함수
-        from django.db.models import F, ExpressionWrapper, FloatField
+        from django.db.models import F, ExpressionWrapper, FloatField, Exists, OuterRef, Value, BooleanField
+        from config.apps.accounts.models import InstructorLike, Student
         qs = Instructor.objects.all()  # 전체 강사 가져오기
 
         qs = qs.select_related("tutoring_profile") if hasattr(Instructor, "tutoring_profile") else qs  # 1:1 있으면 최적화
+
+        student = None
+        if self.request.user.is_authenticated:
+            student = Student.objects.filter(user=self.request.user).first()
+
+        if student:
+            qs = qs.annotate(
+                is_liked=Exists(
+                    InstructorLike.objects.filter(
+                        student=student,
+                        instructor=OuterRef("pk")
+                    )
+                )
+            )
+        else:
+            qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
 
         qs = qs.annotate(  # 리뷰 기반 집계 필드 추가: (전문성 + 강의력 + 시간 준수) / 3 의 평균
             avg_rating=Avg(
@@ -140,6 +158,10 @@ class InstructorListAPIView(generics.ListAPIView):  # GET /tutoring/instructors/
             qs = qs.order_by("-like_count", "-id")  # 좋아요순 → 동률이면 최신순
         else:  # latest(기본값) 또는 기타 → 최신순
             qs = qs.order_by("-id")
+
+        liked = self.request.query_params.get("liked")
+        if liked is not None:
+            qs = qs.filter(is_liked=(liked.lower() in ("true", "1")))
 
         subject_ids = parse_int_list(self.request.query_params.get("subject"))  # ?subject=1,2 같은 값 파싱
         qs = apply_subject_filter(qs, Instructor, subject_ids)  # Instructor의 Subject 구조를 자동 탐색해 필터
@@ -814,12 +836,38 @@ class InstructorProposeToStudentAPIView(APIView):
             "instructor_id": instructor.id,
         }, status=status.HTTP_201_CREATED)
 
+
+# ____________________________________________________________________________________
+# 학생: 본인이 올린 과외 공고(TutoringPost)만 가볍게 조회하는 API
+# ____________________________________________________________________________________
+
+class StudentMyPostAPIView(generics.ListAPIView):
+    """
+    GET /tutoring/my-posts/
+    학생이 본인이 올린 과외 공고를 조회합니다.
+    - 리턴 필드: 공고의 과목(subjects), 조회수(view_count), 올린 지 며칠 지났는지(days_since_upload)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = StudentMyPostSerializer
+
+    def get_queryset(self):
+        from rest_framework.exceptions import PermissionDenied
+        try:
+            student = Student.objects.get(user=self.request.user)
+        except Student.DoesNotExist:
+            raise PermissionDenied("학생 계정만 사용할 수 있습니다.")
+        
+        # 본인이 작성한 활성화된/비활성화된 공고 모두 조회 (요구사항에 맞게 전체)
+        return TutoringPost.objects.filter(student=student).order_by("-id")
+
+
+
 # ____________________________________________________________________________________
 # 수업 리소스 (TutoringResource) CRUD API
 # ____________________________________________________________________________________
 from django.db.models import Q
 from .models import TutoringResource
-from .serializers import TutoringResourceSerializer
+from .serializers import TutoringResourceSerializer, TutoringResourceListSerializer
 
 class IsResourceParticipant(permissions.BasePermission):
     """
@@ -869,7 +917,10 @@ class TutoringResourceViewSet(ModelViewSet):
     }
     """
     permission_classes = [permissions.IsAuthenticated, IsResourceParticipant]
-    serializer_class = TutoringResourceSerializer
+    def get_serializer_class(self):
+        if self.action in ['list', 'retrieve']:
+            return TutoringResourceListSerializer
+        return TutoringResourceSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -994,7 +1045,7 @@ class InstructorLikeAPIView(APIView):
 
 
 # ____________________________________________________________________________________
-# 공고 좋아요 (TutoringPostLike) — 강사가 공고를 좋아요/취소
+# 공고 좋아요 (TutoringPostLike) — 강사가 공고를 좋아요/취소 (현재 삭제된 기능)
 # ____________________________________________________________________________________
 
 from .models import TutoringPostLike

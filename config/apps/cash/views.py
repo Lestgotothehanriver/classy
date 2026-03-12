@@ -11,8 +11,12 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import UserRateThrottle
 
-from .serializers import CashPurchaseSerializer
-from .models import PurchaseHistory
+from datetime import timedelta
+from django.utils import timezone
+
+from .serializers import CashPurchaseSerializer, LectureRentalSerializer
+from .models import PurchaseHistory, LectureRentalHistory
+from config.apps.lecture.models import Lecture
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +238,9 @@ class PurchaseCashView(APIView):
         """
         캐시 구매 API
 
+        [URL]:
+        POST /cash/purchase/
+
         [Request Body]
         - Apple 결제:
             {
@@ -367,3 +374,493 @@ class PurchaseCashView(APIView):
             "purchased_cash": purchased_cash,
             "remaining_cash": user.cash,
         }, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────────
+# 강의 대여 API
+# ──────────────────────────────────────────────
+class RentLectureView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        강의 대여 API
+
+        [URL]
+        POST /cash/rentals/
+
+        [Request Body]
+        {
+            "lecture_id": 123
+        }
+
+        [Response - 성공 201 Created]
+        {
+            "message": "Lecture rented successfully.",
+            "rental_id": 45,
+            "remaining_cash": 8000,
+            "expiration_date": "2026-03-19T15:18:56Z"
+        }
+
+        [Response - 실패 400 Bad Request]
+        - 이미 대여 중인 강의:
+            {"error": "You already have an active rental for this lecture."}
+        - 캐시 부족:
+            {"error": "Insufficient cash. Please recharge."}
+
+        [Response - 실패 404 Not Found]
+        - 강의를 찾을 수 없음:
+            {"error": "Lecture not found."}
+        """
+
+        serializer = LectureRentalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lecture_id = serializer.validated_data['lecture_id']
+
+        # Atomic block for concurrency control
+        try:
+            with transaction.atomic():
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+
+                # Lock the user and lecture
+                user = User.objects.select_for_update().get(pk=request.user.pk)
+                
+                try:
+                    lecture = Lecture.objects.get(pk=lecture_id)
+                except Lecture.DoesNotExist:
+                    return Response({"error": "Lecture not found."}, status=status.HTTP_404_NOT_FOUND)
+
+                # Check if user already has an active rental
+                now = timezone.now()
+                # A rental is active if not canceled and created_at + rental_period >= now
+                active_rentals = LectureRentalHistory.objects.filter(
+                    lecture=lecture,
+                    student=user,
+                    is_canceled=False
+                )
+                
+                has_active = False
+                for rental in active_rentals:
+                    expiration_date = rental.created_at + timedelta(days=lecture.rental_period)
+                    if expiration_date >= now:
+                        has_active = True
+                        break
+                
+                if has_active:
+                    return Response(
+                        {"error": "You already have an active rental for this lecture."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Check if user has enough cash
+                if user.cash < lecture.price:
+                    return Response(
+                        {"error": "Insufficient cash. Please recharge."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Deduct cash
+                user.cash = F('cash') - lecture.price
+                user.save(update_fields=['cash'])
+                user.refresh_from_db()
+
+                # Create rental history
+                rental = LectureRentalHistory.objects.create(
+                    lecture=lecture,
+                    student=user,
+                    purchased_cash=lecture.price,
+                    remaining_cash=user.cash
+                )
+
+                return Response({
+                    "message": "Lecture rented successfully.",
+                    "rental_id": rental.id,
+                    "remaining_cash": user.cash,
+                    "expiration_date": rental.created_at + timedelta(days=lecture.rental_period)
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.exception("Rental failed for user=%s lecture=%s error=%s", request.user.pk, lecture_id, e)
+            return Response(
+                {"error": "Internal server error while processing rental."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ──────────────────────────────────────────────
+# 강의 대여 취소(환불) API
+# ──────────────────────────────────────────────
+class CancelLectureRentalView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        """
+        강의 대여 취소(환불) API
+
+        [URL]
+        POST /cash/rentals/<int:pk>/cancel/
+
+        [Request Body]
+        (Empty)
+
+        [Response - 성공 200 OK]
+        {
+            "message": "Rental canceled and cash refunded.",
+            "refunded_cash": 2000,
+            "remaining_cash": 10000
+        }
+
+        [Response - 실패 400 Bad Request]
+        - 이미 취소된 대여:
+            {"error": "This rental is already canceled."}
+        - 7일 경과 (취소 불가):
+            {"error": "Rental cannot be canceled after 7 days."}
+
+        [Response - 실패 404 Not Found]
+        - 대여 내역을 찾을 수 없음:
+            {"error": "Rental record not found."}
+        """
+
+        try:
+            with transaction.atomic():
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+
+                user = User.objects.select_for_update().get(pk=request.user.pk)
+                
+                try:
+                    # Lock the rental record
+                    rental = LectureRentalHistory.objects.select_for_update().get(pk=pk, student=user)
+                except LectureRentalHistory.DoesNotExist:
+                    return Response({"error": "Rental record not found."}, status=status.HTTP_404_NOT_FOUND)
+
+                if rental.is_canceled:
+                    return Response({"error": "This rental is already canceled."}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Check if it is within 7 days
+                now = timezone.now()
+                cancellation_deadline = rental.created_at + timedelta(days=7)
+                if now > cancellation_deadline:
+                    return Response(
+                        {"error": "Rental cannot be canceled after 7 days."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Refund cash
+                user.cash = F('cash') + rental.purchased_cash
+                user.save(update_fields=['cash'])
+                user.refresh_from_db()
+
+                # Mark as canceled
+                rental.is_canceled = True
+                rental.save(update_fields=['is_canceled'])
+
+                return Response({
+                    "message": "Rental canceled and cash refunded.",
+                    "refunded_cash": rental.purchased_cash,
+                    "remaining_cash": user.cash
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.exception("Rental cancellation failed for user=%s rental=%s error=%s", request.user.pk, pk, e)
+            return Response(
+                {"error": "Internal server error while processing cancellation."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ──────────────────────────────────────────────
+# 구매(캐시 충전) 환불 API
+# ──────────────────────────────────────────────
+class RefundPurchaseView(APIView):
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        """
+        Apple App Store Server Notifications 환불 웹훅 URL API
+        
+        Apple V2 Notification 의 signedPayload (JWS) 를 파싱하여
+        REFUND 혹은 REFUND_DECLINED 서버 알림을 처리합니다.
+        
+        [URL]
+        POST /cash/webhook/apple/
+
+        [Request Body]
+        {
+            "signedPayload": "eyJhbG..."
+        }
+        
+        [주의]
+        * 웹훅은 Apple 서버에서 호출하므로 인증(IsAuthenticated)을 해제합니다.
+        * pk 등 기존 URL 파라미터가 들어오더라도 무시(*args, **kwargs)합니다.
+        * 이미 상품을 소비해 캐시가 부족하더라도 Apple은 사용자에게 환불을 진행하므로 캐시를 0 뷰로 보정 차감합니다.
+        """
+        signed_payload = request.data.get('signedPayload')
+
+        if not signed_payload:
+            return Response({"error": "Missing signedPayload"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            import jwt
+            import base64
+            from cryptography.x509 import load_der_x509_certificate
+            from cryptography.hazmat.backends import default_backend
+
+            # 1. Main Payload Verification
+            unverified_header = jwt.get_unverified_header(signed_payload)
+            x5c = unverified_header.get('x5c')
+            if not x5c or not isinstance(x5c, list):
+                return Response({"error": "Missing x5c in header"}, status=status.HTTP_400_BAD_REQUEST)
+
+            leaf_cert_der = base64.b64decode(x5c[0])
+            cert = load_der_x509_certificate(leaf_cert_der, default_backend())
+            public_key = cert.public_key()
+
+            decoded_payload = jwt.decode(
+                signed_payload, 
+                key=public_key, 
+                algorithms=["ES256"], 
+                options={"verify_signature": True, "verify_aud": False}
+            )
+            notification_type = decoded_payload.get('notificationType')
+
+            # 환불 관련 이벤트만 로직 실행 (그 외 이벤트는 Apple 측 재전송을 막기 위해 200 응답)
+            if notification_type not in ["REFUND", "REFUND_DECLINED"]:
+                logger.info("Apple Webhook ignored notificationType: %s", notification_type)
+                return Response({"message": "Event ignored"}, status=status.HTTP_200_OK)
+
+            data = decoded_payload.get('data', {})
+            signed_transaction_info = data.get('signedTransactionInfo')
+
+            if not signed_transaction_info:
+                return Response({"error": "Missing signedTransactionInfo"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 2. Transaction Info Payload Verification
+            tx_unverified_header = jwt.get_unverified_header(signed_transaction_info)
+            tx_x5c = tx_unverified_header.get('x5c')
+            if not tx_x5c or not isinstance(tx_x5c, list):
+                return Response({"error": "Missing tx x5c in header"}, status=status.HTTP_400_BAD_REQUEST)
+
+            tx_leaf_cert_der = base64.b64decode(tx_x5c[0])
+            tx_cert = load_der_x509_certificate(tx_leaf_cert_der, default_backend())
+            tx_public_key = tx_cert.public_key()
+
+            transaction_payload = jwt.decode(
+                signed_transaction_info, 
+                key=tx_public_key, 
+                algorithms=["ES256"], 
+                options={"verify_signature": True, "verify_aud": False}
+            )
+            transaction_id = transaction_payload.get('transactionId')
+
+            if not transaction_id:
+                return Response({"error": "Missing transactionId"}, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                try:
+                    # pk=pk나 특정 user가 아닌 애플에서 주는 transaction_id로 조회
+                    purchase = PurchaseHistory.objects.select_for_update().get(transaction_id=transaction_id)
+                except PurchaseHistory.DoesNotExist:
+                    logger.warning("Refund Webhook: Purchase not found for tx_id=%s", transaction_id)
+                    # 구매내역이 없어도 성공 처리(200)하여 재시도를 중단시키는 정책을 흔히 씁니다.
+                    return Response({"message": "Purchase not found, ignoring."}, status=status.HTTP_200_OK)
+
+                if notification_type == "REFUND_DECLINED":
+                    logger.info("Apple Webhook: REFUND_DECLINED for tx_id=%s", transaction_id)
+                    return Response({"message": "Refund Declined noted"}, status=status.HTTP_200_OK)
+
+                if purchase.is_refunded:
+                    logger.info("Apple Webhook: Already refunded tx_id=%s", transaction_id)
+                    return Response({"message": "Already refunded"}, status=status.HTTP_200_OK)
+
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                # 구매내역 상의 유저를 조회 (요청자의 user 객체가 아님)
+                user = User.objects.select_for_update().get(pk=purchase.user.pk)
+
+                # 이미 쓴 캐시더라도 무조건 회수 (음수 방지용으로 0 보정)
+                deducted = purchase.purchased_cash
+                if user.cash < deducted:
+                    logger.warning("User %s cash will be negative due to Apple Refund. Clamping to 0.", user.pk)
+                    user.cash = 0
+                    # 여기서 어뷰징 유저 계정을 블록하는 로직이 추가될 수 있습니다.
+                else:
+                    user.cash -= deducted
+
+                user.save(update_fields=['cash'])
+                user.refresh_from_db()
+
+                purchase.is_refunded = True
+                purchase.save(update_fields=['is_refunded'])
+
+                logger.info(
+                    "Apple Webhook success. Refund user=%s tx_id=%s deducted=%d remain=%d",
+                    user.pk, transaction_id, deducted, user.cash
+                )
+
+                return Response({
+                    "message": "Webhook processed, refund applied",
+                    "deducted_cash": deducted,
+                    "remaining_cash": user.cash
+                }, status=status.HTTP_200_OK)
+
+        except jwt.DecodeError as e:
+            logger.exception("Apple Webhook JWT decode error: %s", e)
+            return Response({"error": "JWT Decode Error"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Refund webhook failed: %s", e)
+            return Response(
+                {"error": "Internal server error while processing webhook."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ──────────────────────────────────────────────
+# Google Play Store 환불 / 취소 알림 웹훅 (Pub/Sub)
+# ──────────────────────────────────────────────
+class GooglePlayWebhookView(APIView):
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        """
+        Google Play Developer API Real-time Developer Notifications (RTDN)
+        환불 및 상태 변경 알림 웹훅
+
+        [URL]
+        POST /cash/webhook/google/
+
+        [Request Body]
+        {
+            "message": {
+                "data": "eyJ2ZXJzaW9uIjoiMS4wIiwi..." (Base64 Encoded JSON),
+                "messageId": "1234567890",
+                "publishTime": "2026-03-09T10:10:10.123Z"
+            },
+            "subscription": "projects/myproject/subscriptions/mysubscription"
+        }
+        """
+        message = request.data.get('message', {})
+        data_base64 = message.get('data')
+
+        if not data_base64:
+            return Response({"error": "Missing message data"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            import base64
+            import json
+            
+            # 1. Base64 Decode
+            data_json_str = base64.b64decode(data_base64).decode('utf-8')
+            data_payload = json.loads(data_json_str)
+            
+            # 테스트 알림인 경우 200 OK 응답
+            if data_payload.get('testNotification'):
+                logger.info("Google Webhook: Test Notification received.")
+                return Response({"message": "Test notification acknowledged"}, status=status.HTTP_200_OK)
+
+            one_time_product_notification = data_payload.get('oneTimeProductNotification')
+            if not one_time_product_notification:
+                # 구독 등 다른 알림은 처리하지 않음
+                return Response({"message": "Not a one-time product notification, ignoring"}, status=status.HTTP_200_OK)
+
+            notification_type = one_time_product_notification.get('notificationType')
+            purchase_token = one_time_product_notification.get('purchaseToken')
+            # sku (상품 ID)가 필요한 경우 추출: sku = one_time_product_notification.get('sku')
+            
+            # Google RTDN (v1.0 기준) OneTimeProductNotification Type:
+            # 1: ONE_TIME_PRODUCT_PURCHASED (성공)
+            # 2: ONE_TIME_PRODUCT_CANCELED (사용자 취소/환불)
+            if notification_type != 2:
+                logger.info("Google Webhook ignored notificationType: %s", notification_type)
+                return Response({"message": "Event ignored"}, status=status.HTTP_200_OK)
+
+            if not purchase_token:
+                return Response({"error": "Missing purchaseToken"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 2. Google Play Developer API (androidpublisher API) 로 orderId 조회
+            # PurchaseHistory 모델에는 Google의 orderId가 transaction_id로 저장되어 있음
+            # Webhook 알림에는 purchaseToken만 오기 때문에 orderId 조회가 필요함.
+            
+            product_id = one_time_product_notification.get('sku')
+            package_name = getattr(settings, 'ANDROID_PACKAGE_NAME', None)
+            service_account_path = getattr(settings, 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', None)
+            
+            # orderId를 초기화
+            order_id = None
+            if package_name and service_account_path and product_id:
+                try:
+                    from google.oauth2 import service_account
+                    from googleapiclient.discovery import build
+                    
+                    credentials = service_account.Credentials.from_service_account_file(
+                        service_account_path,
+                        scopes=['https://www.googleapis.com/auth/androidpublisher'],
+                    )
+                    service = build('androidpublisher', 'v3', credentials=credentials, cache_discovery=False)
+                    
+                    result = service.purchases().products().get(
+                        packageName=package_name,
+                        productId=product_id,
+                        token=purchase_token,
+                    ).execute()
+                    
+                    order_id = result.get('orderId')
+                except Exception as e:
+                    logger.warning("Google Webhook: Failed to fetch orderId via API: %s", e)
+
+            with transaction.atomic():
+                try:
+                    # purchaseToken 또는 조회된 orderId 로 구매 내역 탐색 시도
+                    # Google 구매 시에는 Google API의 orderId를 transaction_id에 저장함
+                    if order_id:
+                        purchase = PurchaseHistory.objects.select_for_update().get(transaction_id=order_id, platform='google')
+                    else:
+                        # orderId 조회를 생략하고 예비 시도 (단, 토큰 정보가 DB에 저장되어 있지 않으면 불가능할 수 있음)
+                        raise PurchaseHistory.DoesNotExist
+                        
+                except PurchaseHistory.DoesNotExist:
+                    logger.warning("Refund Webhook: Google Purchase not found for token=%s order_id=%s", purchase_token, order_id)
+                    # 구매내역이 없어도 성공 처리(200)하여 재시도를 중단시킴
+                    return Response({"message": "Purchase not found, ignoring."}, status=status.HTTP_200_OK)
+
+                if purchase.is_refunded:
+                    logger.info("Google Webhook: Already refunded tx_id=%s", purchase.transaction_id)
+                    return Response({"message": "Already refunded"}, status=status.HTTP_200_OK)
+
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                # 구매내역 상의 유저를 조회
+                user = User.objects.select_for_update().get(pk=purchase.user.pk)
+
+                # 이미 쓴 캐시더라도 무조건 회수 (음수 방지용으로 0 보정)
+                deducted = purchase.purchased_cash
+                if user.cash < deducted:
+                    logger.warning("User %s cash will be negative due to Google Refund. Clamping to 0.", user.pk)
+                    user.cash = 0
+                else:
+                    user.cash -= deducted
+
+                user.save(update_fields=['cash'])
+                user.refresh_from_db()
+
+                purchase.is_refunded = True
+                purchase.save(update_fields=['is_refunded'])
+
+                logger.info(
+                    "Google Webhook success. Refund user=%s tx_id=%s deducted=%d remain=%d",
+                    user.pk, purchase.transaction_id, deducted, user.cash
+                )
+
+                return Response({
+                    "message": "Google Webhook processed, refund applied",
+                    "deducted_cash": deducted,
+                    "remaining_cash": user.cash
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.exception("Google Refund webhook failed: %s", e)
+            return Response(
+                {"error": "Internal server error while processing Google webhook."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
