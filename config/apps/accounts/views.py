@@ -6,8 +6,8 @@ from django.contrib.auth import authenticate
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.generics import GenericAPIView
 from .models import User
-
 from config.apps.pending.models import PendingInstructor
+from rest_framework.permissions import IsAuthenticated
 from .serializers import (
     StudentSignupSerializer,
     InstructorSignupSerializer,
@@ -171,8 +171,7 @@ class InstructorSignupAPIView(GenericAPIView):
 
 class LoginAPIView(APIView):
     """
-    POST /accounts/login/?type=student
-    POST /accounts/login/?type=instructor
+    POST /accounts/login/
     - Content-Type: application/json
 
     example request body:
@@ -185,7 +184,17 @@ class LoginAPIView(APIView):
     {
         "token": "abc123...",            // string
         "user_id": 12,                   // int
-        "email": "student@example.com"   // string
+        "email": "student@example.com",   // string
+        "available_roles: [
+            {
+            "role": "student",
+            "status": "VERIFIED"
+            },
+            {
+            "role": "instructor",
+            "status": "PENDING or SUSPENDED or VERIFIED"
+            }
+        ]
     }
 
     response example (instructor pending):
@@ -197,38 +206,39 @@ class LoginAPIView(APIView):
     def post(self, request):
         password = request.data.get("password")
         email = request.data.get("email", "").lower()
-
+        # email과 password는 필수
         if not email or not password:
             return Response({"error": "email/password required"}, status=400)
-
+        # 이메일로 로그인 시도
         user = authenticate(request, username=email, password=password)
         if not user:
             return Response({"error": "Invalid credentials"}, status=400)
+        
+        # student/instructor 계정 상태 확인
+        available_roles = []
 
-        user_type = request.query_params.get("type")
-        if user_type not in {"student", "instructor"}:
-            return Response({"error": "type must be 'student' or 'instructor'"}, status=400)
+        # 학생 계정이 있을 경우 role에 추가
+        if hasattr(user, "student_profile"): 
+            available_roles.append({"role": "student", "status": "VERIFIED"})
 
-        if user_type == "student":
-            if not hasattr(user, "student_profile"):
-                return Response({"error": "Not a student account"}, status=400)
+        if hasattr(user, "instructor_profile"): # 강사 계정이 있을 경우 role에 추가
+            pending_status = user.instructor_profile.pending_info.status
+            available_roles.append({"role": "instructor", "status": pending_status})
 
-            token = Token.objects.get_or_create(user=user)[0]
-            return Response({"token": token.key, "user_id": user.id, "email": user.email})
+        if not available_roles: # 학생/강사 둘 다 없는 경우 error 반환(계정이 존재하지 않는 경우)
+            return Response({"error": "No active roles found for this account"}, status=403)
+        
+        # 로그인 토큰 발급
+        token, _ = Token.objects.get_or_create(user=user)
 
-        if not hasattr(user, "instructor_profile"):
-            return Response({"error": "Not an instructor account"}, status=400)
+        return Response({
+            "token": token.key,
+            "user_id": user.id,
+            "email": user.email,
+            "available_roles": available_roles
+        }, status=200)
 
-        pending_status = user.instructor_profile.pending_info.status
-        if pending_status == PendingInstructor.Status.VERIFIED:
-            token = Token.objects.get_or_create(user=user)[0]
-            return Response({"token": token.key, "user_id": user.id, "email": user.email})
-
-        if pending_status == PendingInstructor.Status.SUSPENDED:
-            return Response({"error": "Account is suspended"}, status=403)
-
-        return Response({"error": "Account is pending verification"}, status=403)
-    
+# 닉네임 중복 확인 API  
 class CheckUsernameAPIView(APIView):
     """
     GET /accounts/check-username/?user_name=닉네임
@@ -258,3 +268,41 @@ class CheckUsernameAPIView(APIView):
         # 존재하지 않는 닉네임이면 available=True, 이미 존재하는 닉네임이면 available=False 반환
         available = not queryset.exists()
         return Response({"available": available}, status=200)
+
+# 로그아웃 API  
+class LogoutAPIView(APIView):
+    """
+    POST /accounts/logout/
+    - Authorization: Token <token>
+    """
+    # 로그인한 유저만 호출 가능
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request): 
+        try:
+            request.user.auth_token.delete() # 토큰 삭제로 로그아웃 처리
+            return Response({"message": "Logged out successfully"}, status=200)
+        except: # 토큰 삭제 실패 시 exception 처리 (예: 토큰이 이미 삭제된 경우)
+            return Response({"error": "Failed to log out"}, status=400)
+
+# 회원 탈퇴 API Soft Delete 방식 (데이터는 사내 정책에 따라 일정 기간 남기고, 일단 비활성화, 일정기간 후에 완전 삭제)
+class WithdrawAPIView(APIView):
+    """
+    POST /accounts/withdraw/
+    - Authorization: Token <token>
+    """
+
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        # 계정 비활성화
+        user.is_active = False # 계정 비활성화
+        user.save()
+        # 토큰 삭제로 로그아웃 처리
+        try:
+            user.auth_token.delete()
+        except Token.DoesNotExist:
+            pass
+        return Response({"message": "Account deactivated successfully"}, status=200)
+
