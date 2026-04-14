@@ -30,5 +30,6 @@ urlpatterns = [
     path("report/", include("config.apps.report.urls")),
     path("main/", include("config.apps.main.urls")),
     path("mypage/", include("config.apps.mypage.urls")),
+    path("notification/", include("config.apps.notification.urls")),
     path("", include("config.apps.chat_app.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

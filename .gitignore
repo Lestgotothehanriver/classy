@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Secret key files (Firebase, Google service accounts, etc.)
+secrets/
+
 # Python
 *.pyc
 __pycache__/

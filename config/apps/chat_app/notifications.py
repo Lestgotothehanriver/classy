@@ -74,3 +74,21 @@ def push_to_users(user_ids: Iterable[int], title: str, body: str, username: str,
             errors.append({"token": t, "status": r.status_code, "body": r.text})
 
     return {"success": ok, "failure": fail, "errors": errors}
+
+
+def push_to_all(title: str, body: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """활성화된 모든 유저에게 공지 푸시 + DB 저장"""
+    from django.contrib.auth import get_user_model
+    from config.apps.notification.models import Notification
+
+    User = get_user_model()
+    all_user_ids = list(User.objects.values_list("id", flat=True))
+    Notification.objects.bulk_create([
+        Notification(user_id=uid, type="announcement", title=title, body=body, data=data or {})
+        for uid in all_user_ids
+    ])
+
+    push_user_ids = list(
+        UserDeviceToken.objects.filter(is_active=True).values_list("user_id", flat=True)
+    )
+    return push_to_users(push_user_ids, title=title, body=body, username="공지", data=data)
