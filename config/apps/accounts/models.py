@@ -36,7 +36,7 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField()  # 이메일로 로그인할 거면 unique=True
     password = models.CharField(max_length=128)  # Django 기본 필드 유지
-    user_name = models.CharField(max_length=150, blank=True)  # 닉네임 같은 용도로 쓰는 필드
+    user_name = models.CharField(max_length=150, unique=True)  # 닉네임 같은 용도로 쓰는 필드, 닉네임 중복 체크용 모델 설정 추가
     first_name = models.CharField(max_length=30, blank=True)  # Django 기본 필드 유지
     last_name = models.CharField(max_length=150, blank=True)  # Django 기본 필드 유지
     #_____________________________________________

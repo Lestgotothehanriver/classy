@@ -5,6 +5,7 @@ from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.generics import GenericAPIView
+from .models import User
 
 from config.apps.pending.models import PendingInstructor
 from .serializers import (
@@ -227,3 +228,33 @@ class LoginAPIView(APIView):
             return Response({"error": "Account is suspended"}, status=403)
 
         return Response({"error": "Account is pending verification"}, status=403)
+    
+class CheckUsernameAPIView(APIView):
+    """
+    GET /accounts/check-username/?user_name=닉네임
+    - Content-Type: application/json
+
+    response example:
+    {
+        "available": true or false(미중복 or 중복) // boolean
+    }
+    """
+
+    permission_classes = [] # 인증 없이 접근 가능
+
+    def get(self, request):
+        user_name = request.query_params.get("user_name", "")
+        if not user_name:
+            return Response({"error": "user_name query parameter required"}, status=400)
+
+        # 현재 로그인한 사용자가 있는 경우, 그 사용자의 닉네임은 유효하다고 간주
+        current_user_id = None
+        if request.user and request.user.is_authenticated:
+            current_user_id = request.user.id
+
+        queryset = User.objects.filter(user_name__iexact=user_name)
+        if current_user_id: # 로그인한 사용자가 있다면, 그 사용자의 닉네임은 중복 체크에서 제외(프로필 업데이트 시)
+            queryset = queryset.exclude(pk=current_user_id)
+        # 존재하지 않는 닉네임이면 available=True, 이미 존재하는 닉네임이면 available=False 반환
+        available = not queryset.exists()
+        return Response({"available": available}, status=200)

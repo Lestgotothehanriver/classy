@@ -83,7 +83,7 @@ class StudentSignupSerializer(serializers.Serializer):
         )
         user.user_name = validated_data.get("user_name", "")
         user.phone = validated_data.get("phone", "")
-        region = validated_data.get("region", "")
+        user.region = validated_data.get("region", "")
         user.birth_date = validated_data.get("birth_date", None)
 
         # update_fields에 누락되면 저장 안 되는 버그 방지
@@ -99,6 +99,9 @@ class StudentSignupSerializer(serializers.Serializer):
                 subjects.append(obj)
             student_profile.subjects.set(subjects)
         return user
+    # 닉네임 중복 체크 함수
+    def is_validate_user_name(self, user_name):
+        return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크
 
 
 class InstructorSignupSerializer(serializers.Serializer):
@@ -229,6 +232,10 @@ class InstructorSignupSerializer(serializers.Serializer):
                 subjects.append(obj)
             instructor_profile.subjects.set(subjects)
         return user
+    
+    # 닉네임 중복 체크 함수
+    def is_validate_user_name(self, user_name):
+        return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크
 
 
 class StudentUpdateSerializer(serializers.Serializer):
@@ -262,6 +269,16 @@ class StudentUpdateSerializer(serializers.Serializer):
         instance.save()
 
         return instance
+    
+    # 닉네임 업데이트 시 중복 체크 함수 (본인 제외) 반환: true(available), false(unavailable)
+    def is_validate_user_name(self, user_name):
+        # 현재 사용자의 닉네임은 유효하다고 간주
+        queryset = User.objects.filter(user_name__iexact=user_name) # 일단 같은 닉네임이 있는지 체크
+
+        # 만약 업데이트 중인 닉네임이 본인 것이라면, 중복 체크에서 제외해야 함
+        if self.instance and self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk) # 본인 제외
+        return not queryset.exists()
 
 
 class InstructorUpdateSerializer(serializers.Serializer):
@@ -341,3 +358,13 @@ class InstructorUpdateSerializer(serializers.Serializer):
                 subjects.append(obj)
             instructor.subjects.set(subjects)
         return instance
+    
+    # 닉네임 업데이트 시 중복 체크 함수 (본인 제외) 반환: true(available), false(unavailable)
+    def is_validate_user_name(self, user_name):
+        # 현재 사용자의 닉네임은 유효하다고 간주
+        queryset = User.objects.filter(user_name__iexact=user_name) # 일단 같은 닉네임이 있는지 체크
+
+        # 만약 업데이트 중인 닉네임이 본인 것이라면, 중복 체크에서 제외해야 함
+        if self.instance and self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk) # 본인 제외
+        return not queryset.exists()
