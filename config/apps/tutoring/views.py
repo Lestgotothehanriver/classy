@@ -772,8 +772,26 @@ class StudentProposeToInstructorAPIView(APIView):
             defaults={"title": f"과외 문의 - {student.user.username}님 & {instructor.user.username}님"}
         )
 
-        # response에는 해당 공고의 id 반환
+        # 새로 생성된 경우 → 강사에게 FCM 발송 (채팅 목록 실시간 갱신)
+        if created:
+            try:
+                from config.apps.chat_app.notifications import push_to_users
+                from config.apps.notification.models import Notification
+                title = room.title
+                body = f"{student.user.username}님이 과외를 제안했습니다."
+                data = {"type": "new_room", "room_id": str(room.id)}
+                Notification.objects.create(
+                    user=instructor.user, type="new_room", title=title, body=body, data=data
+                )
+                push_to_users(
+                    [instructor.user.id], title=title, body=body,
+                    username=student.user.username, data=data
+                )
+            except Exception:
+                pass  # FCM 실패는 무시
+
         return Response({
+            "room_id": room.id,
             "post_id": post.id,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
@@ -831,8 +849,26 @@ class InstructorProposeToStudentAPIView(APIView):
             defaults={"title": f"제안서 문의 - {post.student.user.username}님 & {instructor.user.username}님"}
         )
 
-        # response에는 선생님의 id 반환
+        # 새로 생성된 경우 → 학생에게 FCM 발송 (채팅 목록 실시간 갱신)
+        if created:
+            try:
+                from config.apps.chat_app.notifications import push_to_users
+                from config.apps.notification.models import Notification
+                title = room.title
+                body = f"{instructor.user.username} 선생님이 과외를 제안했습니다."
+                data = {"type": "new_room", "room_id": str(room.id)}
+                Notification.objects.create(
+                    user=post.student.user, type="new_room", title=title, body=body, data=data
+                )
+                push_to_users(
+                    [post.student.user.id], title=title, body=body,
+                    username=instructor.user.username, data=data
+                )
+            except Exception:
+                pass  # FCM 실패는 무시
+
         return Response({
+            "room_id": room.id,
             "instructor_id": instructor.id,
         }, status=status.HTTP_201_CREATED)
 

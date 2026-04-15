@@ -51,6 +51,7 @@ grade_choices = [
 class TutoringPost(models.Model):
     # 모집 공고 모델
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="tutoring_posts")
+    title = models.CharField(max_length=255, blank=True)
     sex = models.CharField(max_length=10, choices=student_sex_choices, blank=True)
     age = models.IntegerField(blank=True, null=True)
     grade = models.CharField(max_length=20, choices=grade_choices, blank=True)
