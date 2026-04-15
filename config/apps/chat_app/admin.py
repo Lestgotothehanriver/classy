@@ -7,10 +7,10 @@ class ChatMessageAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
 
     def sender_nickname(self, obj):
-        return obj.sender.nickname 
+        return obj.sender.user_name 
 
     def sender_name(self, obj):
-        return obj.sender.name
+        return obj.sender.user_name
 
     def room_title(self, obj):
         return obj.room.title
