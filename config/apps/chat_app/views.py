@@ -105,7 +105,7 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
             
         # 3. 이미지가 매핑된 최신 상태로 다시 직렬화해서 응답
         updated_ser = ChatMessageSerializer(message_obj)
-        return Response(updated_ser.data, status=201)
+        return Response(updated_ser.data, status=200)
 
     #_______________________________________________________________________
     # 👇 메시지 읽음 처리 기능 (읽은 사람 목록에 추가)
@@ -130,7 +130,7 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         msg.read_by.add(request.user)
 
         # 현재까지 몇 명이 읽었는지 숫자로 응답
-        return Response({"read_count": msg.read_by.count()})
+        return Response({"read_count": msg.read_by.count()}, status=200)
 
     @action(detail=True, methods=["delete"])
     def out(self, request, pk=None):
@@ -146,7 +146,7 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         room = self.get_object()
         room.delete()
 
-        return Response({"message": "채팅방을 삭제하고 나갔습니다."}, status=status.HTTP_200_OK)
+        return Response({"message": "채팅방을 삭제하고 나갔습니다."}, status=200)
 
 class ImageUploadView(APIView):
     """
@@ -170,7 +170,7 @@ class ImageUploadView(APIView):
         }
         """
         if 'images' not in request.FILES:
-            return Response({"error": "이미지 파일이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "이미지 파일이 필요합니다."}, status=400)
 
         images = request.FILES.getlist('images')
         img_ids = []
@@ -178,7 +178,7 @@ class ImageUploadView(APIView):
             img = Image.objects.create(image=image)
             img_ids.append(img.id)
         
-        return Response({"image_ids": img_ids}, status=status.HTTP_201_CREATED)
+        return Response({"image_ids": img_ids}, status=200)
 
 class DeviceTokenView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -195,11 +195,11 @@ class DeviceTokenView(APIView):
         """
         token = UserDeviceToken.objects.filter(user=request.user).first()
         if not token:
-            return Response({"error": "디바이스 토큰이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "디바이스 토큰이 없습니다."}, status=404)
 
         return Response({
             "is_active": token.is_active
-        })
+        }, status=200)
 
     def post(self, request):
         """
@@ -220,7 +220,7 @@ class DeviceTokenView(APIView):
         """
         token = request.data.get("token")
         if not token:
-            return Response({"error": "토큰이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "토큰이 필요합니다."}, status=400)
         platform = request.data.get("platform", "a")
 
         if UserDeviceToken.objects.filter(user=request.user, is_active=True).exists() or not UserDeviceToken.objects.filter(user=request.user).exists():
@@ -229,7 +229,7 @@ class DeviceTokenView(APIView):
                 defaults={"token": token, "platform": platform, "is_active": True}
             )
         # platform: ios, android
-        return Response({"ok": True, "id": obj.id})
+        return Response({"ok": True, "id": obj.id}, status=200)
 
     def put(self, request):
         """
@@ -244,7 +244,7 @@ class DeviceTokenView(APIView):
         token_status = UserDeviceToken.objects.get(user=request.user).is_active 
         token_status = not token_status
         UserDeviceToken.objects.filter(user=request.user).update(is_active=token_status) 
-        return Response({"ok": True}, status=status.HTTP_200_OK)
+        return Response({"ok": True}, status=200)
 
 
         
