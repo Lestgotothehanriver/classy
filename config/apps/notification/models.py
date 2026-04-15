@@ -6,7 +6,11 @@ class Notification(models.Model):
     TYPE_CHOICES = [
         ("message", "채팅 메시지"),
         ("tutoring_proposal", "과외 제안"),
+        ("tutoring_proposal_student", "과외 요청"),
         ("announcement", "공지사항"),
+        ("tutoring_accepted", "과외 수락"),
+        ("tutoring_rejected", "과외 거절"),
+        
     ]
 
     user = models.ForeignKey(
