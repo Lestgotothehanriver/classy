@@ -1,62 +1,87 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
-from rest_framework import serializers
-
-from config.apps.chat_app.notifications import push_to_all
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
 from .models import Notification
 
 
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notification
-        fields = ["id", "type", "title", "body", "data", "is_read", "created_at"]
-
-
-class NotificationListView(APIView):
+class NotificationListAPIView(APIView):
     """
-    GET /notification/          — 내 알림 목록 (최신순)
-    DELETE /notification/       — 읽은 알림 전체 삭제
+    GET  /notification/              — 내 전체 알림 목록 (최신순)
+    GET  /notification/?role=student — role별 필터
+    DELETE /notification/            — 읽은 알림 전체 삭제
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         qs = Notification.objects.filter(user=request.user)
-        serializer = NotificationSerializer(qs, many=True)
-        return Response(serializer.data)
+        role = request.query_params.get("role")
+        if role in ("student", "instructor"):
+            qs = qs.filter(role=role)
+        data = [_serialize(n) for n in qs]
+        return Response(data, status=status.HTTP_200_OK)
 
     def delete(self, request):
-        Notification.objects.filter(user=request.user, is_read=True).delete()
-        return Response({"ok": True})
+        deleted_count, _ = Notification.objects.filter(
+            user=request.user, is_read=True
+        ).delete()
+        return Response({"deleted": deleted_count}, status=status.HTTP_200_OK)
 
 
-class NotificationReadView(APIView):
+class NotificationUnreadCountAPIView(APIView):
     """
-    PATCH /notification/<pk>/read/  — 개별 알림 읽음 처리
-    PATCH /notification/read-all/   — 전체 읽음 처리
+    GET /notification/unread-count/              — role별 미읽음 카운트
+    응답: { "student": 3, "instructor": 1 }
     """
     permission_classes = [IsAuthenticated]
 
-    def patch(self, request, pk=None):
-        if pk:
-            Notification.objects.filter(user=request.user, pk=pk).update(is_read=True)
-        else:
-            Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
-        return Response({"ok": True})
+    def get(self, request):
+        base_qs = Notification.objects.filter(user=request.user, is_read=False)
+        return Response({
+            "student":    base_qs.filter(role="student").count(),
+            "instructor": base_qs.filter(role="instructor").count(),
+        }, status=status.HTTP_200_OK)
 
-
-class AnnouncementPushView(APIView):
+    
+class NotificationReadAPIView(APIView):
     """
-    POST /notification/announce/
-    {"title": "공지 제목", "body": "공지 내용"}
+    PATCH /notification/<pk>/read/  — 개별 알림 읽음 처리
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        title = request.data.get("title", "").strip()
-        body = request.data.get("body", "").strip()
-        if not title or not body:
-            return Response({"error": "title과 body는 필수입니다."}, status=400)
+    def patch(self, request, pk):
+        try:
+            notification = Notification.objects.get(pk=pk, user=request.user)
+        except Notification.DoesNotExist:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        result = push_to_all(title=title, body=body, data={"type": "announcement"})
-        return Response(result)
+        notification.is_read = True
+        notification.save(update_fields=["is_read"])
+        return Response(_serialize(notification), status=status.HTTP_200_OK)
+
+
+class NotificationReadAllAPIView(APIView):
+    """
+    PATCH /notification/read-all/  — 전체 읽음 처리
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        updated = Notification.objects.filter(
+            user=request.user, is_read=False
+        ).update(is_read=True)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+
+def _serialize(n: Notification) -> dict:
+    return {
+        "id": n.id,
+        "type": n.type,
+        "role": n.role,
+        "title": n.title,
+        "body": n.body,
+        "data": n.data,
+        "is_read": n.is_read,
+        "created_at": n.created_at.isoformat(),
+    }
+

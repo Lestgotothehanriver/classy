@@ -14,10 +14,12 @@ class Notification(models.Model):
         on_delete=models.CASCADE,
         related_name="notifications",
     )
-    type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES, default="message")
     title = models.CharField(max_length=200)
     body = models.TextField()
-    data = models.JSONField(default=dict)
+    data = models.JSONField(default=dict, blank=True)  # 부가 정보 (ex: chat_room_id, lecture_id)
+    role = models.CharField(max_length=20,choices=[("student", "학생"), ("instructor", "강사"),])
+
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -25,4 +27,4 @@ class Notification(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"[{self.type}] {self.user_id} — {self.title}"
+        return f"[{self.type}] {self.title} → {self.user}"
