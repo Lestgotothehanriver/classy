@@ -239,7 +239,7 @@ class DeviceTokenView(APIView):
 
         return Response({
             "is_active": token.is_active
-        })
+        }, status=status.HTTP_200_OK)
 
     def post(self, request):
         """
@@ -269,7 +269,7 @@ class DeviceTokenView(APIView):
                 defaults={"token": token, "platform": platform, "is_active": True}
             )
         # platform: ios, android
-        return Response({"ok": True, "id": obj.id})
+        return Response({"ok": True, "id": obj.id}, status=status.HTTP_200_OK)
 
     def put(self, request):
         """
