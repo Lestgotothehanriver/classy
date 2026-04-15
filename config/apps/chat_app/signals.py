@@ -36,13 +36,12 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
     participants_ids = {u.id for u in participants}
     
     non_active_user_ids = []
+    muted_user_ids = set(room.muted_by.values_list('id', flat=True))
     for u in participants:
-         # device_token 역참조나 다른 관련된 로직 활용
-         # 일단은 hasattr로 방어 코드 작성 (User 모델에 device_token이 OneToOne으로 연결되어 있다고 가정)
          if hasattr(u, 'device_token') and not u.device_token.is_active:
              non_active_user_ids.append(u.id)
 
-    targets = participants_ids - {sender_id} - online - set(non_active_user_ids)
+    targets = participants_ids - {sender_id} - online - set(non_active_user_ids) - muted_user_ids
     if not targets:
         return
 

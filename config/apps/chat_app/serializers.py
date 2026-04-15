@@ -61,21 +61,25 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
     not_read_count = serializers.SerializerMethodField()
     opponent_info = serializers.SerializerMethodField()
     post_info = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_muted = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
         fields = (
-            "id",           # 채팅방 고유 ID
-            "title",        # 채팅방 제목 (예: 그룹명)
-            "student",      # 채팅방 학생
-            "instructor",   # 채팅방 강사
-            "post",         # 연결된 과외 공고
-            "created_at",   # 방 생성 시간
-            "last_message",  # 채팅방의 마지막 메시지
-            "participants_profile_imgs",  # 참가자들의 프로필 이미지 URL
-            "not_read_count",  # 읽지 않은 메시지 수
+            "id",
+            "title",
+            "student",
+            "instructor",
+            "post",
+            "created_at",
+            "last_message",
+            "participants_profile_imgs",
+            "not_read_count",
             "opponent_info",
             "post_info",
+            "is_liked",
+            "is_muted",
         )
         # 생성 시간은 사용자가 수정할 수 없게 읽기 전용으로 설정
         read_only_fields = ("created_at",)
@@ -160,7 +164,19 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
             }
         return None
 
-        
+    def get_is_liked(self, obj):
+        """현재 요청 유저가 이 채팅방을 찜했는지 여부"""
+        request = self.context.get('request')
+        if not request:
+            return False
+        return obj.liked_by.filter(pk=request.user.pk).exists()
+
+    def get_is_muted(self, obj):
+        """현재 요청 유저가 이 채팅방 알림을 껐는지 여부"""
+        request = self.context.get('request')
+        if not request:
+            return False
+        return obj.muted_by.filter(pk=request.user.pk).exists()
 
 class ChatRoomSerializer(serializers.ModelSerializer):
     # 해당 채팅방에서 오간 메시지들을 포함해서 응답에 보여줌

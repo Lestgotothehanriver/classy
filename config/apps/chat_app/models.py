@@ -18,7 +18,18 @@ class ChatRoom(models.Model):
     post = models.ForeignKey('tutoring.TutoringPost', related_name="chat_rooms", on_delete=models.CASCADE)
 
     title        = models.CharField(max_length=255, blank=True)
-    # 그룹방 이름. DM이면 비워둘 수도 있음
+    liked_by     = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='liked_rooms',
+    )
+    # 이 채팅방을 찜한 유저 목록 (다중 기기 동기화 지원)
+    muted_by     = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='muted_rooms',
+    )
+    # 이 채팅방 알림을 끈 유저 목록
 
     created_at   = models.DateTimeField(auto_now_add=True)
     # 채팅방이 생성된 시간

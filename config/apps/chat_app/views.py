@@ -148,6 +148,46 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
 
         return Response({"message": "채팅방을 삭제하고 나갔습니다."}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"])
+    def like(self, request, pk=None):
+        """
+        POST /chatrooms/<pk>/like/
+        찜 토글. 이미 찜했으면 취소, 아니면 추가.
+
+        Response (200):
+        {
+            "is_liked": true   // boolean
+        }
+        """
+        room = self.get_object()
+        user = request.user
+        if room.liked_by.filter(pk=user.pk).exists():
+            room.liked_by.remove(user)
+            return Response({"is_liked": False})
+        else:
+            room.liked_by.add(user)
+            return Response({"is_liked": True})
+
+    @action(detail=True, methods=["post"])
+    def mute(self, request, pk=None):
+        """
+        POST /chatrooms/<pk>/mute/
+        채팅방 알림 뮤트 토글.
+
+        Response (200):
+        {
+            "is_muted": true   // boolean
+        }
+        """
+        room = self.get_object()
+        user = request.user
+        if room.muted_by.filter(pk=user.pk).exists():
+            room.muted_by.remove(user)
+            return Response({"is_muted": False})
+        else:
+            room.muted_by.add(user)
+            return Response({"is_muted": True})
+
 class ImageUploadView(APIView):
     """
     채팅방 메시지에 첨부할 이미지를 업로드하는 API.
