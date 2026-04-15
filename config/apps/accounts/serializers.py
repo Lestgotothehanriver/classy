@@ -59,6 +59,7 @@ class StudentSignupSerializer(serializers.Serializer):
     birth_date = serializers.DateField(required=False, allow_null=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
     @transaction.atomic
     def create(self, validated_data):
@@ -85,9 +86,9 @@ class StudentSignupSerializer(serializers.Serializer):
         user.phone = validated_data.get("phone", "")
         user.region = validated_data.get("region", "")
         user.birth_date = validated_data.get("birth_date", None)
+        user.field = validated_data.get("field", "")
 
-        # update_fields에 누락되면 저장 안 되는 버그 방지
-        user.save(update_fields=["user_name", "phone", "region", "birth_date"])
+        user.save(update_fields=["user_name", "phone", "region", "birth_date", "field"])
 
         student_profile = Student.objects.create(user=user)
 
@@ -258,16 +259,16 @@ class StudentUpdateSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
+    field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
     @transaction.atomic
     def update(self, instance, validated_data):
         # instance = request.user
-        for field in ["user_name", "region", "first_name", "last_name", "phone"]:
+        for field in ["user_name", "region", "first_name", "last_name", "phone", "field"]:
             if field in validated_data:
                 setattr(instance, field, validated_data[field])
 
         instance.save()
-
         return instance
     
     # 닉네임 업데이트 시 중복 체크 함수 (본인 제외) 반환: true(available), false(unavailable)

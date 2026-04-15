@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.generics import GenericAPIView
 from .models import User
@@ -61,9 +62,27 @@ class StudentSignupAPIView(APIView):
         serializer = StudentSignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        
+
+        # 회원가입 직후 자동 로그인용 토큰 발급
+        token, _ = Token.objects.get_or_create(user=user)
+        # 회원가입 직후 last_login 업데이트
+        now = timezone.now()
+        user.student_profile.last_login = now
+        user.student_profile.save(update_fields=["last_login"])
+
         return Response(
-            {"id": user.id, "email": user.email, "role": "STUDENT"},
+            {
+                "token": token.key,
+                "user_id": user.id,
+                "email": user.email,
+                "available_roles": [
+                    {
+                        "role": "student",
+                        "status": "VERIFIED",
+                        "last_login": user.student_profile.last_login.isoformat(),  # 최초 가입 시 회원가입 시간으로 last_login 업데이트
+                    }
+                ],
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -216,18 +235,35 @@ class LoginAPIView(APIView):
         
         # student/instructor 계정 상태 확인
         available_roles = []
+        now = timezone.now()
 
         # 학생 계정이 있을 경우 role에 추가
-        if hasattr(user, "student_profile"): 
-            available_roles.append({"role": "student", "status": "VERIFIED"})
+        if hasattr(user, "student_profile"):
+            student = user.student_profile
+            prev_last_login = student.last_login
+            student.last_login = now
+            student.save(update_fields=["last_login"])
+            available_roles.append({
+                "role": "student",
+                "status": "VERIFIED",
+                "last_login": prev_last_login.isoformat() if prev_last_login else None,
+            })
 
-        if hasattr(user, "instructor_profile"): # 강사 계정이 있을 경우 role에 추가
-            pending_status = user.instructor_profile.pending_info.status
-            available_roles.append({"role": "instructor", "status": pending_status})
+        if hasattr(user, "instructor_profile"):
+            instructor = user.instructor_profile
+            pending_status = instructor.pending_info.status
+            prev_last_login = instructor.last_login
+            instructor.last_login = now
+            instructor.save(update_fields=["last_login"])
+            available_roles.append({
+                "role": "instructor",
+                "status": pending_status,
+                "last_login": prev_last_login.isoformat() if prev_last_login else None,
+            })
 
-        if not available_roles: # 학생/강사 둘 다 없는 경우 error 반환(계정이 존재하지 않는 경우)
+        if not available_roles:
             return Response({"error": "No active roles found for this account"}, status=403)
-        
+
         # 로그인 토큰 발급
         token, _ = Token.objects.get_or_create(user=user)
 
@@ -235,7 +271,7 @@ class LoginAPIView(APIView):
             "token": token.key,
             "user_id": user.id,
             "email": user.email,
-            "available_roles": available_roles
+            "available_roles": available_roles,
         }, status=200)
 
 # 닉네임 중복 확인 API  
@@ -306,3 +342,97 @@ class WithdrawAPIView(APIView):
             pass
         return Response({"message": "Account deactivated successfully"}, status=200)
 
+class UserProfileAPIView(APIView):
+    """
+    GET  /accounts/me/   — 내 프로필 조회
+    PATCH /accounts/me/  — 공통 텍스트 필드 수정 (닉네임, 전화번호, 지역)
+
+    PATCH request body (모두 optional, application/json):
+    {
+        "user_name": "새닉네임",
+        "phone": "01012345678",
+        "region": "서울|강남구"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = 'instructor' if hasattr(user, 'instructor_profile') else 'student'
+        region_parts = user.region.split('|') if user.region else ["", ""]
+        return Response({
+            "id": user.id,
+            "email": user.email,
+            "nickname": user.user_name,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": role,
+            "region": user.region,
+            "phone": user.phone,
+            "province": region_parts[0] if len(region_parts) > 0 else "",
+            "district": region_parts[1] if len(region_parts) > 1 else "",
+            "cash": user.cash,
+            "sex": user.sex,
+            "field": user.field,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "birth_date": str(user.birth_date) if user.birth_date else None,
+            "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
+        })
+
+    def patch(self, request):
+        user = request.user
+        data = request.data
+
+        if 'user_name' in data:
+            new_name = data['user_name']
+            if User.objects.exclude(pk=user.pk).filter(user_name__iexact=new_name).exists():
+                return Response({"error": "이미 사용 중인 닉네임입니다."}, status=400)
+            user.user_name = new_name
+
+        if 'phone' in data:
+            user.phone = data['phone']
+
+        if 'region' in data:
+            user.region = data['region']
+
+        if 'field' in data:
+            user.field = data['field']
+
+        patchable = ['user_name', 'phone', 'region', 'field']
+        update_fields = [f for f in patchable if f in data]
+        if update_fields:
+            user.save(update_fields=update_fields)
+
+        region_parts = user.region.split('|') if user.region else ["", ""]
+        return Response({
+            "id": user.id,
+            "email": user.email,
+            "nickname": user.user_name,
+            "phone": user.phone,
+            "field": user.field,
+            "province": region_parts[0] if len(region_parts) > 0 else "",
+            "district": region_parts[1] if len(region_parts) > 1 else "",
+            "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
+        })
+
+
+class ProfileImageAPIView(APIView):
+    """
+    PATCH /accounts/me/image/  — 프로필 이미지 업로드/교체
+    Content-Type: multipart/form-data
+    Form field: profile_image (file)
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def patch(self, request):
+        if 'profile_image' not in request.FILES:
+            return Response({"error": "profile_image 파일이 필요합니다."}, status=400)
+
+        user = request.user
+        user.profile_image = request.FILES['profile_image']
+        user.save(update_fields=['profile_image'])
+
+        return Response({
+            "profile_image": request.build_absolute_uri(user.profile_image.url),
+        }, status=200)

@@ -18,6 +18,13 @@ sex_choices = [
     ("기타", "기타"),
 ]
 
+field_choices = [
+    ("문과", "문과"),
+    ("이과", "이과"),
+    ("예체능", "예체능"),
+    ("기타", "기타"),
+]
+
 class Subject(models.Model):
     number = models.IntegerField(choices=STUDENT_SUBJECT_CHOICES, unique=True)
 
@@ -44,7 +51,11 @@ class User(AbstractUser):
     sex = models.CharField(max_length=10, choices = sex_choices, blank=True)
     birth_date = models.DateField(null=True, blank=True)  # 생년월일  
     region = models.CharField(max_length=50, blank=True)  
+    field = models.CharField(max_length=10, choices=field_choices, blank=True)  # 문과/이과/예체능/기타 * 추후 데이터 활용 가능성으로 추가
     cash = models.PositiveIntegerField(default=0)  # 캐시 잔액
+    #______________________________________________
+    # 유저 프로필 이미지
+    profile_image = models.ImageField(upload_to='profile_images/', blank=True, null=True)
 
 
 class Student(models.Model):
@@ -60,7 +71,7 @@ class Student(models.Model):
         # related_name 덕분에 user.student_profile 로 접근 가능
     )
     subjects = models.ManyToManyField('Subject', blank=True, related_name='students')
-
+    last_login = models.DateTimeField(null=True, blank=True)  # 학생 계정 마지막 로그인
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -88,7 +99,8 @@ class Instructor(models.Model):
     instruction = models.TextField(blank=True, default="")  # 자기소개 같은 용도로 쓰는 필드
     student_number = models.CharField(max_length=20, blank=True)  # 학번 (인증에 필요하면 추가)
     is_tutoring = models.BooleanField(default=False)  # 과외 진행 중 여부
-    
+    last_login = models.DateTimeField(null=True, blank=True)  # 강사 계정 마지막 로그인
+     
 
 class InstructorLike(models.Model):
     """
