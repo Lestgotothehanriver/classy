@@ -12,7 +12,7 @@ SCOPES = ["https://www.googleapis.com/auth/firebase.messaging"]
 
 def _get_access_token() -> str:
     sa_path = os.getenv("FCM_SA_PATH")
-    #print(f"FCM_SA_PATH: {sa_path}")  # 디버깅용 로그
+
     if not sa_path or not os.path.exists(sa_path):
         raise RuntimeError("FCM_SA_PATH not set or file not found")
 

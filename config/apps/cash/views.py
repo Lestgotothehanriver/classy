@@ -14,8 +14,12 @@ from rest_framework.throttling import UserRateThrottle
 from datetime import timedelta
 from django.utils import timezone
 
-from .serializers import CashPurchaseSerializer, LectureRentalSerializer
-from .models import PurchaseHistory, LectureRentalHistory
+from .serializers import (
+    CashPurchaseSerializer,
+    LectureRentalSerializer,
+    RedeemCouponSerializer,
+)
+from .models import PurchaseHistory, LectureRentalHistory, Account, Coupon
 from config.apps.lecture.models import Lecture
 
 logger = logging.getLogger(__name__)
@@ -228,6 +232,84 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
 
 
 # ──────────────────────────────────────────────
+# 강사 정산 계좌 API
+# ──────────────────────────────────────────────
+
+class InstructorAccountView(APIView):
+    """
+    강사가 자신의 '정산 계좌 정보(Account)'를 조회, 등록, 수정하는 API View입니다.
+
+    캐시 환전 등을 위해 실명 및 은행 계좌 정보가 등록되어야 하며,
+    강사 프로필(instructor_profile)이 존재하는 유저만 이용 가능합니다.
+
+    HTTP Methods:
+        GET: 현재 등록된 본인의 정산 계좌 반환 (없을 시 404).
+        POST: 새로운 계좌 등록 또는 기존 계좌 덮어쓰기.
+
+    Request Body (POST):
+        bank (str): 은행명 (예: '국민은행').
+        account_number (str): 계좌번호.
+        account_holder (str): 예금주명.
+
+    Returns:
+        Response: 계좌 정보 JSON 객체.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_instructor(self, user):
+        return getattr(user, 'instructor_profile', None)
+
+    def get(self, request):
+        instructor = self._get_instructor(request.user)
+        if not instructor:
+            return Response({'detail': 'Instructor profile required.'}, status=403)
+        try:
+            acct = instructor.account
+            return Response({
+                'bank': acct.bank,
+                'account_number': acct.account_number,
+                'account_holder': acct.account_holder,
+            })
+        except Account.DoesNotExist:
+            return Response({'detail': 'No account registered.'}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        instructor = self._get_instructor(request.user)
+        if not instructor:
+            return Response({'detail': 'Instructor profile required.'}, status=403)
+
+        bank = (request.data.get('bank') or '').strip()
+        account_number = (request.data.get('account_number') or '').strip()
+        account_holder = (request.data.get('account_holder') or '').strip()
+
+        if not all([bank, account_number, account_holder]):
+            return Response(
+                {'detail': 'bank, account_number, account_holder are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        acct, created = Account.objects.get_or_create(
+            instructor=instructor,
+            defaults={
+                'bank': bank,
+                'account_number': account_number,
+                'account_holder': account_holder,
+            },
+        )
+        if not created:
+            acct.bank = bank
+            acct.account_number = account_number
+            acct.account_holder = account_holder
+            acct.save(update_fields=['bank', 'account_number', 'account_holder'])
+
+        return Response({
+            'bank': acct.bank,
+            'account_number': acct.account_number,
+            'account_holder': acct.account_holder,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────────
 # 캐시 구매 API
 # ──────────────────────────────────────────────
 class PurchaseCashView(APIView):
@@ -236,54 +318,31 @@ class PurchaseCashView(APIView):
 
     def post(self, request):
         """
-        캐시 구매 API
+        인앱 결제(Apple/Google) 영수증을 검증하고, 성공 시 유저에게 '캐시(Cash)'를 적립하는 API.
 
-        [URL]:
-        POST /cash/purchase/
+        Atomic 트랜잭션과 select_for_update()를 통해 동시 결제 시 발생할 수 있는 
+        Race Condition을 방지하며, 영수증 번호의 중복 처리를 차단합니다.
 
-        [Request Body]
-        - Apple 결제:
-            {
-                "platform": "apple",
-                "product_id": "cash_5000",
-                "receipt_data": "<App Store에서 받은 Base64 인코딩된 영수증 데이터>"
-            }
+        Request (JSON):
+            platform (str): 'apple' | 'google'
+            product_id (str): 결제 상품 ID (예: 'cash_5000')
+            receipt_data (str, optional): Apple 영수증 Base64 데이터 (Apple 전용)
+            purchase_token (str, optional): Google 구매 토큰 (Google 전용)
 
-        - Google 결제:
-            {
-                "platform": "google",
-                "product_id": "cash_5000",
-                "purchase_token": "<Google Play에서 받은 구매 토큰>"
-            }
-
-        [사용 가능한 product_id]
-            cash_100    -> 100캐시  (100원)
-            cash_500    -> 500캐시  (500원)
-            cash_1000   -> 1000캐시 (1,000원)
-            cash_5000   -> 5000캐시 (5,000원)
-            cash_10000  -> 10000캐시 (10,000원)
-            cash_50000  -> 50000캐시 (50,000원)
-
-        [Response - 성공 200 OK]
+        Response (JSON):
+            HTTP 200 OK:
             {
                 "message": "Cash purchased successfully",
                 "purchased_cash": 5000,
                 "remaining_cash": 15000
             }
-
-        [Response - 실패 400 Bad Request]
-            - 유효하지 않은 product_id:
-                {"error": "Invalid product_id"}
-
-            - 플랫폼 검증 실패:
-                {"error": "Apple verification failed: <사유>"}
-                {"error": "Google verification failed: <사유>"}
-
-            - 중복 영수증 (이미 처리된 결제):
-                {"error": "This transaction has already been processed."}
+            HTTP 409 Conflict: 이미 처리된 영수증인 경우.
+            HTTP 400 Bad Request: 검증 실패 또는 잘못된 상품 ID.
         """
         serializer = CashPurchaseSerializer(data=request.data)
+        logger.debug("[BACKEND_DEBUG_CASH] PurchaseCash Attempt - data: %s", request.data)
         if not serializer.is_valid():
+            logger.warning("[BACKEND_DEBUG_CASH] PurchaseCash Validation FAILED - errors: %s", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         platform = serializer.validated_data['platform']
@@ -364,16 +423,102 @@ class PurchaseCashView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        logger.info(
-            "Purchase success. user=%s platform=%s product=%s cash=%d remaining=%d tx=%s",
-            user.pk, platform, product_id, purchased_cash, user.cash, transaction_id,
-        )
+        logger.debug("[BACKEND_DEBUG_CASH] Purchase SUCCESS - user: %s, product: %s, cash: %d, tx: %s",
+            user.pk, product_id, purchased_cash, transaction_id)
 
         return Response({
             "message": "Cash purchased successfully",
             "purchased_cash": purchased_cash,
             "remaining_cash": user.cash,
         }, status=status.HTTP_200_OK)
+
+
+class RedeemCouponView(APIView):
+    """
+    프로모션 '쿠폰(Coupon)' 코드를 입력받아 캐시를 충전해주는 API View입니다.
+
+    Atomic 트랜잭션을 사용하여 쿠폰의 상태(사용 여부, 만료 여부)를 검증하고,
+    유효한 경우 즉시 사용자 계정에 명시된 금액(cash_amount)을 적립합니다.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        쿠폰 사용 요청 처리.
+
+        Request Body:
+            code (str): 사용할 쿠폰 코드.
+
+        Returns:
+            Response: 충전된 캐시 및 잔여 캐시 정보 (또는 에러 사유 반환).
+        """
+        serializer = RedeemCouponSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        code = serializer.validated_data['code'].strip()
+        now = timezone.now()
+
+        try:
+            with transaction.atomic():
+                from django.contrib.auth import get_user_model
+
+                User = get_user_model()
+                user = User.objects.select_for_update().get(pk=request.user.pk)
+                coupon = Coupon.objects.select_for_update().filter(code=code).first()
+
+                if coupon is None:
+                    return Response(
+                        {"error": "Coupon not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                if not coupon.is_active:
+                    return Response(
+                        {"error": "Coupon is inactive."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if coupon.redeemed_by_id is not None:
+                    return Response(
+                        {"error": "Coupon has already been redeemed."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if coupon.expires_at and coupon.expires_at < now:
+                    return Response(
+                        {"error": "Coupon has expired."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                user.cash = F('cash') + coupon.cash_amount
+                user.save(update_fields=['cash'])
+                user.refresh_from_db()
+
+                coupon.redeemed_by = user
+                coupon.redeemed_at = now
+                coupon.save(update_fields=['redeemed_by', 'redeemed_at'])
+
+        except Exception as e:
+            logger.exception(
+                "Coupon redemption failed. user=%s code=%s error=%s",
+                request.user.pk,
+                code,
+                e,
+            )
+            return Response(
+                {"error": "Internal server error while redeeming coupon."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "message": "Coupon redeemed successfully.",
+                "redeemed_cash": coupon.cash_amount,
+                "remaining_cash": user.cash,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 # ──────────────────────────────────────────────
@@ -384,36 +529,28 @@ class RentLectureView(APIView):
 
     def post(self, request):
         """
-        강의 대여 API
+        보유한 캐시를 소모하여 특정 VOD '강의(Lecture)'를 대여하는 API.
 
-        [URL]
-        POST /cash/rentals/
+        Atomic 트랜잭션을 적용하여 캐시 차감과 대여 기록 생성을 원자적으로 처리합니다.
+        대여 성공 시 즉시 시청 권한이 부여됩니다.
 
-        [Request Body]
-        {
-            "lecture_id": 123
-        }
+        Request (JSON):
+            lecture_id (int): 대여하려는 강의의 고유 ID.
 
-        [Response - 성공 201 Created]
-        {
-            "message": "Lecture rented successfully.",
-            "rental_id": 45,
-            "remaining_cash": 8000,
-            "expiration_date": "2026-03-19T15:18:56Z"
-        }
-
-        [Response - 실패 400 Bad Request]
-        - 이미 대여 중인 강의:
-            {"error": "You already have an active rental for this lecture."}
-        - 캐시 부족:
-            {"error": "Insufficient cash. Please recharge."}
-
-        [Response - 실패 404 Not Found]
-        - 강의를 찾을 수 없음:
-            {"error": "Lecture not found."}
+        Response (JSON):
+            HTTP 201 Created:
+            {
+                "message": "Lecture rented successfully.",
+                "rental_id": 45,
+                "remaining_cash": 8000,
+                "expiration_date": "2026-03-19T15:18:56Z"
+            }
+            HTTP 400 Bad Request: 이미 대여 중이거나 캐시가 부족한 경우.
+            HTTP 404 Not Found: 해당 강의를 찾을 수 없는 경우.
         """
 
         serializer = LectureRentalSerializer(data=request.data)
+        logger.debug("[BACKEND_DEBUG_CASH] RentLecture Attempt - data: %s", request.data)
         serializer.is_valid(raise_exception=True)
         lecture_id = serializer.validated_data['lecture_id']
 
@@ -432,22 +569,8 @@ class RentLectureView(APIView):
                     return Response({"error": "Lecture not found."}, status=status.HTTP_404_NOT_FOUND)
 
                 # Check if user already has an active rental
-                now = timezone.now()
-                # A rental is active if not canceled and created_at + rental_period >= now
-                active_rentals = LectureRentalHistory.objects.filter(
-                    lecture=lecture,
-                    student=user,
-                    is_canceled=False
-                )
-                
-                has_active = False
-                for rental in active_rentals:
-                    expiration_date = rental.created_at + timedelta(days=lecture.rental_period)
-                    if expiration_date >= now:
-                        has_active = True
-                        break
-                
-                if has_active:
+                from config.apps.lecture.services import has_valid_rental
+                if has_valid_rental(user, lecture):
                     return Response(
                         {"error": "You already have an active rental for this lecture."},
                         status=status.HTTP_400_BAD_REQUEST
@@ -473,6 +596,7 @@ class RentLectureView(APIView):
                     remaining_cash=user.cash
                 )
 
+                logger.debug("[BACKEND_DEBUG_CASH] Rent SUCCESS - user: %s, lecture: %s, remaining: %d", user.pk, lecture_id, user.cash)
                 return Response({
                     "message": "Lecture rented successfully.",
                     "rental_id": rental.id,
@@ -496,30 +620,22 @@ class CancelLectureRentalView(APIView):
 
     def post(self, request, pk):
         """
-        강의 대여 취소(환불) API
+        결제(대여) 후 7일 이내인 VOD 강의에 대해 '대여 취소 및 환불'을 진행하는 API.
 
-        [URL]
-        POST /cash/rentals/<int:pk>/cancel/
+        취소 시 즉시 결제에 사용된 캐시가 복구되며, 대여 내역은 취소 상태로 변경됩니다.
 
-        [Request Body]
-        (Empty)
+        Path Parameters:
+            pk (int): 취소할 대여 기록(LectureRentalHistory)의 ID.
 
-        [Response - 성공 200 OK]
-        {
-            "message": "Rental canceled and cash refunded.",
-            "refunded_cash": 2000,
-            "remaining_cash": 10000
-        }
-
-        [Response - 실패 400 Bad Request]
-        - 이미 취소된 대여:
-            {"error": "This rental is already canceled."}
-        - 7일 경과 (취소 불가):
-            {"error": "Rental cannot be canceled after 7 days."}
-
-        [Response - 실패 404 Not Found]
-        - 대여 내역을 찾을 수 없음:
-            {"error": "Rental record not found."}
+        Response (JSON):
+            HTTP 200 OK:
+            {
+                "message": "Rental canceled and cash refunded.",
+                "refunded_cash": 2000,
+                "remaining_cash": 10000
+            }
+            HTTP 400 Bad Request: 이미 취소되었거나 7일이 경과한 경우.
+            HTTP 404 Not Found: 대여 내역을 찾을 수 없는 경우.
         """
 
         try:
@@ -578,23 +694,20 @@ class RefundPurchaseView(APIView):
 
     def post(self, request, *args, **kwargs):
         """
-        Apple App Store Server Notifications 환불 웹훅 URL API
-        
+        Apple App Store Server Notifications 환불 알림용 웹훅(Webhook) 엔드포인트입니다.
+
         Apple V2 Notification 의 signedPayload (JWS) 를 파싱하여
         REFUND 혹은 REFUND_DECLINED 서버 알림을 처리합니다.
         
-        [URL]
-        POST /cash/webhook/apple/
+        주의:
+        - Apple 서버 간 통신이므로 사용자 인증(IsAuthenticated)이 제외됩니다.
+        - 환불이 확정되면, 유저의 캐시 잔액을 차감하며 음수가 되지 않도록 최소 0으로 보정합니다.
 
-        [Request Body]
-        {
-            "signedPayload": "eyJhbG..."
-        }
-        
-        [주의]
-        * 웹훅은 Apple 서버에서 호출하므로 인증(IsAuthenticated)을 해제합니다.
-        * pk 등 기존 URL 파라미터가 들어오더라도 무시(*args, **kwargs)합니다.
-        * 이미 상품을 소비해 캐시가 부족하더라도 Apple은 사용자에게 환불을 진행하므로 캐시를 0 뷰로 보정 차감합니다.
+        Request Body:
+            signedPayload (str): Apple 서명된 JWT 데이터.
+
+        Returns:
+            Response: 웹훅 처리 상태 (200 OK 반환을 통해 Apple 측의 재시도 방지).
         """
         signed_payload = request.data.get('signedPayload')
 
@@ -724,21 +837,17 @@ class GooglePlayWebhookView(APIView):
 
     def post(self, request, *args, **kwargs):
         """
-        Google Play Developer API Real-time Developer Notifications (RTDN)
-        환불 및 상태 변경 알림 웹훅
+        Google Play Developer API Real-time Developer Notifications (RTDN) 용
+        환불 및 상태 변경 알림 웹훅(Webhook) 엔드포인트입니다.
 
-        [URL]
-        POST /cash/webhook/google/
+        Pub/Sub 메세지로부터 Base64 데이터를 디코딩하고,
+        취소(CANCELED) 상태의 알림인 경우 해당 구매 트랜잭션을 찾아 캐시를 차감합니다.
 
-        [Request Body]
-        {
-            "message": {
-                "data": "eyJ2ZXJzaW9uIjoiMS4wIiwi..." (Base64 Encoded JSON),
-                "messageId": "1234567890",
-                "publishTime": "2026-03-09T10:10:10.123Z"
-            },
-            "subscription": "projects/myproject/subscriptions/mysubscription"
-        }
+        Request Body:
+            message (dict): Google Pub/Sub 데이터 포맷.
+
+        Returns:
+            Response: 성공 처리 여부 (테스트/무시 알림도 200 처리하여 재시도 방지).
         """
         message = request.data.get('message', {})
         data_base64 = message.get('data')
@@ -864,3 +973,76 @@ class GooglePlayWebhookView(APIView):
                 {"error": "Internal server error while processing Google webhook."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# ──────────────────────────────────────────────
+# 캐시 구매 내역 조회 API
+# ──────────────────────────────────────────────
+class PurchaseHistoryListView(APIView):
+    """
+    본인의 인앱 결제를 통한 '캐시 충전 내역(PurchaseHistory)' 목록을 최신순으로 조회합니다.
+
+    Returns:
+        List[dict]: 충전 날짜, 구매한 캐시, 실제 결제 금액, 환불 여부 등.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        histories = PurchaseHistory.objects.filter(
+            user=request.user
+        ).order_by('-created_at')
+
+        data = [
+            {
+                "id": h.id,
+                "date": h.created_at.isoformat(),
+                "purchased_cash": h.purchased_cash,
+                "paid_amount": h.paid_amount,
+                "remaining_cash": h.remaining_cash,
+                "is_refunded": h.is_refunded,
+            }
+            for h in histories
+        ]
+        return Response(data, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────────
+# 강의 대여 내역 조회 API
+# ──────────────────────────────────────────────
+class RentalHistoryListView(APIView):
+    """
+    본인이 대여한 'VOD 강의 결제 내역(LectureRentalHistory)' 목록을 최신순으로 조회합니다.
+
+    7일 내에 취소 가능한지 여부(is_cancelable)를 동적으로 계산하여 함께 반환합니다.
+
+    Returns:
+        List[dict]: 대여 날짜, 차감 캐시, 강의 제목, 취소 가능 여부 등.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        rentals = LectureRentalHistory.objects.filter(
+            student=request.user
+        ).select_related('lecture').order_by('-created_at')
+
+        now = timezone.now()
+        data = []
+        for r in rentals:
+            cancelable = (
+                not r.is_canceled and
+                (now - r.created_at) <= timedelta(days=7)
+            )
+            data.append({
+                "id": r.id,
+                "date": r.created_at.isoformat(),
+                "lecture_id": r.lecture_id,
+                "lecture_title": r.lecture.title,
+                "purchased_cash": r.purchased_cash,
+                "remaining_cash": r.remaining_cash,
+                "is_canceled": r.is_canceled,
+                "is_cancelable": cancelable,
+            })
+        return Response(data, status=status.HTTP_200_OK)

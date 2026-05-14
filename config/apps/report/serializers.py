@@ -85,3 +85,17 @@ class ReportResponseSerializer(serializers.ModelSerializer):
 
     def get_choices(self, obj):
         return list(obj.choices.values_list("content", flat=True))
+
+
+class InquirySerializer(serializers.ModelSerializer):
+    """1:1 문의 Serializer."""
+    class Meta:
+        from .models import Inquiry
+        model = Inquiry
+        fields = ['id', 'user', 'title', 'content', 'is_resolved', 'created_at']
+        read_only_fields = ['id', 'user', 'is_resolved', 'created_at']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['user'] = user
+        return super().create(validated_data)

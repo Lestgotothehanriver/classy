@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
+from config.apps.pending.models import File
 
 # Create your views here.
 class PendingUploadView(APIView):

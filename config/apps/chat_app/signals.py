@@ -56,11 +56,18 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         "sender_id": str(sender_id),
     }
     from config.apps.notification.models import Notification
-    Notification.objects.bulk_create([
-        Notification(user_id=uid, type="message", title=title, body=body, data=data)
-        for uid in targets
-    ])
+    # bulk_create 대신 개별 create → post_save 시그널 발생 → WS 브로드캐스트 자동 처리
+    for uid in targets:
+        Notification.objects.create(
+            user_id=uid,
+            type="message",
+            role="student",  # 채팅 수신자는 학생 역할로 분류
+            title=title,
+            body=body,
+            data=data,
+        )
     result = push_to_users(targets, title=title, body=body, username=instance.sender.username, data=data)
-    #print(f"Sent push notification to {len(targets)} users in room {room.id} for new message {instance.id}.")
+
+
 
 

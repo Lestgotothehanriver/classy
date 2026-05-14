@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from config.apps.tutoring.models import (
     Region,
     TutoringPost,
@@ -6,6 +7,7 @@ from config.apps.tutoring.models import (
     InstructorInfo,
     InstructorReview,
     StudentReview,
+    TutoringResource,
 )
 
 
@@ -106,3 +108,48 @@ class StudentReviewAdmin(admin.ModelAdmin):
     def get_instructor(self, obj):
         return obj.instructor.user.username
     get_instructor.short_description = "강사"
+
+
+# ── TutoringResource ──────────────────────────────────────────────────────────
+
+@admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
+def confirm_fee_payment(modeladmin, request, queryset):
+    from config.apps.notification.helpers import notify_fee_payment_confirmed
+    updated = 0
+    for resource in queryset.filter(fee_payment_status='AWAITING_CONFIRMATION'):
+        resource.fee_payment_status = 'PAID'
+        resource.save(update_fields=['fee_payment_status'])
+        notify_fee_payment_confirmed(resource)
+        updated += 1
+    modeladmin.message_user(request, f'{updated}건 PAID 처리 및 알림 전송 완료.')
+
+
+@admin.action(description='수수료 납부 실패 처리 (FAILED)')
+def reject_fee_payment(modeladmin, request, queryset):
+    updated = queryset.filter(
+        fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION']
+    ).update(fee_payment_status='FAILED')
+    modeladmin.message_user(request, f'{updated}건 FAILED 처리 완료.')
+
+
+@admin.register(TutoringResource)
+class TutoringResourceAdmin(admin.ModelAdmin):
+    list_display  = (
+        'id', 'get_instructor', 'get_student',
+        'class_type', 'first_month_fee', 'fee_payment_status', 'start_date',
+    )
+    list_filter   = ('fee_payment_status', 'class_type')
+    search_fields = (
+        'instructor__user__username', 'instructor__user__email',
+        'student__user__username',
+    )
+    ordering      = ('-id',)
+    actions       = [confirm_fee_payment, reject_fee_payment]
+
+    def get_instructor(self, obj):
+        return obj.instructor.user.username
+    get_instructor.short_description = '강사'
+
+    def get_student(self, obj):
+        return obj.student.user.username
+    get_student.short_description = '학생'

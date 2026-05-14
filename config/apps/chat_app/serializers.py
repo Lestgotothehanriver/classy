@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatRoom, ChatMessage, Image
+from .models import ChatRoom, ChatMessage, Image, BlockedUser
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 
@@ -61,24 +61,29 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
     not_read_count = serializers.SerializerMethodField()
     opponent_info = serializers.SerializerMethodField()
     post_info = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_muted = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
         fields = (
-            "id",           # 채팅방 고유 ID
-            "title",        # 채팅방 제목 (예: 그룹명)
-            "student",      # 채팅방 학생
-            "instructor",   # 채팅방 강사
-            "post",         # 연결된 과외 공고
-            "created_at",   # 방 생성 시간
-            "last_message",  # 채팅방의 마지막 메시지
-            "participants_profile_imgs",  # 참가자들의 프로필 이미지 URL
-            "not_read_count",  # 읽지 않은 메시지 수
+            "id",
+            "title",
+            "student",
+            "instructor",
+            "post",
+            "created_at",
+            "is_accepted",       # 커운터파티가 첫 답장을 보낸 여부 (수락 통제)
+            "initiated_by",     # 제안자 User ID
+            "last_message",
+            "participants_profile_imgs",
+            "not_read_count",
             "opponent_info",
             "post_info",
+            "is_liked",
+            "is_muted",
         )
-        # 생성 시간은 사용자가 수정할 수 없게 읽기 전용으로 설정
-        read_only_fields = ("created_at",)
+        read_only_fields = ("created_at", "is_accepted", "initiated_by")
 
 
     def get_last_message(self, obj):
@@ -125,6 +130,7 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         if role == 'student':
             user = obj.instructor.user
             return {
+                'user_id': user.id,
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
@@ -135,6 +141,7 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         elif role == 'instructor':
             user = obj.student.user
             return {
+                'user_id': user.id,
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
@@ -160,7 +167,19 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
             }
         return None
 
-        
+    def get_is_liked(self, obj):
+        """현재 요청 유저가 이 채팅방을 찜했는지 여부"""
+        request = self.context.get('request')
+        if not request:
+            return False
+        return obj.liked_by.filter(pk=request.user.pk).exists()
+
+    def get_is_muted(self, obj):
+        """현재 요청 유저가 이 채팅방 알림을 껐는지 여부"""
+        request = self.context.get('request')
+        if not request:
+            return False
+        return obj.muted_by.filter(pk=request.user.pk).exists()
 
 class ChatRoomSerializer(serializers.ModelSerializer):
     # 해당 채팅방에서 오간 메시지들을 포함해서 응답에 보여줌
@@ -169,23 +188,28 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     participants_profile_imgs_and_nicknames = serializers.SerializerMethodField()
     opponent_info = serializers.SerializerMethodField()
     post_info = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_muted = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
         fields = (
-            "id",           # 채팅방 고유 ID
-            "title",        # 채팅방 제목 (예: 그룹명)
-            "student",      # 채팅방 학생
-            "instructor",   # 채팅방 강사
-            "post",         # 연결된 과외 공고
-            "created_at",   # 방 생성 시간
-            "messages",     # 이 방의 메시지들 (역참조)
-            "participants_profile_imgs_and_nicknames",  # 참가자들의 프로필 이미지 URL과 닉네임
+            "id",
+            "title",
+            "student",
+            "instructor",
+            "post",
+            "created_at",
+            "is_accepted",       # 커운터파티가 수락한 여부
+            "initiated_by",     # 제안자 User ID
+            "messages",
+            "participants_profile_imgs_and_nicknames",
             "opponent_info",
             "post_info",
+            "is_liked",
+            "is_muted",
         )
-        # 생성 시간은 사용자가 수정할 수 없게 읽기 전용으로 설정
-        read_only_fields = ("created_at",)
+        read_only_fields = ("created_at", "is_accepted", "initiated_by")
 
     def get_participants_profile_imgs_and_nicknames(self, obj):
         """
@@ -209,6 +233,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         if role == 'student':
             user = obj.instructor.user
             return {
+                'user_id': user.id,
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
@@ -219,6 +244,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         elif role == 'instructor':
             user = obj.student.user
             return {
+                'user_id': user.id,
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
@@ -243,4 +269,31 @@ class ChatRoomSerializer(serializers.ModelSerializer):
                 'subjects': subjects,
             }
         return None
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if not request: return False
+        return obj.liked_by.filter(pk=request.user.pk).exists()
+
+    def get_is_muted(self, obj):
+        request = self.context.get('request')
+        if not request: return False
+        return obj.muted_by.filter(pk=request.user.pk).exists()
+
+class BlockedUserSerializer(serializers.ModelSerializer):
+    target_user_info = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BlockedUser
+        fields = ('id', 'user', 'target_user', 'target_user_info', 'created_at')
+        read_only_fields = ('user', 'target_user_info', 'created_at')
+
+    def get_target_user_info(self, obj):
+        user = obj.target_user
+        profile_img = user.profile_img.url if hasattr(user, 'profile_img') and user.profile_img else None
+        return {
+            'id': user.id,
+            'name': getattr(user, 'user_name', user.username),
+            'profile_img': profile_img
+        }
       

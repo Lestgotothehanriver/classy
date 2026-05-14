@@ -25,7 +25,7 @@ load_dotenv(BASE_DIR.parent / '.env')
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-=9h1+6wu!^lodk97+vv(scw3gb5r_0%+qhz^*&6(6@@322q(&i"
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-=9h1+6wu!^lodk97+vv(scw3gb5r_0%+qhz^*&6(6@@322q(&i')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -57,9 +57,11 @@ INSTALLED_APPS = [
     "config.apps.tutoring",
     "config.apps.report",
     "config.apps.mypage",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -79,7 +81,14 @@ REST_FRAMEWORK = {
         # 필요하면 SessionAuthentication도 같이
         # "rest_framework.authentication.SessionAuthentication",
     ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
+
+# ──────────────────────────────────────────────
+# CORS Settings
+# ──────────────────────────────────────────────
+# CORS_ALLOW_ALL_ORIGINS is set in local.py. Prod uses CSRF_TRUSTED_ORIGINS and ALLOWED_HOSTS.
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -171,3 +180,41 @@ APPLE_BUNDLE_ID = os.environ.get('APPLE_BUNDLE_ID', '')  # e.g. "com.classy.app"
 # Google Play Store
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', '')  # path to JSON file
 ANDROID_PACKAGE_NAME = os.environ.get('ANDROID_PACKAGE_NAME', '')  # e.g. "com.classy.app"
+
+# ──────────────────────────────────────────────
+# Firebase / FCM Settings
+# ──────────────────────────────────────────────
+FCM_CREDENTIALS_PATH = BASE_DIR.parent / 'secrets' / 'firebase-sa.json'
+
+# ──────────────────────────────────────────────
+# Logging Settings
+# ──────────────────────────────────────────────
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'config.apps.accounts': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'config.apps.notification': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}

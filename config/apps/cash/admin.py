@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import PurchaseHistory, LectureRentalHistory, InstructorMonthlyRank, Account, SettlementRecord
+from .models import (
+    PurchaseHistory,
+    LectureRentalHistory,
+    InstructorMonthlyRank,
+    Account,
+    SettlementRecord,
+    Coupon,
+)
 
 @admin.register(PurchaseHistory)
 class PurchaseHistoryAdmin(admin.ModelAdmin):
@@ -33,3 +40,19 @@ class SettlementRecordAdmin(admin.ModelAdmin):
     list_filter = ('status', 'created_at')
     search_fields = ('instructor__user__username',)
     readonly_fields = ('created_at',)
+
+
+@admin.register(Coupon)
+class CouponAdmin(admin.ModelAdmin):
+    list_display = (
+        'code',
+        'cash_amount',
+        'is_active',
+        'expires_at',
+        'redeemed_by',
+        'redeemed_at',
+        'created_at',
+    )
+    list_filter = ('is_active', 'created_at', 'expires_at')
+    search_fields = ('code', 'redeemed_by__username', 'redeemed_by__user_name')
+    readonly_fields = ('redeemed_at', 'created_at')
