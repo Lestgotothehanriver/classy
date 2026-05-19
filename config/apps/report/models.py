@@ -59,3 +59,22 @@ class ReportChoice(models.Model):
 
     def __str__(self):
         return f"{self.report_id} - {self.get_content_display()}"
+
+
+class Inquiry(models.Model):
+    """고객센터 1:1 문의 모델"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="inquiries",
+    )
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Inquiry #{self.pk}: {self.title} by {self.user.email}"

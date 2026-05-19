@@ -6,8 +6,31 @@ from config.apps.accounts.models import Instructor, Student, Subject
 
 
 class Lecture(models.Model):
-    """강의 모델."""
+    """
+    강사가 업로드한 'VOD 강의' 데이터를 관리하는 모델입니다.
+    
+    학생들은 보유한 캐시를 소모하여 이 강의를 대여(Rental)하고,
+    할당된 기간(rental_period) 동안 비디오 스트리밍을 시청할 수 있습니다.
+    
+    Attributes:
+        video (FileField): 실제 강의 비디오 파일.
+        video_duration (int): 비디오 재생 시간(초 단위).
+        thumbnail (ImageField): 강의 썸네일 이미지.
+        title (str): 강의 제목.
+        subjects (ManyToManyField): 강의가 속한 과목 목록.
+        price (int): 강의 대여 가격 (인앱 화폐인 '캐시' 기준).
+        instructor (ForeignKey): 강의를 제작 및 업로드한 강사.
+        is_preview (bool): 무료로 볼 수 있는 맛보기(Preview) 강의인지 여부.
+        view_count (int): 강의 상세페이지 조회수.
+        likes (ManyToManyField): 강의를 '좋아요(찜)'한 학생 목록.
+        rental_period (int): 결제 시 부여되는 대여 기간 (단위: 일).
+        created_at (DateTimeField): 강의 업로드 일시.
+        is_active (bool): 강의 활성화(노출) 여부.
+        is_delete (bool): 강사에 의해 삭제(Soft Delete) 처리되었는지 여부.
+        deleted_at (DateTimeField): 삭제 처리된 일시.
+    """
     video = models.FileField(upload_to="lectures/videos/")
+    video_duration = models.PositiveIntegerField(default=0)
     thumbnail = models.ImageField(upload_to="lectures/thumbnails/")
     title = models.CharField(max_length=255)
     subjects = models.ManyToManyField(Subject, blank=True, related_name="lectures")
@@ -20,6 +43,7 @@ class Lecture(models.Model):
     likes = models.ManyToManyField(Student, blank=True, related_name="liked_lectures")
     rental_period = models.PositiveIntegerField(default=30, help_text="대여 기간 (일)")
     created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
     is_delete = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
@@ -28,7 +52,21 @@ class Lecture(models.Model):
 
 
 class Comment(models.Model):
-    """강의 댓글 모델 — parent가 있으면 대댓글(reply), 대대댓글은 불가."""
+    """
+    강의(VOD) 하단에 달리는 '질문 및 댓글' 데이터를 관리하는 모델입니다.
+    
+    학생이 질문을 남기고 강사가 답변을 달거나, 학생들끼리 의견을 나눌 수 있습니다.
+    Self-Referencing을 통해 대댓글(Reply)을 지원하지만, 
+    대대댓글(Depth 2 이상)은 모델의 clean() 메서드를 통해 구조적으로 차단합니다.
+    
+    Attributes:
+        lecture (ForeignKey): 댓글이 작성된 대상 강의.
+        author (ForeignKey): 댓글을 작성한 사용자(강사/학생 무관).
+        parent (ForeignKey): 상위 댓글 (대댓글인 경우).
+        content (str): 댓글 내용.
+        referenced_person (ForeignKey): "@멘션" 기능을 통해 지목된 사용자.
+        created_at (DateTimeField): 댓글 작성 일시.
+    """
     lecture = models.ForeignKey(
         Lecture, on_delete=models.CASCADE, related_name="comments"
     )
@@ -66,7 +104,17 @@ class Comment(models.Model):
 
 
 class SearchHistory(models.Model):
-    """검색 기록 모델 — 학생별 최근 검색 키워드를 최대 5개까지 보관."""
+    """
+    학생이 입력한 '강의/강사 검색어' 기록을 관리하는 모델입니다.
+    
+    사용자 경험(UX) 향상을 위해 홈 화면 등에서 '최근 검색어'를 제공하기 위해 쓰이며,
+    SearchHistoryCreateAPIView 로직에 의해 학생당 최대 5개까지만 유지되도록 자동 롤링됩니다.
+    
+    Attributes:
+        student (ForeignKey): 검색을 수행한 학생.
+        query (str): 사용자가 입력한 검색 키워드.
+        created_at (DateTimeField): 검색을 수행한 일시 (정렬 및 오래된 기록 삭제 기준).
+    """
 
     student = models.ForeignKey(
         Student,

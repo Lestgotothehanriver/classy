@@ -5,62 +5,75 @@ from django.utils import timezone
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.core.exceptions import ObjectDoesNotExist
+import logging
+
+logger = logging.getLogger(__name__)
 
 from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.main.serializers import StudentMainTutorSerializer, InstructorMainStudentSerializer
 
+# ════════════════════════════════════════════════════════════════════════════════
+# 메인 화면 관련 View
+# ════════════════════════════════════════════════════════════════════════════════
+
 class StudentMainAPIView(APIView):
     """
-    학생 메인 화면 API
-
-    [URL]
-    GET /main/student/
-
-    [Request Body]
-    (Empty)
-
-    [Response]
-    - 내 지역(대지역)과 동일/유사한 과외 선생님 랜덤 3명 추천 반환
+    학생 메인 화면 정보를 제공합니다.
+    내 지역 기반의 추천 강사 목록을 포함합니다.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        logger.debug("[BACKEND_DEBUG_MAIN] StudentMain - user: %s", request.user.pk)
         user = request.user
 
         broad_region = user.region
 
-        # 해당 대규모 지역으로 필터링
+        # 해당 대규모 지역으로 필터링 예: 서울 강남구 -> 서울로 시작하는 지역들만 필터링
         if broad_region:
             broad_region = broad_region.split(' ')[0]
             queryset = Instructor.objects.filter(user__region__startswith=broad_region)
         else:
             queryset = Instructor.objects.all()
 
+        from django.db.models import Exists, OuterRef, Value, BooleanField, Count
+        from config.apps.accounts.models import InstructorLike
+
+        if hasattr(user, 'student_profile'):
+            student = user.student_profile
+            queryset = queryset.annotate(
+                like_count=Count('liked_by', distinct=True),
+                is_liked=Exists(
+                    InstructorLike.objects.filter(
+                        student=student,
+                        instructor=OuterRef('pk')
+                    )
+                )
+            )
+        else:
+            queryset = queryset.annotate(
+                like_count=Count('liked_by', distinct=True),
+                is_liked=Value(False, output_field=BooleanField())
+            )
+
         # 랜덤 3명
         recommended_tutors = queryset.order_by('?')[:3]
 
         serializer = StudentMainTutorSerializer(recommended_tutors, many=True)
+        logger.debug("[BACKEND_DEBUG_MAIN] StudentMain SUCCESS - tutors count: %d", len(serializer.data))
         return Response(serializer.data)
 
 
 class InstructorMainAPIView(APIView):
     """
-    선생님 메인 화면 API
-
-    [URL]
-    GET /main/instructor/
-
-    [Request Body]
-    (Empty)
-
-    [Response]
-    - 저번 달의 월간 순위 및 이번 달의 예상 수익 반환
-    - 내 지역(대지역)과 동일/유사한 학생 3명 추천 반환
+    강사 메인 화면 정보를 제공합니다.
+    월간 순위, 이번 달 수익, 지역 기반 추천 학생 목록을 포함합니다.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        logger.debug("[BACKEND_DEBUG_MAIN] InstructorMain - user: %s", request.user.pk)
         user = request.user
         
         try:
@@ -114,6 +127,7 @@ class InstructorMainAPIView(APIView):
             
         recommended_students = queryset.order_by('?')[:3]
         student_serializer = InstructorMainStudentSerializer(recommended_students, many=True)
+        logger.debug("[BACKEND_DEBUG_MAIN] InstructorMain SUCCESS - students count: %d", len(student_serializer.data))
 
         return Response({
             "previous_month_rank_info": rank_data,

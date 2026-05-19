@@ -1,10 +1,10 @@
 from rest_framework.routers import DefaultRouter
-from .views import ChatRoomViewSet, ImageUploadView, DeviceTokenView
+from .views import ChatRoomViewSet, ImageUploadView, DeviceTokenView, BlockedUserViewSet
 from django.urls import path
 
 router = DefaultRouter()
 router.register("chatrooms", ChatRoomViewSet, basename="chatroom")
-
+router.register("chatrooms/block", BlockedUserViewSet, basename="chatroom-block")
 
 urlpatterns = [
     path("images/", ImageUploadView.as_view(), name="image-upload"),

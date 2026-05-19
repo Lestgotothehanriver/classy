@@ -9,10 +9,12 @@ __pycache__/
 # Virtual environment
 classy_venv/
 .venv/
+venv/
 
 # IDE
 .vscode/
 .idea/
+.agents/
 
 # DB
 db.sqlite3

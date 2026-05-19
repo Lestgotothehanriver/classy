@@ -1,4 +1,5 @@
 import json
+import logging
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
@@ -10,6 +11,9 @@ from urllib.parse import parse_qs
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -34,31 +38,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         query_string = self.scope["query_string"].decode()
         query_params = parse_qs(query_string)
         token_key = query_params.get("token", [None])[0]
+        logger.debug("[BACKEND_DEBUG_CHAT] connect - room_id: %s, token_key: %s", self.room_id, bool(token_key))
 
         if not token_key:
             # 헤더에서 토큰 추출 시도
             headers = dict(self.scope.get("headers", []))
-            print("HEADERS:", headers)
-            auth_header = headers.get(b"authorization", b"").decode()
-            print("AUTH HEADER:", auth_header)
             if auth_header.lower().startswith("token "):
                 token_key = auth_header.split(" ")[1]
 
-        print("TOKEN KEY:", token_key)
         self.user = await self.get_user_from_token(token_key)
-        print("USER:", getattr(self.user, "is_anonymous", True), getattr(self.user, "id", None))
+        logger.debug("[BACKEND_DEBUG_CHAT] connect - authenticated: %s, user_id: %s", 
+                     not getattr(self.user, "is_anonymous", True), 
+                     getattr(self.user, "id", None))
 
         # 비로그인 사용자는 거부
         if getattr(self.user, "is_anonymous", True):  # isinstance(self.user, AnonymousUser) 확인보다 안전함
-            print("REJECTING: Anonymous user")
             await self.close()
             return
 
         # 방 참가자가 아니면 거부
         in_room = await self.user_in_room()
-        print("USER IN ROOM:", in_room)
         if not in_room:
-            print("REJECTING: User not in room")
             await self.close()
             return
 
@@ -70,6 +70,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.channel_layer.group_add(self.room_grp, self.channel_name)
         await self.accept()
+        logger.debug("[BACKEND_DEBUG_CHAT] connect SUCCESS - room_id: %s, user_id: %s", self.room_id, self.user.id)
 
         cur = self._get_online_set(self.room_id)
         cur.add(self.user.id)  # 현재 유저 ID를 온라인 목록에 추가
@@ -85,9 +86,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # ────────────────────────── 수신 메시지 처리 ──────────────────────────
     async def receive(self, text_data=None, bytes_data=None):
+        logger.debug("[BACKEND_DEBUG_CHAT] receive - text_data: %s", text_data)
         data = json.loads(text_data or "{}")
 
         if data.get("type") == "message":
+            # 수락 전이면 상대방(커운터파티)만 메시지 가능
+            is_blocked = await self.check_blocked_before_accept()
+            if is_blocked:
+                await self.send(json.dumps({"event": "error", "message": "상대방이 수락하기 전입니다."}))
+                return
+
             msg = await self.save_message(
                 text=data.get("text", ""),
             )
@@ -95,12 +103,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             img_ids = data.get("img_ids")
             img_urls = await self.save_image(img_ids, msg_id) if img_ids else []
 
-            # 같은 방 유저들에게 브로드캐스트
+            # 수락 쮘리: 상대방 첫 답장 시 is_accepted=True + 알림
+            accepted_event = await self.try_accept_room()
+
+            # 같은 방 유저들에게 브로드캐스도
             await self.channel_layer.group_send(
                 self.room_grp,
                 {"type": "chat_message", "msg": msg, "img_urls": img_urls}
             )
 
+            if accepted_event:
+                # 수락 이벤트를 방 모두에게 브로드캐스
+                await self.channel_layer.group_send(
+                    self.room_grp,
+                    {"type": "chat_accepted", "room_id": int(self.room_id)}
+                )
 
         elif data.get("type") == "read":
             msg_id = data.get("msg_id")
@@ -155,6 +172,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return ChatMessageSerializer(msg).data
 
     @database_sync_to_async
+    def check_blocked_before_accept(self) -> bool:
+        """
+        방이 미수락이고, 전송자가 제안자(initiated_by)이면 차단.
+        즉, 미수락 상태에서는 커운터파티만 메시지 전송 가능.
+        """
+        room = ChatRoom.objects.select_related('initiated_by').get(pk=self.room_id)
+        if room.is_accepted:
+            return False  # 수락됨 → 첨소하지 않음
+        # 제안자가 메시지를 보내려 함 → 차단
+        if room.initiated_by_id and room.initiated_by_id == self.user.id:
+            return True
+        return False
+
+    @database_sync_to_async
+    def try_accept_room(self):
+        """
+        이 메시지가 커운터파티의 첫 답장이면 수락 쮘리.
+        반환: 수락이 새로 일어난 경우 True, 아니면 False.
+        """
+        room = ChatRoom.objects.select_related(
+            'initiated_by', 'student__user', 'instructor__user'
+        ).get(pk=self.room_id)
+
+        if room.is_accepted:
+            return False
+        # 커운터파티인 경우만 수락
+        if room.initiated_by_id and room.initiated_by_id != self.user.id:
+            ChatRoom.objects.filter(pk=self.room_id).update(is_accepted=True)
+            # 제안자에게 tutoring_accept 알림
+            from config.apps.notification.helpers import notify_tutoring_accept
+            notify_tutoring_accept(room, acceptor=self.user)
+            return True
+        return False
+
+    @database_sync_to_async
     def add_read(self, msg_id: int) -> int:
         """
         msg_id 이하(포함) 모든 메시지에 self.user를 read_by에 추가.
@@ -191,6 +243,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # ────────────────────────── 그룹 → 클라이언트 전송 ──────────────────────────
     async def chat_message(self, event):
+        logger.debug("[BACKEND_DEBUG_CHAT] sending message to client - room_id: %s", self.room_id)
         await self.send(json.dumps({
             "event": "message",
             **event["msg"],
@@ -204,7 +257,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "user_id": event["user_id"],
             "read_count": event["read_count"]
         }))
-        
+
+    async def chat_accepted(self, event):
+        """수락 이벤트: 방의 모든 참가자에게 브로드캐스트."""
+        await self.send(json.dumps({
+            "event": "accepted",
+            "room_id": event["room_id"],
+        }))
+
     
 
 

@@ -26,6 +26,7 @@ from .views import (
     StudentReviewViewSet,
     TutoringResourceViewSet,
     StudentMyPostAPIView,
+    InstructorDetailAPIView,
 )
 
 router = SimpleRouter()
@@ -62,6 +63,7 @@ urlpatterns = [
     # 학생 페이지: 강사 탐색 (읽기)
     # ____________________________________________________________________________________
     path("instructors/", InstructorListAPIView.as_view(), name="instructor-list"),
+    path("instructors/<int:pk>/", InstructorDetailAPIView.as_view(), name="instructor-detail"),
     path("instructors/<int:instructor_id>/info/", InstructorInfoAPIView.as_view(), name="instructor-info-read"),
     path("instructors/<int:instructor_id>/reviews/", InstructorReviewListAPIView.as_view(), name="instructor-reviews"),
 

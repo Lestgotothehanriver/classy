@@ -15,10 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from django.conf.urls.static import static
 from django.conf import settings
-from django.urls import include
+from config.apps.notification.views import DeviceTokenAPIView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -30,5 +30,9 @@ urlpatterns = [
     path("report/", include("config.apps.report.urls")),
     path("main/", include("config.apps.main.urls")),
     path("mypage/", include("config.apps.mypage.urls")),
+    # FCM device token endpoints must resolve to notification.DeviceToken,
+    # not the legacy chat_app token model.
+    path("device-token/", DeviceTokenAPIView.as_view()),
     path("", include("config.apps.chat_app.urls")),
+    path("notification/", include("config.apps.notification.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -3,6 +3,7 @@ from django.db.models import Count
 
 from config.apps.accounts.models import Subject
 from .models import Lecture, Comment, SearchHistory
+from .utils import extract_video_duration_seconds
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -31,15 +32,26 @@ class LectureListSerializer(serializers.ModelSerializer):
 
 
 class LectureStreamSerializer(serializers.ModelSerializer):
-    """스트리밍 뷰 — 영상 + 기본 정보."""
+    """스트리밍 뷰 — 절대 video URL + 기본 정보."""
+    video = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
         fields = ["id", "video", "title"]
 
+    def get_video(self, obj):
+        if not obj.video:
+            return ""
+
+        request = self.context.get("request")
+        url = obj.video.url
+        if request is None:
+            return url
+        return request.build_absolute_uri(url)
+
 
 class LectureDetailSerializer(serializers.ModelSerializer):
-    """강의 상세 — 모든 필드 반환."""
+    """강의 상세 — video 제외 (스트리밍 URL은 /stream/ 엔드포인트에서만 제공)."""
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     is_liked = serializers.BooleanField(read_only=True, default=False)
@@ -47,7 +59,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = "__all__"
+        exclude = ["video"]
 
     def get_like_count(self, obj):
         return obj.likes.count()
@@ -62,7 +74,12 @@ class LecturePreviewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = "__all__"
+        fields = [
+            'id', 'video', 'video_duration', 'thumbnail', 'title', 
+            'subjects', 'price', 'instructor', 'is_preview', 
+            'view_count', 'likes', 'rental_period', 'created_at', 
+            'is_active', 'is_delete', 'deleted_at'
+        ]
 
 
 class LectureRecommendSerializer(serializers.ModelSerializer):
@@ -90,8 +107,28 @@ class LectureWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("과목은 최대 3개까지만 선택할 수 있습니다.")
         return value
 
+    def validate_price(self, value):
+        if value < 0:
+            raise serializers.ValidationError("가격은 0 캐시 이상이어야 합니다.")
+        return value
+
+    def validate_rental_period(self, value):
+        if value < 1:
+            raise serializers.ValidationError("대여 기간은 최소 1일 이상이어야 합니다.")
+        return value
+
+    def _populate_video_duration(self, validated_data):
+        current_duration = validated_data.get("video_duration", 0) or 0
+        if current_duration > 0:
+            return
+
+        inferred_duration = extract_video_duration_seconds(validated_data.get("video"))
+        if inferred_duration is not None:
+            validated_data["video_duration"] = inferred_duration
+
     def create(self, validated_data):
         subjects_data = validated_data.pop("subjects", None)
+        self._populate_video_duration(validated_data)
         instance = super().create(validated_data)
         if subjects_data is not None:
             _sync_subjects(instance.subjects, subjects_data)
@@ -99,6 +136,7 @@ class LectureWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         subjects_data = validated_data.pop("subjects", None)
+        self._populate_video_duration(validated_data)
         instance = super().update(instance, validated_data)
         if subjects_data is not None:
             _sync_subjects(instance.subjects, subjects_data)

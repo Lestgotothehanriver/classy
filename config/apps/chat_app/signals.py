@@ -36,13 +36,14 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
     participants_ids = {u.id for u in participants}
     
     non_active_user_ids = []
+    muted_user_ids = set(room.muted_by.values_list('id', flat=True))
     for u in participants:
          # device_token 역참조나 다른 관련된 로직 활용
          # 일단은 hasattr로 방어 코드 작성 (User 모델에 device_token이 OneToOne으로 연결되어 있다고 가정)
          if hasattr(u, 'device_token') and not u.device_token.is_active:
              non_active_user_ids.append(u.id)
 
-    targets = participants_ids - {sender_id} - online - set(non_active_user_ids)
+    targets = participants_ids - {sender_id} - online - set(non_active_user_ids) - muted_user_ids
     if not targets:
         return
 
@@ -54,7 +55,19 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         "msg_id": str(instance.id),
         "sender_id": str(sender_id),
     }
+    from config.apps.notification.models import Notification
+    # bulk_create 대신 개별 create → post_save 시그널 발생 → WS 브로드캐스트 자동 처리
+    for uid in targets:
+        Notification.objects.create(
+            user_id=uid,
+            type="message",
+            role="student",  # 채팅 수신자는 학생 역할로 분류
+            title=title,
+            body=body,
+            data=data,
+        )
     result = push_to_users(targets, title=title, body=body, username=instance.sender.username, data=data)
-    #print(f"Sent push notification to {len(targets)} users in room {room.id} for new message {instance.id}.")
+
+
 
 

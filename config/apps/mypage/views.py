@@ -4,20 +4,40 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
 from django.db.models import Exists, OuterRef, Value, BooleanField, Count, Sum
 from django.db.models.functions import Coalesce
+import logging
+
+logger = logging.getLogger(__name__)
 
 from config.apps.lecture.models import Lecture
 from config.apps.lecture.serializers import LectureListSerializer
-from config.apps.cash.models import SettlementRecord, LectureRentalHistory
+from config.apps.cash.models import SettlementRecord, LectureRentalHistory, Account
 
 class StudentRentedLectureListView(generics.ListAPIView):
     """
-    학생 본인이 대여한 동영상들을 조회하는 view
-    GET /mypage/student/rented-lectures/
+    학생 본인이 대여 중인 VOD 강의 목록을 조회하는 API View입니다.
+
+    Response (JSON):
+        HTTP 200 OK:
+        [
+            {
+                "id": 1,
+                "title": "강의 제목",
+                "instructor_name": "강사님",
+                "thumbnail_url": "...",
+                "created_at": "2026-04-26T06:51:26Z"
+            }
+        ]
     """
-    permission_classes = [IsAuthenticated]
     serializer_class = LectureListSerializer
 
     def get_queryset(self):
+        """
+        현재 로그인한 학생이 대여한 강의 쿼리셋을 반환합니다.
+
+        Returns:
+            QuerySet: 대여한 강의 객체 쿼리셋
+        """
+        logger.debug("[BACKEND_DEBUG_MYPAGE] StudentRentedLecture - user: %s", self.request.user.pk)
         user = self.request.user
         student = getattr(user, 'student_profile', None)
 
@@ -47,13 +67,30 @@ class StudentRentedLectureListView(generics.ListAPIView):
 
 class StudentLikedLectureListView(generics.ListAPIView):
     """
-    학생 본인이 추천/좋아요한 동영상들을 조회하는 view
-    GET /mypage/student/liked-lectures/
+    학생이 '찜(좋아요)'한 VOD 강의 목록을 조회하는 API View입니다.
+
+    Response (JSON):
+        HTTP 200 OK:
+        [
+            {
+                "id": 10,
+                "title": "찜한 강의",
+                "instructor_name": "강사님",
+                "is_liked": true,
+                "like_count": 5
+            }
+        ]
     """
-    permission_classes = [IsAuthenticated]
     serializer_class = LectureListSerializer
 
     def get_queryset(self):
+        """
+        현재 로그인한 학생이 찜한 강의 쿼리셋을 반환합니다.
+
+        Returns:
+            QuerySet: 찜한 강의 객체 쿼리셋
+        """
+        logger.debug("[BACKEND_DEBUG_MYPAGE] StudentLikedLecture - user: %s", self.request.user.pk)
         user = self.request.user
         student = getattr(user, 'student_profile', None)
         
@@ -108,6 +145,7 @@ class InstructorSettlementRequestView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        logger.debug("[BACKEND_DEBUG_MYPAGE] SettlementRequest - user: %s", request.user.pk)
         user = request.user
         instructor = getattr(user, 'instructor_profile', None)
         
@@ -136,6 +174,7 @@ class InstructorSettlementRequestView(APIView):
         
         unsettled_rentals.update(is_settled=True)
         
+        logger.debug("[BACKEND_DEBUG_MYPAGE] SettlementRequest SUCCESS - amount: %d", total_cash)
         return Response({
             "detail": "Settlement requested successfully.",
             "settlement_id": settlement_record.id,
@@ -152,6 +191,7 @@ class InstructorSettlementInfoView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        logger.debug("[BACKEND_DEBUG_InstructorSettlementInfoView] SettlementInfo - user: %s", request.user.pk)
         user = request.user
         instructor = getattr(user, 'instructor_profile', None)
         
@@ -187,10 +227,22 @@ class InstructorSettlementInfoView(APIView):
             total=Coalesce(Sum('amount'), 0)
         )['total']
         
+        account_info = None
+        try:
+            acct = instructor.account
+            account_info = {
+                'bank': acct.bank,
+                'account_number': acct.account_number,
+                'account_holder': acct.account_holder,
+            }
+        except Account.DoesNotExist:
+            pass
+
         return Response({
             "total_revenue": total_revenue,
             "completed_revenue": completed_revenue,
             "settleable_revenue": settleable_revenue,
-            "pending_revenue": pending_revenue
+            "pending_revenue": pending_revenue,
+            "account_info": account_info,
         })
 

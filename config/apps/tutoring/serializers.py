@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db.models import Avg, Count
+from django.utils import timezone
 
 from config.apps.accounts.models import Instructor, Student, Subject
 from .models import (
@@ -7,15 +8,20 @@ from .models import (
     InstructorInfo,
     InstructorReview,
     StudentReview,
-    Region,
     TutoringProposal,
+    Region,
 )
+from config.apps.common.serializers import M2MSyncMixin
+from config.apps.common.validators import validate_cost_unit
 
+# ════════════════════════════════════════════════════════════════════════════════
+# 공통 Serializer
+# ════════════════════════════════════════════════════════════════════════════════
 
-# ____________________________________________________________________________________
-# 공통 유틸: "민감할 수 있는 필드" 제거용 Serializer
-# ____________________________________________________________________________________
 class SafeModelSerializer(serializers.ModelSerializer):
+    """
+    민감한 정보(password 등)를 제외하고 데이터를 직렬화하는 베이스 Serializer입니다.
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for name in [
@@ -29,10 +35,10 @@ class SafeModelSerializer(serializers.ModelSerializer):
             self.fields.pop(name, None)
 
 
-# ____________________________________________________________________________________
-# 공통 유틸: Subject를 "id + label(str)"로만 가볍게 표현
-# ____________________________________________________________________________________
 class SubjectSimpleSerializer(serializers.ModelSerializer):
+    """
+    과목 정보를 간단히 직렬화합니다.
+    """
     label = serializers.SerializerMethodField()
 
     class Meta:
@@ -43,10 +49,10 @@ class SubjectSimpleSerializer(serializers.ModelSerializer):
         return str(obj)
 
 
-# ____________________________________________________________________________________
-# 공통 유틸: Region을 "id + label(str)"로만 가볍게 표현
-# ____________________________________________________________________________________
 class RegionSimpleSerializer(serializers.ModelSerializer):
+    """
+    지역 정보를 간단히 직렬화합니다.
+    """
     label = serializers.SerializerMethodField()
 
     class Meta:
@@ -57,48 +63,63 @@ class RegionSimpleSerializer(serializers.ModelSerializer):
         return str(obj)
 
 
-# ____________________________________________________________________________________
-# 공통 유틸: Student/Instructor의 subjects M2M 필드에서 number 리스트 반환
-# ____________________________________________________________________________________
 def extract_subject_numbers(owner_obj):
-    """Student/Instructor의 subjects M2M 필드에서 Subject number 목록을 반환."""
+    """
+    Student/Instructor의 subjects M2M 필드에서 Subject number 목록을 반환합니다.
+    """
     if hasattr(owner_obj, 'subjects'):
         return list(owner_obj.subjects.values_list("number", flat=True))
     return []
 
 
-# ____________________________________________________________________________________
-# 학생 페이지: 강사 리스트/세부에 쓰는 Serializer
-# ____________________________________________________________________________________
+# ════════════════════════════════════════════════════════════════════════════════
+# 강사 관련 Serializer
+# ════════════════════════════════════════════════════════════════════════════════
+
 class InstructorListSerializer(SafeModelSerializer):
+    """
+    강사 목록 조회를 위한 Serializer입니다.
+    """
     subjects = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True, default=0)
     is_liked = serializers.BooleanField(read_only=True, default=False)
+    average_rate = serializers.FloatField(read_only=True, default=None, allow_null=True)
+    review_count = serializers.IntegerField(read_only=True, default=0)
+    current_rank = serializers.IntegerField(read_only=True, default=None, allow_null=True)
     sex = serializers.CharField(source='user.sex', read_only=True)
     region = serializers.CharField(source='user.region', read_only=True)
     user_name = serializers.CharField(source='user.user_name', read_only=True)
+    birth_date = serializers.DateField(source='user.birth_date', read_only=True)
+    profile_image = serializers.ImageField(source='user.profile_image', read_only=True)
 
     class Meta:
         model = Instructor
-        exclude = ["instruction"]
+        fields = [
+            'id', 'user', 'university', 'department', 'created_at', 
+            'instruction', 'student_number', 'is_tutoring', 'last_login', 
+            'subjects', 'like_count', 'is_liked', 'average_rate', 
+            'review_count', 'current_rank', 'sex', 'region', 
+            'user_name', 'birth_date', 'profile_image'
+        ]
 
     def get_subjects(self, obj):
         return extract_subject_numbers(obj)
 
 
-
-
-# ____________________________________________________________________________________
-# 학생 페이지: 강사 과외정보(InstructorInfo)
-# ____________________________________________________________________________________
 class InstructorInfoSerializer(serializers.ModelSerializer):
+    """
+    강사의 상세 과외 정보를 직렬화합니다.
+    """
     subjects = serializers.SerializerMethodField()
     regions = serializers.SerializerMethodField()
     instruction = serializers.CharField(source='instructor.instruction', read_only=True)
 
     class Meta:
         model = InstructorInfo
-        fields = "__all__"
+        fields = [
+            'id', 'instructor', 'cost', 'schedule', 'method', 
+            'location', 'etc', 'subjects', 'regions', 'instruction'
+        ]
 
     def get_subjects(self, obj):
         return SubjectSimpleSerializer(obj.subjects.all(), many=True).data
@@ -107,17 +128,21 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
         return RegionSimpleSerializer(obj.regions.all(), many=True).data
 
 
-# ____________________________________________________________________________________
-# 학생 페이지: 강사 리뷰(InstructorReview)
-# ____________________________________________________________________________________
 class InstructorReviewSerializer(serializers.ModelSerializer):
+    """
+    강사에 대한 리뷰를 직렬화합니다.
+    """
     student_id = serializers.IntegerField(source="student.id", read_only=True)
     student_label = serializers.SerializerMethodField()
     subjects = serializers.SerializerMethodField()
 
     class Meta:
         model = InstructorReview
-        fields = "__all__"
+        fields = [
+            'id', 'instructor', 'student', 'professionalism', 
+            'teaching_skill', 'punctuality', 'comment', 'created_at', 
+            'subjects', 'student_id', 'student_label'
+        ]
 
     def get_student_label(self, obj):
         return str(obj.student)
@@ -136,17 +161,23 @@ class StudentPublicSerializer(SafeModelSerializer):
 
     class Meta:
         model = Student
-        fields = "__all__"
+        fields = [
+            'id', 'user', 'subjects', 'last_login', 'created_at', 
+            'avg_rating', 'review_count'
+        ]
 
     def get_subjects(self, obj):
         return extract_subject_numbers(obj)
 
 
 class TutoringPostListSerializer(serializers.ModelSerializer):
-    first_name = serializers.CharField(source='student.user.first_name', read_only=True)
-    last_name = serializers.CharField(source='student.user.last_name', read_only=True)
-    user_name = serializers.CharField(source='student.user.user_name', read_only=True)
-    birth_date = serializers.DateField(source='student.user.birth_date', read_only=True)
+    student_name = serializers.CharField(source='student.user.user_name', read_only=True)
+    student_id = serializers.IntegerField(source='student.id', read_only=True)
+    student_profile_image = serializers.ImageField(source='student.user.profile_image', read_only=True)
+    student_age = serializers.SerializerMethodField()
+    student_sex = serializers.CharField(source='student.user.sex', read_only=True)
+    student_field = serializers.CharField(source='student.user.field', read_only=True)
+    like_count = serializers.IntegerField(read_only=True, default=0)
     subjects = serializers.SerializerMethodField()
     regions = serializers.SerializerMethodField()
 
@@ -154,15 +185,29 @@ class TutoringPostListSerializer(serializers.ModelSerializer):
         model = TutoringPost
         fields = [
             'id',
-            'first_name',
-            'last_name',
-            'user_name',
-            'birth_date',
-            'sex',
+            'student_id',
+            'student_name',
+            'student_profile_image',
+            'student_age',
+            'student_sex',
+            'student_field',
             'grade',
             'regions',
-            'subjects'
+            'subjects',
+            'cost',
+            'method',
+            'like_count',
+            'is_active',
+            'created_at'
         ]
+
+    def get_student_age(self, obj):
+        from django.utils import timezone
+        if obj.student.user.birth_date:
+            today = timezone.now().date()
+            birth = obj.student.user.birth_date
+            return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+        return None
 
     def get_subjects(self, obj):
         return SubjectSimpleSerializer(obj.subjects.all(), many=True).data
@@ -178,7 +223,11 @@ class TutoringPostDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TutoringPost
-        fields = "__all__"
+        fields = [
+            'id', 'student', 'title', 'sex', 'age', 'grade', 'field', 
+            'subjects', 'method', 'regions', 'cost', 'schedule', 
+            'situation', 'etc', 'is_active', 'view_count', 'created_at'
+        ]
 
     def get_subjects(self, obj):
         return SubjectSimpleSerializer(obj.subjects.all(), many=True).data
@@ -193,13 +242,26 @@ class TutoringPostDetailSerializer(serializers.ModelSerializer):
 class StudentReviewSerializer(serializers.ModelSerializer):
     instructor_id = serializers.IntegerField(source="instructor.id", read_only=True)
     instructor_label = serializers.SerializerMethodField()
+    instructor_nickname = serializers.CharField(source="instructor.user.user_name", read_only=True)
+    instructor_university = serializers.CharField(source="instructor.university", read_only=True)
+    instructor_department = serializers.CharField(source="instructor.department", read_only=True)
+    instructor_student_number = serializers.CharField(source="instructor.student_number", read_only=True)
+    instructor_subjects = serializers.SerializerMethodField()
 
     class Meta:
         model = StudentReview
-        fields = "__all__"
+        fields = [
+            'id', 'student', 'instructor', 'rating', 'comment', 'created_at', 
+            'instructor_id', 'instructor_label', 'instructor_nickname', 
+            'instructor_university', 'instructor_department', 
+            'instructor_student_number', 'instructor_subjects'
+        ]
 
     def get_instructor_label(self, obj):
         return str(obj.instructor)
+
+    def get_instructor_subjects(self, obj):
+        return SubjectSimpleSerializer(obj.instructor.subjects.all(), many=True).data
 
 
 # ____________________________________________________________________________________
@@ -212,11 +274,12 @@ def _sync_m2m(manager, model_cls, numbers):
     manager.set(objs)
 
 
-class InstructorInfoWriteSerializer(serializers.ModelSerializer):
+class InstructorInfoWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     """
     강사 과외정보 생성/수정용.
     subjects: Subject.number 리스트, regions: Region.number 리스트
     """
+    m2m_fields = {'subjects': Subject, 'regions': Region}
     subjects = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
     regions  = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
 
@@ -224,36 +287,22 @@ class InstructorInfoWriteSerializer(serializers.ModelSerializer):
         model = InstructorInfo
         exclude = ["instructor"]
 
-    def create(self, validated_data):
-        subjects_data = validated_data.pop("subjects", None)
-        regions_data = validated_data.pop("regions", None)
-        instance = super().create(validated_data)
-        from config.apps.accounts.models import Subject
-        if subjects_data is not None:
-            _sync_m2m(instance.subjects, Subject, subjects_data)
-        if regions_data is not None:
-            _sync_m2m(instance.regions, Region, regions_data)
-        return instance
-
-    def update(self, instance, validated_data):
-        subjects_data = validated_data.pop("subjects", None)
-        regions_data = validated_data.pop("regions", None)
-        instance = super().update(instance, validated_data)
-        from config.apps.accounts.models import Subject
-        if subjects_data is not None:
-            _sync_m2m(instance.subjects, Subject, subjects_data)
-        if regions_data is not None:
-            _sync_m2m(instance.regions, Region, regions_data)
-        return instance
+    def validate_cost(self, value):
+        return validate_cost_unit(value)
 
 
-class InstructorReviewWriteSerializer(serializers.ModelSerializer):
+class InstructorReviewWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     """강사 리뷰 생성/수정용. subjects: Subject.number 리스트"""
+    m2m_fields = {'subjects': Subject}
     subjects = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
 
     class Meta:
         model = InstructorReview
-        fields = "__all__"
+        fields = [
+            'id', 'instructor', 'student', 'professionalism', 
+            'teaching_skill', 'punctuality', 'comment', 'created_at', 
+            'subjects'
+        ]
         read_only_fields = ["student"]
 
     def validate_professionalism(self, value):
@@ -271,30 +320,15 @@ class InstructorReviewWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("시간 준수 점수는 0에서 5 사이여야 합니다.")
         return value
 
-    def create(self, validated_data):
-        from config.apps.accounts.models import Subject
-        nums = validated_data.pop("subjects", None)
-        instance = InstructorReview.objects.create(**validated_data)
-        if nums is not None:
-            _sync_m2m(instance.subjects, Subject, nums)
-        return instance
-
-    def update(self, instance, validated_data):
-        from config.apps.accounts.models import Subject
-        nums = validated_data.pop("subjects", None)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
-        instance.save()
-        if nums is not None:
-            _sync_m2m(instance.subjects, Subject, nums)
-        return instance
+    # create, update 메소드는 M2MSyncMixin에서 처리됨
 
 
-class TutoringPostWriteSerializer(serializers.ModelSerializer):
+class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     """
     과외 공고 생성/수정용.
     subjects: Subject.number 리스트, regions: Region.number 리스트
     """
+    m2m_fields = {'subjects': Subject, 'regions': Region}
     subjects = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
     regions  = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
 
@@ -302,27 +336,8 @@ class TutoringPostWriteSerializer(serializers.ModelSerializer):
         model = TutoringPost
         exclude = ["student"]
 
-    def create(self, validated_data):
-        subjects_data = validated_data.pop("subjects", None)
-        regions_data = validated_data.pop("regions", None)
-        instance = super().create(validated_data)
-        from config.apps.accounts.models import Subject
-        if subjects_data is not None:
-            _sync_m2m(instance.subjects, Subject, subjects_data)
-        if regions_data is not None:
-            _sync_m2m(instance.regions, Region, regions_data)
-        return instance
-
-    def update(self, instance, validated_data):
-        subjects_data = validated_data.pop("subjects", None)
-        regions_data = validated_data.pop("regions", None)
-        instance = super().update(instance, validated_data)
-        from config.apps.accounts.models import Subject
-        if subjects_data is not None:
-            _sync_m2m(instance.subjects, Subject, subjects_data)
-        if regions_data is not None:
-            _sync_m2m(instance.regions, Region, regions_data)
-        return instance
+    def validate_cost(self, value):
+        return validate_cost_unit(value)
 
 
 class StudentReviewWriteSerializer(serializers.ModelSerializer):
@@ -330,22 +345,41 @@ class StudentReviewWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentReview
-        fields = "__all__"
+        fields = [
+            'id', 'student', 'instructor', 'rating', 'comment', 'created_at'
+        ]
         read_only_fields = ["instructor"]
 
 class TutoringProposalSerializer(serializers.ModelSerializer):
     """과외 제안서 통합 Serializer (CRUD 모두 사용)"""
     class Meta:
         model = TutoringProposal
-        fields = "__all__"
+        fields = [
+            'id', 'tutoring_post', 'instructor', 'message'
+        ]
         read_only_fields = ["instructor"]
+
+class TutoringResourceFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import TutoringResourceFile
+        model = TutoringResourceFile
+        fields = ['id', 'file', 'uploaded_at']
 
 class TutoringResourceSerializer(serializers.ModelSerializer):
     """수업 리소스 통합 Serializer (CRUD 모두 사용)"""
+    files = TutoringResourceFileSerializer(many=True, read_only=True)
+
     class Meta:
         from .models import TutoringResource
         model = TutoringResource
-        fields = "__all__"
+        fields = [
+            'id', 'student', 'instructor', 'start_date', 'class_type', 
+            'subject', 'first_month_fee', 'payback_bank', 
+            'payback_account_number', 'payback_account_holder', 
+            'fee_confirmation_file', 'is_student_confirmed', 
+            'is_instructor_confirmed', 'fee_payment_status', 'files'
+        ]
+
 
 class TutoringResourceListSerializer(serializers.ModelSerializer):
     """수업 리소스 목록/상세 조회용 Serializer"""
@@ -356,6 +390,8 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
     instructor_user_name = serializers.CharField(source='instructor.user.user_name', read_only=True)
     instructor_first_name = serializers.CharField(source='instructor.user.first_name', read_only=True)
     instructor_last_name = serializers.CharField(source='instructor.user.last_name', read_only=True)
+    
+    files = TutoringResourceFileSerializer(many=True, read_only=True)
 
     class Meta:
         from .models import TutoringResource
@@ -391,10 +427,25 @@ class StudentMyPostSerializer(serializers.ModelSerializer):
     """
     days_since_upload = serializers.SerializerMethodField()
     subjects = serializers.SerializerMethodField()
+    subject = serializers.SerializerMethodField() # 대표 과목 하나
+    relative_time = serializers.SerializerMethodField()
+
+    student_name = serializers.CharField(source='student.user.user_name', read_only=True)
+    user_region = serializers.CharField(source='student.user.region', read_only=True)
+    age = serializers.SerializerMethodField()
+    regions = serializers.SerializerMethodField()
 
     class Meta:
         model = TutoringPost
-        fields = ['id', 'subjects', 'view_count', 'days_since_upload', 'created_at']
+        fields = [
+            'id', 'title', 'subjects', 'subject', 'view_count', 
+            'days_since_upload', 'created_at', 'is_active', 'relative_time',
+            'sex', 'age', 'grade', 'field', 'method', 'cost', 'schedule', 'situation', 'etc',
+            'student_name', 'user_region', 'regions'
+        ]
+
+    def get_regions(self, obj):
+        return [str(region) for region in obj.regions.all()]
         
     def get_days_since_upload(self, obj):
         from django.utils import timezone
@@ -405,3 +456,43 @@ class StudentMyPostSerializer(serializers.ModelSerializer):
 
     def get_subjects(self, obj):
         return [str(subject) for subject in obj.subjects.all()]
+
+    def get_subject(self, obj):
+        # 첫 번째 과목을 대표 과목으로 반환
+        first_subject = obj.subjects.all().first()
+        return str(first_subject) if first_subject else ""
+
+    def get_age(self, obj):
+        from django.utils import timezone
+        # 1. 공고에 저장된 나이(작성 당시 나이)와 작성일이 있는지 확인
+        if obj.age and obj.created_at:
+            today = timezone.now().date()
+            created_date = obj.created_at.date()
+            
+            # 공고 작성 후 경과된 연도 계산 (단순 연도 차이가 아니라 생일 개념을 적용한 만 나이 경과)
+            # 여기서는 공고의 age 자체가 이미 '만 나이'라고 가정하고, 
+            # 작성일로부터 1년이 지날 때마다 1세씩 더함
+            years_passed = today.year - created_date.year
+            if (today.month, today.day) < (created_date.month, created_date.day):
+                years_passed -= 1
+            
+            return obj.age + max(0, years_passed)
+            
+        # 2. 데이터가 부족하면 저장된 값 그대로 반환
+        return obj.age
+
+    def get_relative_time(self, obj):
+        from django.utils import timezone
+        if not obj.created_at:
+            return ""
+        now = timezone.now()
+        diff = now - obj.created_at
+        if diff.days > 0:
+            return f"{diff.days}일 전"
+        hours = diff.seconds // 3600
+        if hours > 0:
+            return f"{hours}시간 전"
+        minutes = diff.seconds // 60
+        if minutes > 0:
+            return f"{minutes}분 전"
+        return "방금 전"

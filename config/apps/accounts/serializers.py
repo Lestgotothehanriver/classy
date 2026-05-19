@@ -6,9 +6,16 @@ from rest_framework import serializers
 
 from .models import Student, Instructor, Subject
 from config.apps.pending.models import PendingInstructor, File
+from config.apps.notification.models import DeviceToken
 
 
 User = get_user_model()
+
+
+class SubjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Subject
+        fields = ['id', 'number', 'name']
 
 
 class StudentSignupSerializer(serializers.Serializer):
@@ -59,6 +66,7 @@ class StudentSignupSerializer(serializers.Serializer):
     birth_date = serializers.DateField(required=False, allow_null=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
     @transaction.atomic
     def create(self, validated_data):
@@ -80,14 +88,14 @@ class StudentSignupSerializer(serializers.Serializer):
             first_name=first_name,
             last_name=last_name,
             sex=validated_data.get("sex", ""),
+            user_name=validated_data.get("user_name", ""),  # UNIQUE 제약 오류 방지
         )
-        user.user_name = validated_data.get("user_name", "")
         user.phone = validated_data.get("phone", "")
-        region = validated_data.get("region", "")
+        user.region = validated_data.get("region", "")
         user.birth_date = validated_data.get("birth_date", None)
+        user.field = validated_data.get("field", "")
 
-        # update_fields에 누락되면 저장 안 되는 버그 방지
-        user.save(update_fields=["user_name", "phone", "region", "birth_date"])
+        user.save(update_fields=["phone", "region", "birth_date", "field"])
 
         student_profile = Student.objects.create(user=user)
 
@@ -99,6 +107,9 @@ class StudentSignupSerializer(serializers.Serializer):
                 subjects.append(obj)
             student_profile.subjects.set(subjects)
         return user
+    # 닉네임 중복 체크 함수
+    def is_validate_user_name(self, user_name):
+        return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크
 
 
 class InstructorSignupSerializer(serializers.Serializer):
@@ -147,10 +158,11 @@ class InstructorSignupSerializer(serializers.Serializer):
     student_number = serializers.CharField(required=False, allow_blank=True)
 
     # Subject id 리스트
-    instructorsubject = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
+    # multipart/form-data에서 JSON 문자열로 수신: "[196, 197]"
+    instructorsubject = serializers.CharField(
         required=False,
-        default=list,
+        allow_blank=True,
+        default='[]',
         write_only=True,
     )
 
@@ -159,30 +171,26 @@ class InstructorSignupSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
 
-    def to_internal_value(self, data):
-        """
-        multipart/form-data에서 배열이 문자열로 들어오는 케이스를 최소 수정으로 흡수.
-        - instructorsubject: "[1,2]" 처럼 들어오면 list로 파싱 시도.
-        """
-        ret = super().to_internal_value(data)
-        raw = data.get("instructorsubject", None)
-        if isinstance(raw, str):
-            raw = raw.strip()
-            if raw.startswith("[") and raw.endswith("]"):
-                import json
-                try:
-                    parsed = json.loads(raw)
-                    if isinstance(parsed, list):
-                        ret["instructorsubject"] = parsed
-                except Exception:
-                    # 파싱 실패하면 기본 validation에서 잡히게 둠
-                    pass
-        return ret
+    # FCM 디바이스 토큰 (회원가입 직후 DeviceToken 등록용)
+    fcm_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    platform = serializers.CharField(required=False, allow_blank=True, write_only=True, default='android')
 
     @transaction.atomic
     def create(self, validated_data):
-        instructorsubject_ids = validated_data.pop("instructorsubject", []) or []
-
+        import json
+        # CharField로 받은 instructorsubject를 List[int]로 파싱
+        raw = validated_data.pop("instructorsubject", "[]") or "[]"
+        if isinstance(raw, list):
+            instructorsubject_ids = [int(x) for x in raw]
+        elif isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                instructorsubject_ids = [int(x) for x in parsed if str(x).strip().lstrip('-').isdigit()]
+            except Exception:
+                instructorsubject_ids = []
+        else:
+            instructorsubject_ids = []
+        
         email = validated_data["email"].lower()
         password = validated_data["password"]
         first_name = validated_data.get("first_name", "")
@@ -195,14 +203,14 @@ class InstructorSignupSerializer(serializers.Serializer):
             first_name=first_name,
             last_name=last_name,
             password=password,
+            user_name=validated_data.get("user_name", ""),  # UNIQUE 제약 오류 방지
         )
-        user.user_name = validated_data.get("user_name", "")
         user.phone = validated_data.get("phone", "")
         user.sex = validated_data.get("sex", "")
         user.birth_date = validated_data.get("birth_date", None)
         user.region = validated_data.get("region", "")
 
-        user.save(update_fields=["user_name", "phone", "sex", "birth_date", "region"])
+        user.save(update_fields=["phone", "sex", "birth_date", "region"])
 
         instructor_profile = Instructor.objects.create(
             user=user,
@@ -225,10 +233,28 @@ class InstructorSignupSerializer(serializers.Serializer):
         if instructorsubject_ids:
             subjects = []
             for num in instructorsubject_ids:
-                obj, _ = Subject.objects.get_or_create(number=num)
+                obj, _ = Subject.objects.get_or_create(number=int(num) if isinstance(num, str) else num)
                 subjects.append(obj)
             instructor_profile.subjects.set(subjects)
+
+        # FCM 디바이스 토큰 등록 (회원가입 시점에 등록 — PENDING 상태라 로그인 불가하므로)
+        # 실무 표준: 하나의 기기(토큰) = 하나의 활성 유저
+        # 같은 토큰이 다른 유저에게 등록돼 있으면 먼저 해제하고 현재 유저에게 할당
+        fcm_token = validated_data.get('fcm_token', '').strip()
+        platform = validated_data.get('platform', 'android')
+        if fcm_token:
+            # 다른 유저가 동일 토큰을 가지고 있으면 제거 (이 기기를 현재 유저가 사용 중)
+            DeviceToken.objects.filter(token=fcm_token).exclude(user=user).delete()
+            DeviceToken.objects.get_or_create(
+                token=fcm_token,
+                defaults={'user': user, 'platform': platform, 'is_active': True},
+            )
+
         return user
+    
+    # 닉네임 중복 체크 함수
+    def is_validate_user_name(self, user_name):
+        return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크
 
 
 class StudentUpdateSerializer(serializers.Serializer):
@@ -251,17 +277,27 @@ class StudentUpdateSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
+    field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
     @transaction.atomic
     def update(self, instance, validated_data):
         # instance = request.user
-        for field in ["user_name", "region", "first_name", "last_name", "phone"]:
+        for field in ["user_name", "region", "first_name", "last_name", "phone", "field"]:
             if field in validated_data:
                 setattr(instance, field, validated_data[field])
 
         instance.save()
-
         return instance
+    
+    # 닉네임 업데이트 시 중복 체크 함수 (본인 제외) 반환: true(available), false(unavailable)
+    def is_validate_user_name(self, user_name):
+        # 현재 사용자의 닉네임은 유효하다고 간주
+        queryset = User.objects.filter(user_name__iexact=user_name) # 일단 같은 닉네임이 있는지 체크
+
+        # 만약 업데이트 중인 닉네임이 본인 것이라면, 중복 체크에서 제외해야 함
+        if self.instance and self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk) # 본인 제외
+        return not queryset.exists()
 
 
 class InstructorUpdateSerializer(serializers.Serializer):
@@ -341,3 +377,13 @@ class InstructorUpdateSerializer(serializers.Serializer):
                 subjects.append(obj)
             instructor.subjects.set(subjects)
         return instance
+    
+    # 닉네임 업데이트 시 중복 체크 함수 (본인 제외) 반환: true(available), false(unavailable)
+    def is_validate_user_name(self, user_name):
+        # 현재 사용자의 닉네임은 유효하다고 간주
+        queryset = User.objects.filter(user_name__iexact=user_name) # 일단 같은 닉네임이 있는지 체크
+
+        # 만약 업데이트 중인 닉네임이 본인 것이라면, 중복 체크에서 제외해야 함
+        if self.instance and self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk) # 본인 제외
+        return not queryset.exists()
