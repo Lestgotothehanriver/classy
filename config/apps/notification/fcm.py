@@ -21,16 +21,32 @@ def _get_fcm_app():
         return
     logger.info("*** [FCM] Initializing Firebase Admin SDK... ***")
     try:
+        import os
+        import json
         import firebase_admin
         from firebase_admin import credentials
-        cred_path = getattr(settings, 'FCM_CREDENTIALS_PATH', None)
-        if cred_path and not firebase_admin._apps:
-            logger.info(f"*** [FCM] Using credentials from: {cred_path} ***")
-            cred = credentials.Certificate(str(cred_path))
-            firebase_admin.initialize_app(cred)
-            logger.info("*** [FCM] Firebase Admin SDK initialized successfully ***")
+        
+        if not firebase_admin._apps:
+            fcm_json_str = os.environ.get('FCM_CREDENTIALS_JSON')
+            
+            if fcm_json_str:
+                logger.info("*** [FCM] Using credentials from environment variable (FCM_CREDENTIALS_JSON) ***")
+                cred_dict = json.loads(fcm_json_str)
+                cred = credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred)
+                logger.info("*** [FCM] Firebase Admin SDK initialized successfully ***")
+            else:
+                cred_path = os.environ.get('FCM_SA_PATH') or getattr(settings, 'FCM_CREDENTIALS_PATH', None)
+                if cred_path:
+                    logger.info(f"*** [FCM] Using credentials from: {cred_path} ***")
+                    cred = credentials.Certificate(str(cred_path))
+                    firebase_admin.initialize_app(cred)
+                    logger.info("*** [FCM] Firebase Admin SDK initialized successfully ***")
+                else:
+                    logger.warning("*** [FCM] Both FCM_CREDENTIALS_JSON and FCM_SA_PATH missing ***")
         else:
-            logger.warning("*** [FCM] FCM_CREDENTIALS_PATH missing or app already exists ***")
+            logger.info("*** [FCM] Firebase Admin SDK already initialized ***")
+            
         _app_initialized = True
     except Exception as e:
         logger.error(f"*** [FCM] firebase-admin initialization failed: {e} ***")
