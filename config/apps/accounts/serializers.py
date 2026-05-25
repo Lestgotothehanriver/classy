@@ -66,7 +66,6 @@ class StudentSignupSerializer(serializers.Serializer):
     birth_date = serializers.DateField(required=False, allow_null=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
-    field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
     @transaction.atomic
     def create(self, validated_data):
@@ -93,9 +92,8 @@ class StudentSignupSerializer(serializers.Serializer):
         user.phone = validated_data.get("phone", "")
         user.region = validated_data.get("region", "")
         user.birth_date = validated_data.get("birth_date", None)
-        user.field = validated_data.get("field", "")
 
-        user.save(update_fields=["phone", "region", "birth_date", "field"])
+        user.save(update_fields=["phone", "region", "birth_date"])
 
         student_profile = Student.objects.create(user=user)
 
@@ -166,8 +164,7 @@ class InstructorSignupSerializer(serializers.Serializer):
         write_only=True,
     )
 
-    # PendingInstructor 필드 (FileField는 request.FILES로 들어옴)
-    pending_file = serializers.FileField(write_only=True)
+    # pending_file은 마이페이지로 이전됨
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
 
@@ -225,9 +222,7 @@ class InstructorSignupSerializer(serializers.Serializer):
             status=PendingInstructor.Status.PENDING,
         )
 
-        file = validated_data["pending_file"]
-        pending_instructor = instructor_profile.pending_info
-        File.objects.create(pending_instructor=pending_instructor, pending_file=file)
+
 
         # 강사 과목 저장 (M2M)
         if instructorsubject_ids:

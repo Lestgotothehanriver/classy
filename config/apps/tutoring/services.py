@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
 
 from config.apps.accounts.models import Student, Instructor
-from config.apps.chat_app.models import ChatRoom
+from config.apps.chat_app.models import ChatRoom, ChatMessage
 from .models import TutoringPost, TutoringProposal
 from config.apps.notification.helpers import notify_tutoring_request, notify_tutoring_proposal
 
@@ -30,6 +30,14 @@ def create_student_proposal_room(user, instructor_id, post_id):
 
     if created:
         notify_tutoring_request(room)
+        
+        # 첫 번째 안내 메시지 전송 (학생)
+        initial_text = f"안녕하세요! {student.user.user_name} 학생입니다. 선생님께 과외를 받고 싶어 연락드렸습니다."
+        ChatMessage.objects.create(
+            room=room,
+            sender=user,
+            text=initial_text
+        )
 
     return room, created, post
 
@@ -83,6 +91,13 @@ def create_instructor_proposal(user, post_id, message):
 
     if created:
         notify_tutoring_proposal(room)
+        
+        # 첫 번째 안내 메시지 전송 (선생님 제안서 원문)
+        ChatMessage.objects.create(
+            room=room,
+            sender=user,
+            text=message
+        )
 
     return instructor, proposal, room, created
 

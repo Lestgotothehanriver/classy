@@ -156,6 +156,7 @@ class UserDeviceToken(models.Model):
     token = models.CharField(max_length=255, unique=True)
     platform = models.CharField(max_length=20, blank=True)
     is_active = models.BooleanField(default=True)
+    is_chat_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

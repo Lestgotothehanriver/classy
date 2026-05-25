@@ -100,6 +100,11 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         }
         """
         room = self.get_object()  # 채팅방 가져오기 (pk 기준)
+
+        # 0. 수락 전 가드 로직
+        if not room.is_accepted and room.initiated_by_id == request.user.id:
+            return Response({"error": "상대방이 수락하기 전까지 메시지를 보낼 수 없습니다."}, status=status.HTTP_403_FORBIDDEN)
+
         ser = ChatMessageSerializer(data=request.data)  # 메시지 데이터 받기
         ser.is_valid(raise_exception=True)  # 유효성 검사 (에러 나면 바로 응답 종료)
         
@@ -110,6 +115,14 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         img_ids = request.data.get("img_ids", [])
         if img_ids:
             Image.objects.filter(id__in=img_ids).update(message=message_obj)
+            
+        # 2.5. 수락 로직 (상대방이 첫 답장을 보내면 수락 처리)
+        if not room.is_accepted and room.initiated_by_id and room.initiated_by_id != request.user.id:
+            room.is_accepted = True
+            room.save(update_fields=['is_accepted'])
+            # 제안자에게 수락 알림
+            from config.apps.notification.helpers import notify_tutoring_accept
+            notify_tutoring_accept(room, acceptor=request.user)
             
         # 3. 이미지가 매핑된 최신 상태로 다시 직렬화해서 응답
         updated_ser = ChatMessageSerializer(message_obj)
@@ -278,6 +291,19 @@ class DeviceTokenView(APIView):
         token_status = not token_status
         UserDeviceToken.objects.filter(user=request.user).update(is_active=token_status) 
         return Response({"ok": True}, status=200)
+
+class ChatNotificationToggleView(APIView):
+    """
+    PUT /chat-notification/
+    채팅 알림 상태(is_chat_active)만 독립적으로 토글합니다.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        token_obj, created = UserDeviceToken.objects.get_or_create(user=request.user)
+        token_obj.is_chat_active = not token_obj.is_chat_active
+        token_obj.save(update_fields=['is_chat_active'])
+        return Response({"is_chat_active": token_obj.is_chat_active}, status=200)
 
 from .models import BlockedUser
 from .serializers import BlockedUserSerializer

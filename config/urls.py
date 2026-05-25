@@ -15,9 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf.urls.static import static
 from django.conf import settings
+from django.views.static import serve
 from config.apps.notification.views import DeviceTokenAPIView
 
 urlpatterns = [
@@ -35,4 +36,12 @@ urlpatterns = [
     path("device-token/", DeviceTokenAPIView.as_view()),
     path("", include("config.apps.chat_app.urls")),
     path("notification/", include("config.apps.notification.urls")),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # DEBUG=False 환경(테스트 등)에서도 로컬 미디어를 제공하기 위한 fallback
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    ]

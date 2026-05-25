@@ -477,14 +477,12 @@ class AddRoleAPIView(APIView):
                 university=university,
                 department=department,
             )
-            # 서류 파일
-            if 'pending_file' in request.FILES:
-                from config.apps.pending.models import PendingInstructor, File
-                pending, _ = PendingInstructor.objects.get_or_create(
-                    instructor_profile=instructor,
-                    defaults={'status': PendingInstructor.Status.PENDING}
-                )
-                File.objects.create(pending_instructor=pending, pending_file=request.FILES['pending_file'])
+            # 서류 파일 제출은 마이페이지로 일원화됨
+            from config.apps.pending.models import PendingInstructor
+            pending, _ = PendingInstructor.objects.get_or_create(
+                instructor_profile=instructor,
+                defaults={'status': PendingInstructor.Status.PENDING}
+            )
 
         token, _ = Token.objects.get_or_create(user=user)
         available_roles = []
@@ -522,49 +520,17 @@ class UserProfileAPIView(APIView):
     def get(self, request):
         user = request.user
         logger.info(f"*** [UserProfile] Fetch profile for: {user.email} ***")
-        is_instructor = hasattr(user, 'instructor_profile')
-        role = 'instructor' if is_instructor else 'student'
         region_parts = user.region.split(' ') if user.region else ['', '']
 
-        _STATUS_MAP = {'PENDING': 'pending', 'VERIFIED': 'certified', 'SUSPENDED': 'rejected'}
-        verification_status = None
-        subjects = []
-
-        from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
-        _choices_map = dict(STUDENT_SUBJECT_CHOICES)
-
-        if is_instructor:
-            raw_status = user.instructor_profile.pending_info.status
-            verification_status = _STATUS_MAP.get(raw_status, 'pending')
-            subjects = [
-                _choices_map.get(n, str(n))
-                for n in user.instructor_profile.subjects.values_list('number', flat=True)
-            ]
-        else:
-            subjects = [
-                _choices_map.get(n, str(n))
-                for n in user.student_profile.subjects.values_list('number', flat=True)
-            ]
-
         return Response({
-            "id": user.id,
-            "email": user.email,
             "nickname": user.user_name,
-            "first_name": user.first_name,
             "last_name": user.last_name,
-            "role": role,
-            "region": user.region,
-            "phone": user.phone,
-            "province": region_parts[0] if len(region_parts) > 0 else "",
-            "district": region_parts[1] if len(region_parts) > 1 else "",
+            "first_name": user.first_name,
             "cash": user.cash,
-            "sex": user.sex,
-            "field": user.field,
-            "last_login": user.last_login.isoformat() if user.last_login else None,
-            "birth_date": str(user.birth_date) if user.birth_date else None,
             "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
-            "verification_status": verification_status,
-            "subjects": subjects,
+            "district": region_parts[1] if len(region_parts) > 1 else "",
+            "province": region_parts[0] if len(region_parts) > 0 else "",
+            "phonenumber": user.phone,
         })
 
     def patch(self, request):

@@ -43,6 +43,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not token_key:
             # 헤더에서 토큰 추출 시도
             headers = dict(self.scope.get("headers", []))
+            auth_header = headers.get(b"authorization", b"").decode("utf-8")
             if auth_header.lower().startswith("token "):
                 token_key = auth_header.split(" ")[1]
 

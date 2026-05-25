@@ -178,7 +178,7 @@ APPLE_IAP_SHARED_SECRET = os.environ.get('APPLE_IAP_SHARED_SECRET', '')
 APPLE_BUNDLE_ID = os.environ.get('APPLE_BUNDLE_ID', '')  # e.g. "com.classy.app"
 
 # Google Play Store
-GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', '')  # path to JSON file
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', '')  # JSON string
 ANDROID_PACKAGE_NAME = os.environ.get('ANDROID_PACKAGE_NAME', '')  # e.g. "com.classy.app"
 
 # ──────────────────────────────────────────────

@@ -177,14 +177,14 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
     Returns:
         (is_valid: bool, transaction_id: str | None, error_msg: str)
     """
-    service_account_path = getattr(settings, 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', None)
+    service_account_json_str = getattr(settings, 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', None)
     package_name = getattr(settings, 'ANDROID_PACKAGE_NAME', None)
 
-    if not service_account_path or not package_name:
+    if not service_account_json_str or not package_name:
         logger.error(
             "Google Play settings missing. "
-            "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=%s, ANDROID_PACKAGE_NAME=%s",
-            service_account_path, package_name
+            "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not set or ANDROID_PACKAGE_NAME=%s",
+            package_name
         )
         return False, None, "Server configuration error."
 
@@ -192,8 +192,10 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
 
-        credentials = service_account.Credentials.from_service_account_file(
-            service_account_path,
+        service_account_info = json.loads(service_account_json_str)
+
+        credentials = service_account.Credentials.from_service_account_info(
+            service_account_info,
             scopes=['https://www.googleapis.com/auth/androidpublisher'],
         )
         service = build('androidpublisher', 'v3', credentials=credentials, cache_discovery=False)
@@ -220,8 +222,8 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
 
         return True, order_id, ""
 
-    except FileNotFoundError:
-        logger.exception("Google service account JSON file not found: %s", service_account_path)
+    except json.JSONDecodeError:
+        logger.exception("Google service account JSON is invalid.")
         return False, None, "Server configuration error."
     except ImportError:
         logger.exception("google-api-python-client is not installed.")
