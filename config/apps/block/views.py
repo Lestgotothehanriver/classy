@@ -1,0 +1,42 @@
+from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+from .models import Block
+from .serializers import BlockSerializer
+
+class BlockViewSet(viewsets.ModelViewSet):
+    """
+    URL: /blocks/
+    URL: /blocks/<pk>/
+
+    유저 차단 목록(Block)을 관리하는 API ViewSet입니다.
+
+    Endpoints:
+        GET /blocks/       : 내 차단 목록 조회.
+        POST /blocks/      : 새로운 유저 차단.
+        DELETE /blocks/<id>/: 유저 차단 해제.
+
+    Request Body (POST):
+        blocked_user (int): 차단할 대상 유저 ID.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = BlockSerializer
+
+    def get_queryset(self):
+        return Block.objects.filter(user=self.request.user).select_related("blocked_user")
+
+    def create(self, request, *args, **kwargs):
+        blocked_user_id = request.data.get('blocked_user')
+        if not blocked_user_id:
+            return Response({"error": "blocked_user is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if Block.objects.filter(user=request.user, blocked_user_id=blocked_user_id).exists():
+            return Response({"error": "Already blocked"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data={"blocked_user": blocked_user_id})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

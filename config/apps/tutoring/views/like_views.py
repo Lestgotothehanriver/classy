@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 class InstructorLikeAPIView(APIView):
     """
+    URL: /tutoring/instructors/<instructor_id>/like/
+
     학생이 특정 강사를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
     학생 계정(Student)을 가진 사용자만 접근 가능하며, 
@@ -43,6 +45,8 @@ class InstructorLikeAPIView(APIView):
 
 class TutoringPostLikeAPIView(APIView):
     """
+    URL: /tutoring/posts/<post_id>/like/
+
     강사가 특정 '과외 구인 공고(TutoringPost)'를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
     강사 계정(Instructor)을 가진 사용자만 접근 가능하며,

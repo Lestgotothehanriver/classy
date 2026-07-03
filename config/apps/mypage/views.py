@@ -14,6 +14,8 @@ from config.apps.cash.models import SettlementRecord, LectureRentalHistory, Acco
 
 class StudentRentedLectureListView(generics.ListAPIView):
     """
+    URL: /mypage/student/rented-lectures/
+
     학생 본인이 대여 중인 VOD 강의 목록을 조회하는 API View입니다.
 
     Response (JSON):
@@ -67,6 +69,8 @@ class StudentRentedLectureListView(generics.ListAPIView):
 
 class StudentLikedLectureListView(generics.ListAPIView):
     """
+    URL: /mypage/student/liked-lectures/
+
     학생이 '찜(좋아요)'한 VOD 강의 목록을 조회하는 API View입니다.
 
     Response (JSON):
@@ -111,6 +115,8 @@ class StudentLikedLectureListView(generics.ListAPIView):
 
 class InstructorUploadedLectureListView(generics.ListAPIView):
     """
+    URL: /mypage/instructor/uploaded-lectures/
+
     강사 본인이 업로드한 동영상들을 조회하는 view
     GET /mypage/instructor/uploaded-lectures/
     """
@@ -139,6 +145,8 @@ class InstructorUploadedLectureListView(generics.ListAPIView):
 
 class InstructorSettlementRequestView(APIView):
     """
+    URL: /mypage/instructor/request-settlement/
+
     정산을 요청하는 view
     POST /mypage/instructor/request-settlement/
     """
@@ -185,6 +193,8 @@ class InstructorSettlementRequestView(APIView):
 
 class InstructorSettlementInfoView(APIView):
     """
+    URL: /mypage/instructor/settlement-info/
+
     정산 정보를 반환하는 view
     GET /mypage/instructor/settlement-info/
     """

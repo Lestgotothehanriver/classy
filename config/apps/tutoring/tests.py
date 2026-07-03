@@ -2,6 +2,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
 from config.apps.tutoring.models import TutoringPost, TutoringPostLike
+from config.apps.pending.models import PendingInstructor
 
 
 class LikeSortingTestBase(TestCase):
@@ -11,11 +12,11 @@ class LikeSortingTestBase(TestCase):
         self.client = APIClient()
 
         # 유저 생성 (학생 2명 + 강사 3명)
-        self.student_user1 = User.objects.create_user(username="student1", password="pass1234")
-        self.student_user2 = User.objects.create_user(username="student2", password="pass1234")
-        self.instructor_user1 = User.objects.create_user(username="inst1", password="pass1234")
-        self.instructor_user2 = User.objects.create_user(username="inst2", password="pass1234")
-        self.instructor_user3 = User.objects.create_user(username="inst3", password="pass1234")
+        self.student_user1 = User.objects.create_user(username="student1", user_name="student1", password="pass1234")
+        self.student_user2 = User.objects.create_user(username="student2", user_name="student2", password="pass1234")
+        self.instructor_user1 = User.objects.create_user(username="inst1", user_name="inst1", password="pass1234")
+        self.instructor_user2 = User.objects.create_user(username="inst2", user_name="inst2", password="pass1234")
+        self.instructor_user3 = User.objects.create_user(username="inst3", user_name="inst3", password="pass1234")
 
         # 프로필 생성
         self.student1 = Student.objects.create(user=self.student_user1)
@@ -23,6 +24,11 @@ class LikeSortingTestBase(TestCase):
         self.inst1 = Instructor.objects.create(user=self.instructor_user1, university="A대학교")
         self.inst2 = Instructor.objects.create(user=self.instructor_user2, university="B대학교")
         self.inst3 = Instructor.objects.create(user=self.instructor_user3, university="C대학교")
+
+        # 강사 승인 상태(VERIFIED) 생성
+        PendingInstructor.objects.create(instructor_profile=self.inst1, status=PendingInstructor.Status.VERIFIED)
+        PendingInstructor.objects.create(instructor_profile=self.inst2, status=PendingInstructor.Status.VERIFIED)
+        PendingInstructor.objects.create(instructor_profile=self.inst3, status=PendingInstructor.Status.VERIFIED)
 
 
 class InstructorLikeSortingTest(LikeSortingTestBase):

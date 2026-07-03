@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 class StudentSignupAPIView(APIView):
     """
+    URL: /accounts/signup/student/
+
     학생용 회원가입 및 프로필 관리를 위한 API View입니다.
 
     Request (POST /):
@@ -105,6 +107,8 @@ class StudentSignupAPIView(APIView):
 
 class InstructorSignupAPIView(GenericAPIView):
     """
+    URL: /accounts/signup/instructor/
+
     강사용 회원가입 및 프로필 업데이트를 처리하는 API View입니다.
 
     POST /accounts/signup/instructor/
@@ -137,12 +141,17 @@ class InstructorSignupAPIView(GenericAPIView):
             serializer.is_valid(raise_exception=True)
             
         user = serializer.save()
+        token, _ = Token.objects.get_or_create(user=user)
+        now = timezone.now()
+        user.instructor_profile.last_login = now
+        user.instructor_profile.save(update_fields=["last_login"])
         logger.info(f"*** [InstructorSignup] Instructor user created: {user.email} (ID: {user.id}) ***")
 
-        pending = user.instructor_profile.pending_info
+        pending = getattr(user.instructor_profile, 'pending_info', None)
+        pending_status = pending.status if pending else 'NOT_SUBMITTED'
 
         return Response(
-            {"id": user.id, "email": user.email, "role": "INSTRUCTOR", "pending_status": pending.status},
+            {"id": user.id, "email": user.email, "role": "INSTRUCTOR", "pending_status": pending_status, "token": token.key},
             status=status.HTTP_201_CREATED,
         )
 
@@ -155,8 +164,9 @@ class InstructorSignupAPIView(GenericAPIView):
         user = serializer.save()
 
         pending_status = None
-        if hasattr(user, "instructor_profile") and hasattr(user.instructor_profile, "pending_info"):
-            pending_status = user.instructor_profile.pending_info.status
+        if hasattr(user, "instructor_profile"):
+            pending = getattr(user.instructor_profile, 'pending_info', None)
+            pending_status = pending.status if pending else 'NOT_SUBMITTED'
 
         return Response(
             {"id": user.id, "email": user.email, "role": "INSTRUCTOR", "pending_status": pending_status},
@@ -169,6 +179,8 @@ class InstructorSignupAPIView(GenericAPIView):
 
 class LoginAPIView(APIView):
     """
+    URL: /accounts/login/
+
     이메일과 비밀번호를 사용하여 인증(Login) 토큰을 발급하는 API View입니다.
 
     - 학생 계정은 즉시 접속 가능합니다.
@@ -224,7 +236,8 @@ class LoginAPIView(APIView):
 
         if hasattr(user, "instructor_profile"):
             instructor = user.instructor_profile
-            pending_status = instructor.pending_info.status
+            pending_info = getattr(instructor, 'pending_info', None)
+            pending_status = pending_info.status if pending_info else 'NOT_SUBMITTED'
             prev_last_login = instructor.last_login
             instructor.last_login = now
             instructor.save(update_fields=["last_login"])
@@ -233,26 +246,6 @@ class LoginAPIView(APIView):
                 "status": pending_status,
                 "last_login": prev_last_login.isoformat() if prev_last_login else None,
             })
-
-        instructor_roles = [r for r in available_roles if r['role'] == 'instructor']
-        non_instructor_roles = [r for r in available_roles if r['role'] != 'instructor']
-
-        # 강사 전용 계정이며 아직 PENDING → 로그인 차단
-        if instructor_roles and not non_instructor_roles:
-            pending_status = instructor_roles[0]['status']
-            logger.info(f"*** [Login] Instructor status check: {pending_status} for {user.email} ***")
-            if pending_status == PendingInstructor.Status.PENDING:
-                logger.warning(f"*** [Login] Blocked PENDING instructor: {user.email} ***")
-                return Response({
-                    'error': '아직 심사가 완료되지 않았습니다. 승인 후 로그인해 주세요.',
-                    'status': 'PENDING',
-                }, status=403)
-            elif pending_status == PendingInstructor.Status.SUSPENDED:
-                logger.warning(f"*** [Login] Blocked SUSPENDED instructor: {user.email} ***")
-                return Response({
-                    'error': '계정이 정지되었거나 승인되지 않았습니다. 클래씨 고객센터에 문의해 주세요.',
-                    'status': 'SUSPENDED',
-                }, status=403)
 
         # 로그인 토큰 발급
         token, _ = Token.objects.get_or_create(user=user)
@@ -267,6 +260,8 @@ class LoginAPIView(APIView):
 # 닉네임 중복 확인 API  
 class CheckUsernameAPIView(APIView):
     """
+    URL: /accounts/check-username/
+
     회원가입 또는 프로필 수정 과정에서 닉네임(user_name) 중복 여부를 검사하는 API View입니다.
 
     현재 로그인된 사용자(Token 제공 시)의 경우 자신의 기존 닉네임은 중복 체크에서 제외합니다.
@@ -301,6 +296,8 @@ class CheckUsernameAPIView(APIView):
 # 로그아웃 API  
 class LogoutAPIView(APIView):
     """
+    URL: /accounts/logout/
+
     POST /accounts/logout/
     - Authorization: Token <token>
     """
@@ -323,6 +320,8 @@ class LogoutAPIView(APIView):
 # 회원 탈퇴 API Soft Delete 방식 (데이터는 사내 정책에 따라 일정 기간 남기고, 일단 비활성화, 일정기간 후에 완전 삭제)
 class WithdrawAPIView(APIView):
     """
+    URL: /accounts/withdraw/
+
     POST /accounts/withdraw/
     - Authorization: Token <token>
     Body: { "reason": "더 이상 과외를 구하지 않아요", "reason_detail": "..." }
@@ -356,6 +355,8 @@ class WithdrawAPIView(APIView):
 
 class CheckPhoneAPIView(APIView):
     """
+    URL: /accounts/check-phone/
+
     입력된 휴대전화 번호로 이미 가입된 계정이 존재하는지 여부와 해당 계정의 역할을 확인합니다.
 
     Args:
@@ -409,6 +410,8 @@ class CheckPhoneAPIView(APIView):
 
 class AddRoleAPIView(APIView):
     """
+    URL: /accounts/add-role/
+
     POST /accounts/add-role/
     - 기존 phone으로 가입된 유저에게 새로운 역할(student/instructor)을 추가합니다.
     - 토큰 불필요 (전화번호 + 비밀번호로 본인 확인)
@@ -505,6 +508,8 @@ class AddRoleAPIView(APIView):
 
 class UserProfileAPIView(APIView):
     """
+    URL: /accounts/me/
+
     GET  /accounts/me/   — 내 프로필 조회
     PATCH /accounts/me/  — 공통 텍스트 필드 수정 (닉네임, 전화번호, 지역)
 
@@ -572,6 +577,8 @@ class UserProfileAPIView(APIView):
 
 class RequestPhoneChangeAPIView(APIView):
     """
+    URL: /accounts/me/phone/request/
+
     POST /accounts/me/phone/request/
     - 전화번호 변경을 위한 인증번호 요청
     Body: { "phone": "01012345678" }
@@ -609,6 +616,8 @@ class RequestPhoneChangeAPIView(APIView):
 
 class VerifyPhoneChangeAPIView(APIView):
     """
+    URL: /accounts/me/phone/verify/
+
     POST /accounts/me/phone/verify/
     - 인증번호 확인 후 전화번호 업데이트
     Body: { "phone": "01012345678", "code": "123456" }
@@ -649,6 +658,8 @@ class VerifyPhoneChangeAPIView(APIView):
 
 class ProfileImageAPIView(APIView):
     """
+    URL: /accounts/me/image/
+
     PATCH /accounts/me/image/  — 프로필 이미지 업로드/교체
     Content-Type: multipart/form-data
     Form field: profile_image (file)
@@ -670,6 +681,8 @@ class ProfileImageAPIView(APIView):
 
 class InstructorRetryAPIView(APIView):
     """
+    URL: /accounts/signup/instructor/retry/
+
     POST /accounts/signup/instructor/retry/
     - Content-Type: multipart/form-data
     - email 기반 심사 재요청 API (토큰 없이 호출 가능)
@@ -747,6 +760,8 @@ class InstructorRetryAPIView(APIView):
 
 class UserDetailAPIView(APIView):
     """
+    URL: /accounts/user/<pk>/
+
     GET /accounts/user/<int:pk>/
     - 특정 유저의 공개 프로필 정보를 조회합니다.
     """
@@ -767,7 +782,8 @@ class UserDetailAPIView(APIView):
         _choices_map = dict(STUDENT_SUBJECT_CHOICES)
 
         if is_instructor:
-            raw_status = user.instructor_profile.pending_info.status
+            pending_info = getattr(user.instructor_profile, 'pending_info', None)
+            raw_status = pending_info.status if pending_info else 'PENDING'
             verification_status = _STATUS_MAP.get(raw_status, 'pending')
             subjects = [
                 _choices_map.get(n, str(n))
@@ -800,6 +816,8 @@ class UserDetailAPIView(APIView):
 
 class SubjectListAPIView(APIView):
     """
+    URL: /accounts/subjects/
+
     GET /accounts/subjects/
     - Return the list of all available subjects
     """

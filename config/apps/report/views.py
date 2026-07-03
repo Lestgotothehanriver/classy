@@ -10,6 +10,8 @@ from .serializers import ReportCreateSerializer, ReportResponseSerializer
 
 class ReportCreateAPIView(APIView):
     """
+    URL: /report/create/
+
     POST /report/create/
     인증된 사용자가 다른 사용자를 신고합니다.
 
@@ -48,6 +50,8 @@ class ReportCreateAPIView(APIView):
 
 class InquiryCreateAPIView(APIView):
     """
+    URL: /report/inquiry/
+
     POST /report/inquiry/
     인증된 사용자가 고객센터에 1:1 문의를 남깁니다.
 

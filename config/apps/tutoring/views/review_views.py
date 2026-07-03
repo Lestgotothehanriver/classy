@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 import logging
+from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
 from ..models import InstructorReview, StudentReview, InstructorInfo
@@ -30,6 +31,9 @@ class InstructorReviewViewSet(
     viewsets.GenericViewSet
 ):
     """
+    URL: /tutoring/reviews/instructor/
+    URL: /tutoring/reviews/instructor/<pk>/
+
     학생이 강사에 대한 별점과 후기를 관리하는 API ViewSet입니다.
 
     Request (POST /):
@@ -87,6 +91,9 @@ class StudentReviewViewSet(
     viewsets.GenericViewSet
 ):
     """
+    URL: /tutoring/reviews/student/
+    URL: /tutoring/reviews/student/<pk>/
+
     강사가 학생에 대한 별점과 후기를 관리하는 API ViewSet입니다.
 
     Request (POST /):
@@ -139,6 +146,8 @@ class StudentReviewViewSet(
 
 class StudentReviewListAPIView(generics.ListAPIView):
     """
+    URL: /tutoring/students/<student_id>/reviews/
+
     특정 학생이 여러 강사들로부터 받은 '학생 리뷰(StudentReview)' 목록을 조회하는 API View입니다.
 
     과외 성사 전 강사가 학생의 성향이나 이전 평가를 참고할 수 있도록 제공되는 정보입니다.
@@ -155,9 +164,14 @@ class StudentReviewListAPIView(generics.ListAPIView):
     def get_queryset(self):
         student_id = self.kwargs["student_id"]
         # 강사 정보와 과목을 미리 로드하여 N+1 쿼리 방지
-        return StudentReview.objects.filter(
-            student_id=student_id
-        ).select_related(
+        qs = StudentReview.objects.filter(student_id=student_id)
+        
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
+                
+        return qs.select_related(
             "instructor", "instructor__user"
         ).prefetch_related(
             "instructor__subjects"
@@ -176,6 +190,10 @@ class InstructorInfoViewSet(
     viewsets.GenericViewSet
 ):
     """
+    URL: /tutoring/instructor-info/
+    URL: /tutoring/instructor-info/<pk>/
+    URL: /tutoring/instructor-info/mine/
+
     강사가 자신의 상세 '과외 소개 정보(InstructorInfo)'를 작성 및 관리하는 API ViewSet입니다.
 
     1명의 강사는 단 1개의 상세 정보(InstructorInfo) 객체만 가질 수 있습니다(1:1 관계).

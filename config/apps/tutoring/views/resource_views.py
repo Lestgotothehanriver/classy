@@ -3,9 +3,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 import logging
+from config.apps.block.utils import get_blocked_user_ids
 
 from ..models import TutoringResource, TutoringResourceFile
 from ..serializers import TutoringResourceSerializer, TutoringResourceListSerializer
+
+from config.apps.common.permissions import IsVerifiedInstructor
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,10 @@ class IsResourceParticipant(permissions.BasePermission):
 
 class TutoringResourceViewSet(viewsets.ModelViewSet):
     """
+    URL: /tutoring/resources/
+    URL: /tutoring/resources/<pk>/
+    URL: /tutoring/resources/<pk>/confirm-payment/
+
     과외 수업 관련 계약, 수업료 지불 상태 및 증빙 파일을 관리하는 API ViewSet입니다.
 
     학생과 강사 간의 합의된 수업료 내역과 입금 확인증(이미지/PDF)을 관리하며,
@@ -56,7 +63,7 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         - 인증된 사용자만 접근 가능.
         - 본인이 학생(student) 또는 강사(instructor)로 포함된 리소스만 조회/수정 가능 (IDOR 방지).
     """
-    permission_classes = [permissions.IsAuthenticated, IsResourceParticipant]
+    permission_classes = [permissions.IsAuthenticated, IsResourceParticipant, IsVerifiedInstructor]
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -74,7 +81,14 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         qs = TutoringResource.objects.all()
 
         if self.action == 'list':
-            return qs.filter(Q(student__user=user) | Q(instructor__user=user))
+            qs = qs.filter(Q(student__user=user) | Q(instructor__user=user))
+            blocked_user_ids = get_blocked_user_ids(user)
+            if blocked_user_ids:
+                qs = qs.exclude(
+                    Q(student__user_id__in=blocked_user_ids) |
+                    Q(instructor__user_id__in=blocked_user_ids)
+                )
+            return qs
 
         return qs
 

@@ -162,8 +162,10 @@ class NotificationConsumer(AsyncWebsocketConsumer):
         if token:
             return token
 
-        headers = dict(self.scope.get("headers", []))
-        auth = headers.get(b"authorization", b"").decode()
-        if auth.lower().startswith("token "):
-            return auth.split(" ", 1)[1]
+        headers = {k.decode("utf-8").lower(): v.decode("utf-8") for k, v in self.scope.get("headers", [])}
+        auth = headers.get("authorization", "")
+        if auth:
+            parts = auth.split()
+            if len(parts) == 2 and parts[0].lower() in ("token", "bearer"):
+                return parts[1]
         return None

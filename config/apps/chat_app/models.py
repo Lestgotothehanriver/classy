@@ -163,28 +163,3 @@ class UserDeviceToken(models.Model):
     def __str__(self):
         return f"{self.user_id}:{self.platform}"
 
-#_______________________________________________________________________
-# ✅ BlockedUser 모델: 채팅 및 플랫폼 사용자 차단 기능
-#_______________________________________________________________________
-class BlockedUser(models.Model):
-    """
-    특정 사용자가 다른 사용자를 '차단(Block)'한 내역을 관리하는 모델입니다.
-    
-    차단된 사용자는 차단한 사용자에게 메시지를 보내거나 프로필을 정상적으로 조회할 수 없습니다.
-    
-    Attributes:
-        user (ForeignKey): 차단을 실행한 주체 유저.
-        target_user (ForeignKey): 차단을 당한 대상 유저.
-        created_at (DateTimeField): 차단 설정 일시.
-    """
-    user = models.ForeignKey(User, related_name="blocking_users", on_delete=models.CASCADE)
-    target_user = models.ForeignKey(User, related_name="blocked_by_users", on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['user', 'target_user'], name='unique_block')
-        ]
-
-    def __str__(self):
-        return f"{self.user} blocked {self.target_user}"

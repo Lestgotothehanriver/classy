@@ -41,11 +41,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.debug("[BACKEND_DEBUG_CHAT] connect - room_id: %s, token_key: %s", self.room_id, bool(token_key))
 
         if not token_key:
-            # 헤더에서 토큰 추출 시도
-            headers = dict(self.scope.get("headers", []))
-            auth_header = headers.get(b"authorization", b"").decode("utf-8")
-            if auth_header.lower().startswith("token "):
-                token_key = auth_header.split(" ")[1]
+            # 헤더에서 토큰 추출 시도 (대소문자 구분 없이, Token/Bearer 스키마 지원)
+            headers = {k.decode("utf-8").lower(): v.decode("utf-8") for k, v in self.scope.get("headers", [])}
+            auth_header = headers.get("authorization", "")
+            if auth_header:
+                parts = auth_header.split()
+                if len(parts) == 2 and parts[0].lower() in ("token", "bearer"):
+                    token_key = parts[1]
 
         self.user = await self.get_user_from_token(token_key)
         logger.debug("[BACKEND_DEBUG_CHAT] connect - authenticated: %s, user_id: %s", 
@@ -54,12 +56,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # 비로그인 사용자는 거부
         if getattr(self.user, "is_anonymous", True):  # isinstance(self.user, AnonymousUser) 확인보다 안전함
+            logger.warning("[BACKEND_DEBUG_CHAT] Connection rejected: Anonymous user or invalid token.")
             await self.close()
             return
 
         # 방 참가자가 아니면 거부
         in_room = await self.user_in_room()
         if not in_room:
+            logger.warning("[BACKEND_DEBUG_CHAT] Connection rejected: User %s (ID: %s) is not a participant in room %s.", 
+                           getattr(self.user, "email", "N/A"), getattr(self.user, "id", "N/A"), self.room_id)
             await self.close()
             return
 

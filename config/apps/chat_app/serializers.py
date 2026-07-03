@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatRoom, ChatMessage, Image, BlockedUser
+from .models import ChatRoom, ChatMessage, Image
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 
@@ -280,20 +280,4 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         if not request: return False
         return obj.muted_by.filter(pk=request.user.pk).exists()
 
-class BlockedUserSerializer(serializers.ModelSerializer):
-    target_user_info = serializers.SerializerMethodField()
 
-    class Meta:
-        model = BlockedUser
-        fields = ('id', 'user', 'target_user', 'target_user_info', 'created_at')
-        read_only_fields = ('user', 'target_user_info', 'created_at')
-
-    def get_target_user_info(self, obj):
-        user = obj.target_user
-        profile_img = user.profile_img.url if hasattr(user, 'profile_img') and user.profile_img else None
-        return {
-            'id': user.id,
-            'name': getattr(user, 'user_name', user.username),
-            'profile_img': profile_img
-        }
-      

@@ -217,10 +217,11 @@ class InstructorSignupSerializer(serializers.Serializer):
             student_number=validated_data.get("student_number", ""),
         )
 
-        PendingInstructor.objects.create(
-            instructor_profile=instructor_profile,
-            status=PendingInstructor.Status.PENDING,
-        )
+        # 회원가입 단계에서는 PendingInstructor를 자동으로 생성하지 않습니다.
+        # PendingInstructor.objects.create(
+        #     instructor_profile=instructor_profile,
+        #     status=PendingInstructor.Status.PENDING,
+        # )
 
 
 

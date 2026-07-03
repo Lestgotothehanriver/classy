@@ -3,6 +3,7 @@ from django.db.models import Avg, Count, F
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 import logging
+from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
 from config.apps.common.utils import parse_int_list, apply_subject_filter
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 class TutoringPostListAPIView(generics.ListAPIView):
     """
+    URL: /tutoring/posts/
+
     학생들이 올린 활성화된 '과외 구인 공고(TutoringPost)' 목록을 조회하고 필터링하는 API View입니다.
 
     Query Parameters:
@@ -43,6 +46,11 @@ class TutoringPostListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = TutoringPost.objects.filter(is_active=True).select_related("student").prefetch_related("subjects")
+
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                qs = qs.exclude(student__user_id__in=blocked_user_ids)
 
         qs = qs.annotate(
             student_avg_rating=Avg("student__student_reviews__rating"),
@@ -92,6 +100,8 @@ class TutoringPostListAPIView(generics.ListAPIView):
 
 class TutoringPostDetailAPIView(generics.RetrieveAPIView):
     """
+    URL: /tutoring/posts/<pk>/
+
     특정 '과외 구인 공고'의 상세 정보를 조회하는 API View입니다.
 
     조회 시 자동으로 해당 공고의 조회수(view_count)가 1 증가합니다.
@@ -115,6 +125,9 @@ class TutoringPostViewSet(mixins.CreateModelMixin,
                           mixins.DestroyModelMixin,
                           viewsets.GenericViewSet):
     """
+    URL: /tutoring/posts/write/
+    URL: /tutoring/posts/write/<pk>/
+
     학생이 자신의 '과외 구인 공고'를 관리(작성/수정/삭제)하는 API ViewSet입니다.
 
     Request (POST /):
@@ -149,6 +162,8 @@ class TutoringPostViewSet(mixins.CreateModelMixin,
 
 class StudentMyPostAPIView(generics.ListAPIView):
     """
+    URL: /tutoring/my-posts/
+
     학생 본인이 작성했던 모든 '과외 구인 공고' 목록을 조회하는 API View입니다.
 
     활성화(is_active) 여부와 상관없이 본인의 작성 이력을 최신순으로 제공합니다.

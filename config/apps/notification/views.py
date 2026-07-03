@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 class NotificationListAPIView(APIView):
     """
+    URL: /notification/
+
     유저가 수신한 '알림(Notification)' 목록을 조회하거나 일괄 삭제하는 API View입니다.
 
     Response (GET /):
@@ -61,6 +63,8 @@ class NotificationListAPIView(APIView):
 
 class NotificationUnreadCountAPIView(APIView):
     """
+    URL: /notification/unread-count/
+
     본인의 '안 읽은 알림(is_read=False) 개수'를 역할별로 조회하는 API View입니다.
 
     앱 진입 시 뱃지(Badge) 업데이트를 위해 호출됩니다.
@@ -85,6 +89,8 @@ class NotificationUnreadCountAPIView(APIView):
 
 class NotificationReadAPIView(APIView):
     """
+    URL: /notification/<pk>/read/
+
     특정 알림을 '읽음 처리(is_read=True)'하는 API View입니다.
 
     Response (PATCH /):
@@ -130,6 +136,8 @@ class NotificationReadAPIView(APIView):
 
 class NotificationReadAllAPIView(APIView):
     """
+    URL: /notification/read-all/
+
     본인이 수신한 '모든 안 읽은 알림'을 일괄적으로 '읽음 처리(is_read=True)'하는 API View입니다.
 
     알림 탭에서 "모두 읽음" 버튼을 클릭할 때 사용되며,
@@ -151,6 +159,8 @@ class NotificationReadAllAPIView(APIView):
 
 class DeviceTokenAPIView(APIView):
     """
+    URL: /device-token/
+
     FCM(Firebase Cloud Messaging) 또는 APNs의 '디바이스 푸시 토큰(DeviceToken)'을 
     생성, 조회, 수정(알림 켜기/끄기)하는 API View입니다.
 
@@ -173,13 +183,17 @@ class DeviceTokenAPIView(APIView):
             .first()
         )
         if token_obj is None:
-            return Response({"is_active": None}, status=200)
-        return Response({"is_active": token_obj.is_active}, status=200)
+            return Response({"is_active": None, "is_chat_active": None}, status=200)
+        return Response({
+            "is_active": token_obj.is_active,
+            "is_chat_active": token_obj.is_chat_active
+        }, status=200)
 
     def post(self, request):
         fcm_token = request.data.get("token", "").strip()
         platform = request.data.get("platform", "android")
         explicit_state = request.data.get("is_active")
+        explicit_chat_state = request.data.get("is_chat_active")
         logger.info(
             "*** [DeviceToken] Register attempt for user: %s (Platform: %s) ***",
             request.user.email,
@@ -210,6 +224,7 @@ class DeviceTokenAPIView(APIView):
                 "user": request.user,
                 "platform": platform,
                 "is_active": _coerce_is_active(explicit_state, default=True),
+                "is_chat_active": _coerce_is_active(explicit_chat_state, default=True),
             },
         )
         if not created:
@@ -219,22 +234,25 @@ class DeviceTokenAPIView(APIView):
             )
             obj.user = request.user
             obj.platform = platform
+            update_fields = ["user", "platform", "updated_at"]
             if explicit_state is not None:
-                obj.is_active = _coerce_is_active(
-                    explicit_state, default=obj.is_active
-                )
-                obj.save(
-                    update_fields=["user", "platform", "is_active", "updated_at"]
-                )
-            else:
-                obj.save(update_fields=["user", "platform", "updated_at"])
+                obj.is_active = _coerce_is_active(explicit_state, default=obj.is_active)
+                update_fields.append("is_active")
+            if explicit_chat_state is not None:
+                obj.is_chat_active = _coerce_is_active(explicit_chat_state, default=obj.is_chat_active)
+                update_fields.append("is_chat_active")
+            obj.save(update_fields=update_fields)
         else:
             logger.info(
                 "*** [DeviceToken] New token record created for: %s ***",
                 request.user.email,
             )
 
-        return Response({"registered": True, "is_active": obj.is_active}, status=201)
+        return Response({
+            "registered": True,
+            "is_active": obj.is_active,
+            "is_chat_active": obj.is_chat_active
+        }, status=201)
 
     def put(self, request):
         qs = DeviceToken.objects.filter(user=request.user).order_by("-updated_at")
@@ -242,13 +260,32 @@ class DeviceTokenAPIView(APIView):
             return Response({"error": "No device token registered"}, status=404)
 
         token_obj = qs.first()
-        explicit_state = request.data.get("is_active")
-        token_obj.is_active = _coerce_is_active(
-            explicit_state,
-            default=not token_obj.is_active,
-        )
-        token_obj.save(update_fields=["is_active", "updated_at"])
-        return Response({"is_active": token_obj.is_active}, status=200)
+        
+        has_is_active = "is_active" in request.data
+        has_is_chat_active = "is_chat_active" in request.data
+        update_fields = ["updated_at"]
+        
+        if has_is_chat_active:
+            explicit_chat_state = request.data.get("is_chat_active")
+            token_obj.is_chat_active = _coerce_is_active(
+                explicit_chat_state,
+                default=not token_obj.is_chat_active,
+            )
+            update_fields.append("is_chat_active")
+            
+        if has_is_active or not has_is_chat_active:
+            explicit_state = request.data.get("is_active")
+            token_obj.is_active = _coerce_is_active(
+                explicit_state,
+                default=not token_obj.is_active,
+            )
+            update_fields.append("is_active")
+            
+        token_obj.save(update_fields=update_fields)
+        return Response({
+            "is_active": token_obj.is_active,
+            "is_chat_active": token_obj.is_chat_active
+        }, status=200)
 
 
 def _serialize(n: Notification) -> dict:

@@ -30,6 +30,7 @@ class DeviceToken(models.Model):
     token = models.CharField(max_length=500, unique=True)
     platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='android')
     is_active = models.BooleanField(default=True)  # 사용자가 알림 off 시 False
+    is_chat_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

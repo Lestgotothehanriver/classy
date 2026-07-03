@@ -19,6 +19,8 @@ from config.apps.main.serializers import StudentMainTutorSerializer, InstructorM
 
 class StudentMainAPIView(APIView):
     """
+    URL: /main/student/
+
     학생 메인 화면 정보를 제공합니다.
     내 지역 기반의 추천 강사 목록을 포함합니다.
     """
@@ -67,6 +69,8 @@ class StudentMainAPIView(APIView):
 
 class InstructorMainAPIView(APIView):
     """
+    URL: /main/instructor/
+
     강사 메인 화면 정보를 제공합니다.
     월간 순위, 이번 달 수익, 지역 기반 추천 학생 목록을 포함합니다.
     """

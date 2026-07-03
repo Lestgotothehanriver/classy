@@ -239,6 +239,8 @@ def verify_google_receipt(purchase_token: str, product_id: str) -> tuple:
 
 class InstructorAccountView(APIView):
     """
+    URL: /cash/account/
+
     강사가 자신의 '정산 계좌 정보(Account)'를 조회, 등록, 수정하는 API View입니다.
 
     캐시 환전 등을 위해 실명 및 은행 계좌 정보가 등록되어야 하며,
@@ -315,6 +317,9 @@ class InstructorAccountView(APIView):
 # 캐시 구매 API
 # ──────────────────────────────────────────────
 class PurchaseCashView(APIView):
+    """
+    URL: /cash/purchase/
+    """
     permission_classes = [IsAuthenticated]
     throttle_classes = [PurchaseRateThrottle]
 
@@ -437,6 +442,8 @@ class PurchaseCashView(APIView):
 
 class RedeemCouponView(APIView):
     """
+    URL: /cash/coupons/redeem/
+
     프로모션 '쿠폰(Coupon)' 코드를 입력받아 캐시를 충전해주는 API View입니다.
 
     Atomic 트랜잭션을 사용하여 쿠폰의 상태(사용 여부, 만료 여부)를 검증하고,
@@ -527,6 +534,9 @@ class RedeemCouponView(APIView):
 # 강의 대여 API
 # ──────────────────────────────────────────────
 class RentLectureView(APIView):
+    """
+    URL: /cash/rentals/
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -618,6 +628,9 @@ class RentLectureView(APIView):
 # 강의 대여 취소(환불) API
 # ──────────────────────────────────────────────
 class CancelLectureRentalView(APIView):
+    """
+    URL: /cash/rentals/<pk>/cancel/
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
@@ -692,6 +705,9 @@ class CancelLectureRentalView(APIView):
 # 구매(캐시 충전) 환불 API
 # ──────────────────────────────────────────────
 class RefundPurchaseView(APIView):
+    """
+    URL: /cash/webhook/apple/
+    """
     permission_classes = []
 
     def post(self, request, *args, **kwargs):
@@ -835,6 +851,9 @@ class RefundPurchaseView(APIView):
 # Google Play Store 환불 / 취소 알림 웹훅 (Pub/Sub)
 # ──────────────────────────────────────────────
 class GooglePlayWebhookView(APIView):
+    """
+    URL: /cash/webhook/google/
+    """
     permission_classes = []
 
     def post(self, request, *args, **kwargs):
@@ -982,6 +1001,8 @@ class GooglePlayWebhookView(APIView):
 # ──────────────────────────────────────────────
 class PurchaseHistoryListView(APIView):
     """
+    URL: /cash/purchase-history/
+
     본인의 인앱 결제를 통한 '캐시 충전 내역(PurchaseHistory)' 목록을 최신순으로 조회합니다.
 
     Returns:
@@ -1013,6 +1034,8 @@ class PurchaseHistoryListView(APIView):
 # ──────────────────────────────────────────────
 class RentalHistoryListView(APIView):
     """
+    URL: /cash/rental-history/
+
     본인이 대여한 'VOD 강의 결제 내역(LectureRentalHistory)' 목록을 최신순으로 조회합니다.
 
     7일 내에 취소 가능한지 여부(is_cancelable)를 동적으로 계산하여 함께 반환합니다.

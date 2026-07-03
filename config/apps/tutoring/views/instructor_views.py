@@ -3,6 +3,7 @@ from django.db.models import Avg, Count, F, ExpressionWrapper, FloatField, Outer
 from django.db.models import IntegerField as DjangoIntField
 from django.shortcuts import get_object_or_404
 import logging
+from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student, InstructorLike
 from config.apps.cash.models import InstructorMonthlyRank
@@ -15,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     """
+    URL: /tutoring/instructors/
+
     승인 완료된 '강사 목록'을 조회하고 필터링하는 API View입니다.
 
     Query Parameters:
@@ -46,6 +49,11 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     def get_queryset(self):
         qs = Instructor.objects.filter(pending_info__status='VERIFIED')
         qs = qs.select_related("tutoring_profile")
+
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                qs = qs.exclude(user_id__in=blocked_user_ids)
 
         qs = self.annotate_instructor_stats(qs, self.request.user)
 
@@ -144,6 +152,8 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
 
 class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin):
     """
+    URL: /tutoring/instructors/<pk>/
+
     특정 강사의 상세 프로필 정보를 조회하는 API View입니다.
 
     Path Parameters:
@@ -172,6 +182,8 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
 
 class InstructorInfoAPIView(generics.RetrieveAPIView):
     """
+    URL: /tutoring/instructors/<instructor_id>/info/
+
     특정 강사가 직접 작성한 '과외 소개(InstructorInfo)' 상세 탭 데이터를 조회하는 API View입니다.
 
     기본 프로필 외에, 강사의 자기소개(description), 수업 방식(method), 
@@ -218,6 +230,8 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
 
 class InstructorReviewListAPIView(generics.ListAPIView):
     """
+    URL: /tutoring/instructors/<instructor_id>/reviews/
+
     특정 강사가 학생들로부터 받은 '강사 리뷰(InstructorReview)' 목록을 조회하는 API View입니다.
 
     Path Parameters:
@@ -231,6 +245,11 @@ class InstructorReviewListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         instructor_id = self.kwargs["instructor_id"]
-        return InstructorReview.objects.filter(
-            instructor_id=instructor_id
-        ).prefetch_related("subjects").order_by("-id")
+        qs = InstructorReview.objects.filter(instructor_id=instructor_id)
+        
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                qs = qs.exclude(student__user_id__in=blocked_user_ids)
+                
+        return qs.prefetch_related("subjects").order_by("-id")

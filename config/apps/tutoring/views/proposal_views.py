@@ -4,8 +4,10 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 import logging
+from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
+from config.apps.common.permissions import IsVerifiedInstructor
 from config.apps.chat_app.models import ChatRoom
 from ..models import TutoringPost, TutoringProposal
 from ..serializers import TutoringProposalSerializer
@@ -22,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 class StudentProposeToInstructorAPIView(APIView):
     """
+    URL: /tutoring/propose-to-instructor/
+
     학생이 강사에게 과외 문의를 보내고 대화를 시작하는 API View입니다.
 
     제안 성공 시 강사와의 채팅방(ChatRoom)이 생성되며, 학생의 첫 메시지가 자동 발송됩니다.
@@ -75,6 +79,8 @@ class StudentProposeToInstructorAPIView(APIView):
 
 class InstructorProposeToStudentAPIView(APIView):
     """
+    URL: /tutoring/propose-to-student/
+
     강사가 학생의 공고를 보고 역제안을 보내는 API View입니다.
 
     제안 시 제안서(TutoringProposal)와 채팅방이 생성됩니다.
@@ -90,7 +96,7 @@ class InstructorProposeToStudentAPIView(APIView):
             "instructor_id": 5
         }
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsVerifiedInstructor]
 
     def post(self, request):
         post_id = request.data.get("post_id")
@@ -129,6 +135,9 @@ class TutoringProposalViewSet(mixins.ListModelMixin,
                               mixins.RetrieveModelMixin,
                               viewsets.GenericViewSet):
     """
+    URL: /tutoring/proposals/
+    URL: /tutoring/proposals/<pk>/
+
     과외 제안서(TutoringProposal)의 목록 및 상세 조회를 담당하는 API ViewSet입니다.
 
     읽기 전용(Read-Only) 액션만 지원하며, 조회하는 사용자(학생 혹은 강사) 본인과
@@ -143,6 +152,14 @@ class TutoringProposalViewSet(mixins.ListModelMixin,
 
     def get_queryset(self):
         user = self.request.user
-        return TutoringProposal.objects.filter(
+        qs = TutoringProposal.objects.filter(
             Q(instructor__user=user) | Q(tutoring_post__student__user=user)
         ).select_related("instructor", "tutoring_post", "tutoring_post__student")
+
+        blocked_user_ids = get_blocked_user_ids(user)
+        if blocked_user_ids:
+            qs = qs.exclude(
+                Q(instructor__user_id__in=blocked_user_ids) |
+                Q(tutoring_post__student__user_id__in=blocked_user_ids)
+            )
+        return qs

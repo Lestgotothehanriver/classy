@@ -38,9 +38,11 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
     non_active_user_ids = []
     muted_user_ids = set(room.muted_by.values_list('id', flat=True))
     for u in participants:
-         # device_token 역참조나 다른 관련된 로직 활용
-         # 일단은 hasattr로 방어 코드 작성 (User 모델에 device_token이 OneToOne으로 연결되어 있다고 가정)
-         if hasattr(u, 'device_token') and not u.device_token.is_active:
+         # Query device_tokens for the user and determine if they have disabled notifications.
+         # If they have device tokens, but all of them are inactive (either is_active=False or is_chat_active=False),
+         # we consider them as inactive/disabled for chat notifications.
+         tokens = u.device_tokens.all()
+         if tokens.exists() and not any(t.is_active and getattr(t, 'is_chat_active', True) for t in tokens):
              non_active_user_ids.append(u.id)
 
     targets = participants_ids - {sender_id} - online - set(non_active_user_ids) - muted_user_ids

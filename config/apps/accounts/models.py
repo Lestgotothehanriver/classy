@@ -81,6 +81,7 @@ class User(AbstractUser):
     withdraw_reason_detail = models.TextField(blank=True)  # 탈퇴 상세 사유
 
 
+
 class Student(models.Model):
     """
     학생 전용 프로필 모델입니다.

@@ -31,6 +31,7 @@ urlpatterns = [
     path("report/", include("config.apps.report.urls")),
     path("main/", include("config.apps.main.urls")),
     path("mypage/", include("config.apps.mypage.urls")),
+    path("blocks/", include("config.apps.block.urls")),
     # FCM device token endpoints must resolve to notification.DeviceToken,
     # not the legacy chat_app token model.
     path("device-token/", DeviceTokenAPIView.as_view()),

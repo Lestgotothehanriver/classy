@@ -7,8 +7,10 @@ from rest_framework.viewsets import GenericViewSet
 from django.db import transaction
 from django.db.models import Count, F, Q, Exists, OuterRef, Value, BooleanField
 from django.shortcuts import get_object_or_404
+from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student
+from config.apps.common.permissions import IsVerifiedInstructor
 from config.apps.cash.models import LectureRentalHistory
 from .models import Lecture, Comment, SearchHistory
 from .serializers import (
@@ -80,6 +82,10 @@ class LectureViewSet(
     GenericViewSet,
 ):
     """
+    URL: /lectures/write/
+    URL: /lectures/write/<pk>/
+    URL: /lectures/write/<pk>/stop-sales/
+
     강사가 자신의 VOD '강의(Lecture)'를 업로드하고 관리하는 API ViewSet입니다.
 
     Request (POST /):
@@ -100,7 +106,7 @@ class LectureViewSet(
             "created_at": "2026-04-26T06:51:26Z"
         }
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsVerifiedInstructor]
     serializer_class = LectureWriteSerializer
 
     def get_queryset(self):
@@ -156,6 +162,8 @@ class LectureViewSet(
 
 class LectureListAPIView(generics.ListAPIView):
     """
+    URL: /lectures/
+
     판매 중(is_active=True)인 전체 '강의 목록'을 조회하고 필터링하는 API View입니다.
 
     학생들이 강의를 검색할 수 있도록 다중 키워드, 지역, 가격, 길이 등 복합 필터링을 지원하며,
@@ -181,6 +189,11 @@ class LectureListAPIView(generics.ListAPIView):
         ).prefetch_related("subjects").annotate(
             like_count=Count("likes", distinct=True),
         ).order_by("-created_at")
+
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
 
         student = Student.objects.filter(user=self.request.user).first() if self.request.user.is_authenticated else None
         
@@ -267,6 +280,8 @@ class LectureListAPIView(generics.ListAPIView):
 
 class LectureStreamAPIView(generics.RetrieveAPIView):
     """
+    URL: /lectures/<pk>/stream/
+
     유효한 대여 권한이 있는지 검증한 후, '강의 영상(Streaming URL)'을 반환하는 API View입니다.
 
     프리뷰 강의(is_preview=True)이거나 자신의 강의인 경우 권한 검증을 통과하며,
@@ -323,6 +338,8 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
 
 class LectureDetailAPIView(APIView):
     """
+    URL: /lectures/<pk>/
+
     특정 강의의 '상세 페이지 데이터'를 한 번에 조립하여 반환하는 API View입니다.
 
     강의 기본 정보뿐만 아니라 현재 유저의 대여 상태, 강사의 무료 프리뷰 영상,
@@ -399,7 +416,7 @@ class LectureDetailAPIView(APIView):
         preview = Lecture.objects.filter(
             instructor=lecture.instructor, is_preview=True
         ).exclude(pk=pk).first()
-        preview_data = LecturePreviewSerializer(preview).data if preview else None
+        preview_data = LecturePreviewSerializer(preview, context={"request": request}).data if preview else None
 
         # (3) 추천 강의 — 동일 과목을 가진 강의 중 좋아요+조회수 기준 상위 10개
         subject_ids = list(lecture.subjects.values_list("id", flat=True))
@@ -410,7 +427,7 @@ class LectureDetailAPIView(APIView):
             .annotate(like_count=Count("likes", distinct=True))
             .order_by("-like_count", "-view_count", "-created_at")[:10]
         )
-        recommended_data = LectureRecommendSerializer(recommended_qs, many=True).data
+        recommended_data = LectureRecommendSerializer(recommended_qs, many=True, context={"request": request}).data
 
         logger.info(
             "[LECTURE_DETAIL] 조회 성공. user_id=%s, lecture_id=%s, rental_status=%s",
@@ -430,6 +447,8 @@ class LectureDetailAPIView(APIView):
 
 class CommentListCreateAPIView(generics.ListCreateAPIView):
     """
+    URL: /lectures/<lecture_id>/comments/
+
     특정 강의의 '댓글(Comment)' 목록을 조회하고 새 댓글을 작성하는 API View입니다.
 
     목록 조회 시 부모 댓글(최상위)만 가져오며, 대댓글(replies)은 중첩되어 반환됩니다.
@@ -455,12 +474,26 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         lecture_id = self.kwargs["lecture_id"]
-        return (
-            Comment.objects.filter(lecture_id=lecture_id, parent__isnull=True)
-            .select_related("author", "referenced_person")
-            .prefetch_related("replies", "replies__author", "replies__referenced_person")
-            .order_by("-created_at")
-        )
+        qs = Comment.objects.filter(lecture_id=lecture_id, parent__isnull=True).select_related("author", "referenced_person")
+        
+        if self.request.user.is_authenticated:
+            blocked_user_ids = get_blocked_user_ids(self.request.user)
+            if blocked_user_ids:
+                from django.db.models import Prefetch
+                qs = qs.exclude(author_id__in=blocked_user_ids).prefetch_related(
+                    Prefetch(
+                        "replies",
+                        queryset=Comment.objects.exclude(author_id__in=blocked_user_ids)
+                        .select_related("author", "referenced_person")
+                        .order_by("created_at")
+                    )
+                )
+            else:
+                qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person")
+        else:
+            qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person")
+            
+        return qs.order_by("-created_at")
 
     def perform_create(self, serializer):
         lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"])
@@ -480,6 +513,8 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
 class CommentUpdateDeleteAPIView(generics.UpdateAPIView, generics.DestroyAPIView):
     """
+    URL: /lectures/comments/<pk>/
+
     본인이 작성한 '댓글(Comment)'의 내용을 수정하거나 삭제하는 API View입니다.
 
     자신이 작성한 댓글(`author=request.user`)만 조작 가능하도록 제한됩니다.
@@ -507,6 +542,8 @@ MAX_SEARCH_HISTORY = 5  # 학생당 최대 검색 기록 수
 
 class SearchHistoryCreateAPIView(generics.ListCreateAPIView):
     """
+    URL: /lectures/search-history/
+
     학생 유저의 '최근 검색 기록(SearchHistory)'을 조회하고 저장하는 API View입니다.
 
     학생 계정(student_profile)만 이용 가능하며, 개인당 최대 5개까지만 보관됩니다.
@@ -570,6 +607,8 @@ class SearchHistoryCreateAPIView(generics.ListCreateAPIView):
 
 class SearchHistoryDeleteAPIView(generics.DestroyAPIView):
     """
+    URL: /lectures/search-history/<pk>/
+
     학생 유저가 자신의 '검색 기록(SearchHistory)' 중 하나를 개별 삭제하는 API View입니다.
 
     본인(`student=request.user.student_profile`)의 기록에만 접근할 수 있습니다.
@@ -591,6 +630,8 @@ class SearchHistoryDeleteAPIView(generics.DestroyAPIView):
 
 class LectureLikeAPIView(APIView):
     """
+    URL: /lectures/<pk>/like/
+
     학생이 특정 VOD '강의(Lecture)'를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
     학생 계정(Student)만 접근 가능하며, 호출 시마다 상태가 토글됩니다.

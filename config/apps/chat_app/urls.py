@@ -1,9 +1,8 @@
 from rest_framework.routers import DefaultRouter
-from .views import ChatRoomViewSet, ImageUploadView, DeviceTokenView, BlockedUserViewSet, ChatNotificationToggleView
+from .views import ChatRoomViewSet, ImageUploadView, DeviceTokenView, ChatNotificationToggleView
 from django.urls import path
 
 router = DefaultRouter()
-router.register("chatrooms/block", BlockedUserViewSet, basename="chatroom-block")
 router.register("chatrooms", ChatRoomViewSet, basename="chatroom")
 
 urlpatterns = [

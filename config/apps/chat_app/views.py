@@ -4,11 +4,20 @@ from rest_framework.response import Response
 from .models import ChatRoom, ChatMessage, Image, UserDeviceToken
 from .serializers import ChatRoomListSerializer, ChatRoomSerializer, ChatMessageSerializer
 from rest_framework.views import APIView
+from config.apps.block.utils import get_blocked_user_ids
 
 
 
 class ChatRoomViewSet(viewsets.ModelViewSet):
     """
+    URL: /chatrooms/
+    URL: /chatrooms/<pk>/
+    URL: /chatrooms/<pk>/like/
+    URL: /chatrooms/<pk>/message/
+    URL: /chatrooms/<pk>/mute/
+    URL: /chatrooms/<pk>/out/
+    URL: /chatrooms/<pk>/read/<msg_id>/
+
     1:1 과외 문의 및 상담을 위한 '채팅방(ChatRoom)'을 관리하는 API ViewSet입니다.
 
     Endpoints:
@@ -57,18 +66,30 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         """
         오버라이딩: 전체 방이 아닌,
         현재 로그인한 유저가 '참여자'로 들어있는 방만 필터링해서 보여줌.
+        차단된 사용자와의 채팅방은 제외하고 반환합니다.
         GET 요청 시 자동으로 호출됨. 
         GET: /api/chatrooms/
         GET: /api/chatrooms/3
         """
         role = self.request.query_params.get('role')
-        if role == 'student':
-            return ChatRoom.objects.filter(student__user=self.request.user)
-        elif role == 'instructor':
-            return ChatRoom.objects.filter(instructor__user=self.request.user)
-
         from django.db.models import Q
-        return ChatRoom.objects.filter(
+        
+        qs = ChatRoom.objects.all()
+        
+        blocked_user_ids = get_blocked_user_ids(self.request.user)
+        if blocked_user_ids:
+            # 상대방(학생 혹은 강사)이 차단된 경우 제외
+            qs = qs.exclude(
+                Q(student__user_id__in=blocked_user_ids) |
+                Q(instructor__user_id__in=blocked_user_ids)
+            )
+
+        if role == 'student':
+            return qs.filter(student__user=self.request.user)
+        elif role == 'instructor':
+            return qs.filter(instructor__user=self.request.user)
+
+        return qs.filter(
             Q(student__user=self.request.user) | Q(instructor__user=self.request.user)
         )
 
@@ -191,6 +212,8 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
 
 class ImageUploadView(APIView):
     """
+    URL: /images/
+
     채팅방 내 메시지에 첨부될 '이미지 파일(Image)'을 사전 업로드하는 API View입니다.
 
     클라이언트가 이미지를 먼저 업로드하여 `image_ids`를 발급받은 후,
@@ -227,6 +250,9 @@ class ImageUploadView(APIView):
         return Response({"image_ids": img_ids}, status=200)
 
 class DeviceTokenView(APIView):
+    """
+    URL: /device-token/
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -294,6 +320,8 @@ class DeviceTokenView(APIView):
 
 class ChatNotificationToggleView(APIView):
     """
+    URL: /chat-notification/
+
     PUT /chat-notification/
     채팅 알림 상태(is_chat_active)만 독립적으로 토글합니다.
     """
@@ -305,42 +333,3 @@ class ChatNotificationToggleView(APIView):
         token_obj.save(update_fields=['is_chat_active'])
         return Response({"is_chat_active": token_obj.is_chat_active}, status=200)
 
-from .models import BlockedUser
-from .serializers import BlockedUserSerializer
-
-class BlockedUserViewSet(viewsets.ModelViewSet):
-    """
-    특정 유저의 메시지를 차단하는 '차단 목록(BlockedUser)' 관리 API ViewSet입니다.
-
-    차단된 유저가 보낸 메시지는 소비자(Consumer)나 알림 단계에서 필터링됩니다.
-
-    Endpoints:
-        GET /chatrooms/block/       : 내 차단 목록 조회.
-        POST /chatrooms/block/      : 새로운 유저 차단.
-        DELETE /chatrooms/block/<id>/: 유저 차단 해제.
-
-    Request Body (POST):
-        target_user (int): 차단할 상대방 유저 ID.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = BlockedUserSerializer
-
-    def get_queryset(self):
-        return BlockedUser.objects.filter(user=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        target_user_id = request.data.get('target_user')
-        if not target_user_id:
-            return Response({"error": "target_user is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if BlockedUser.objects.filter(user=request.user, target_user_id=target_user_id).exists():
-            return Response({"error": "Already blocked"}, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = self.get_serializer(data={"user": request.user.id, "target_user": target_user_id})
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
