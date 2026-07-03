@@ -15,15 +15,6 @@ def _sync_subjects(manager, numbers):
     manager.set(objs)
 
 
-def get_absolute_thumbnail_url(serializer_instance, obj):
-    if not obj.thumbnail:
-        return ""
-    request = serializer_instance.context.get("request")
-    if request is not None:
-        return request.build_absolute_uri(obj.thumbnail.url)
-    return obj.thumbnail.url
-
-
 # ────────────────────────────────────────────────────────────────────
 # Lecture Serializers
 # ────────────────────────────────────────────────────────────────────
@@ -34,14 +25,10 @@ class LectureListSerializer(serializers.ModelSerializer):
     is_liked = serializers.BooleanField(read_only=True, default=False)
     instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
-    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
         exclude = ["video"]
-
-    def get_thumbnail_url(self, obj):
-        return get_absolute_thumbnail_url(self, obj)
 
 
 class LectureStreamSerializer(serializers.ModelSerializer):
@@ -69,7 +56,6 @@ class LectureDetailSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     is_liked = serializers.BooleanField(read_only=True, default=False)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
-    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
@@ -81,40 +67,29 @@ class LectureDetailSerializer(serializers.ModelSerializer):
     def get_comment_count(self, obj):
         return obj.comments.count()
 
-    def get_thumbnail_url(self, obj):
-        return get_absolute_thumbnail_url(self, obj)
-
 
 class LecturePreviewSerializer(serializers.ModelSerializer):
     """프리뷰 강의 — 같은 강사의 is_preview=True 영상."""
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
-    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
         fields = [
-            'id', 'video', 'video_duration', 'thumbnail', 'thumbnail_url', 'title', 
+            'id', 'video', 'video_duration', 'thumbnail', 'title', 
             'subjects', 'price', 'instructor', 'is_preview', 
             'view_count', 'likes', 'rental_period', 'created_at', 
             'is_active', 'is_delete', 'deleted_at'
         ]
-
-    def get_thumbnail_url(self, obj):
-        return get_absolute_thumbnail_url(self, obj)
 
 
 class LectureRecommendSerializer(serializers.ModelSerializer):
     """추천 강의 — video 필드 제외, 좋아요 수 포함."""
     like_count = serializers.IntegerField(read_only=True, default=0)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
-    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Lecture
         exclude = ["video"]
-
-    def get_thumbnail_url(self, obj):
-        return get_absolute_thumbnail_url(self, obj)
 
 
 class LectureWriteSerializer(serializers.ModelSerializer):

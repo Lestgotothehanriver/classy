@@ -416,7 +416,7 @@ class LectureDetailAPIView(APIView):
         preview = Lecture.objects.filter(
             instructor=lecture.instructor, is_preview=True
         ).exclude(pk=pk).first()
-        preview_data = LecturePreviewSerializer(preview, context={"request": request}).data if preview else None
+        preview_data = LecturePreviewSerializer(preview).data if preview else None
 
         # (3) 추천 강의 — 동일 과목을 가진 강의 중 좋아요+조회수 기준 상위 10개
         subject_ids = list(lecture.subjects.values_list("id", flat=True))
@@ -427,7 +427,7 @@ class LectureDetailAPIView(APIView):
             .annotate(like_count=Count("likes", distinct=True))
             .order_by("-like_count", "-view_count", "-created_at")[:10]
         )
-        recommended_data = LectureRecommendSerializer(recommended_qs, many=True, context={"request": request}).data
+        recommended_data = LectureRecommendSerializer(recommended_qs, many=True).data
 
         logger.info(
             "[LECTURE_DETAIL] 조회 성공. user_id=%s, lecture_id=%s, rental_status=%s",
