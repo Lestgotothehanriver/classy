@@ -3,7 +3,7 @@
 from django.urls import path
 from .views import (
     StudentSignupAPIView, InstructorSignupAPIView,
-    LoginAPIView, CheckUsernameAPIView,
+    LoginAPIView, CheckUsernameAPIView, CheckEmailAPIView,
     LogoutAPIView, WithdrawAPIView,
     InstructorRetryAPIView,
     UserProfileAPIView, ProfileImageAPIView,
@@ -21,6 +21,7 @@ urlpatterns = [
     path("signup/instructor/retry/", InstructorRetryAPIView.as_view(), name="retry-instructor"),
     path("login/", LoginAPIView.as_view(), name="login"),
     path("check-username/", CheckUsernameAPIView.as_view(), name="check-username"),
+    path("check-email/", CheckEmailAPIView.as_view(), name="check-email"),
     path("check-phone/", CheckPhoneAPIView.as_view(), name="check-phone"),   # 신규
     path("add-role/", AddRoleAPIView.as_view(), name="add-role"),             # 신규
     path("logout/", LogoutAPIView.as_view(), name="logout"),

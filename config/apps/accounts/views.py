@@ -17,7 +17,6 @@ from .serializers import (
     StudentUpdateSerializer,
     InstructorUpdateSerializer,
 )
-
 import logging
 import random
 
@@ -290,6 +289,42 @@ class CheckUsernameAPIView(APIView):
         if current_user_id: # 로그인한 사용자가 있다면, 그 사용자의 닉네임은 중복 체크에서 제외(프로필 업데이트 시)
             queryset = queryset.exclude(pk=current_user_id)
         # 존재하지 않는 닉네임이면 available=True, 이미 존재하는 닉네임이면 available=False 반환
+        available = not queryset.exists()
+        return Response({"available": available}, status=200)
+
+# 이메일 중복 확인 API  
+class CheckEmailAPIView(APIView):
+    """
+    URL: /accounts/check-email/
+
+    회원가입 또는 프로필 수정 과정에서 이메일(email) 중복 여부를 검사하는 API View입니다.
+
+    현재 로그인된 사용자(Token 제공 시)의 경우 자신의 기존 이메일은 중복 체크에서 제외합니다.
+
+    Args:
+        request (Request): Query Parameters에 'email'이 포함되어야 합니다.
+
+    Returns:
+        Response:
+            성공 (200 OK): "available": true (사용 가능) 또는 false (중복됨) 반환.
+    """
+
+    permission_classes = [] # 인증 없이 접근 가능
+
+    def get(self, request):
+        email = request.query_params.get("email", "")
+        if not email:
+            return Response({"error": "email query parameter required"}, status=400)
+
+        # 현재 로그인한 사용자가 있는 경우, 그 사용자의 이메일은 유효하다고 간주
+        current_user_id = None
+        if request.user and request.user.is_authenticated:
+            current_user_id = request.user.id
+
+        queryset = User.objects.filter(email__iexact=email)
+        if current_user_id: # 로그인한 사용자가 있다면, 그 사용자의 이메일은 중복 체크에서 제외(프로필 업데이트 시)
+            queryset = queryset.exclude(pk=current_user_id)
+        # 존재하지 않는 이메일이면 available=True, 이미 존재하는 이메일이면 available=False 반환
         available = not queryset.exists()
         return Response({"available": available}, status=200)
 
