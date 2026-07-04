@@ -14,7 +14,8 @@ from ..serializers import (
     StudentReviewSerializer,
     InstructorReviewWriteSerializer,
     StudentReviewWriteSerializer,
-    InstructorInfoWriteSerializer
+    InstructorInfoWriteSerializer,
+    InstructorInfoSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -253,7 +254,7 @@ class InstructorInfoViewSet(
         try:
             instructor = get_object_or_404(Instructor, user=request.user)
             info = InstructorInfo.objects.get(instructor=instructor)
-            serializer = self.get_serializer(info)
+            serializer = InstructorInfoSerializer(info)
             logger.debug(
                 "[INSTRUCTOR_INFO] mine 조회 성공. instructor_id=%s", instructor.pk
             )
