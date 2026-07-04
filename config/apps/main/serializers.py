@@ -63,10 +63,11 @@ class InstructorMainStudentSerializer(serializers.ModelSerializer):
     subjects = serializers.SerializerMethodField()
     subject_numbers = serializers.SerializerMethodField()
     profile_image = serializers.SerializerMethodField()
+    post_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
-        fields = ['id', 'user_name', 'first_name', 'last_name', 'subjects', 'subject_numbers', 'profile_image']
+        fields = ['id', 'user_name', 'first_name', 'last_name', 'subjects', 'subject_numbers', 'profile_image', 'post_id']
 
     def get_subjects(self, obj):
         subject_dict = dict(STUDENT_SUBJECT_CHOICES)
@@ -79,3 +80,8 @@ class InstructorMainStudentSerializer(serializers.ModelSerializer):
         if obj.user.profile_image:
             return obj.user.profile_image.url
         return None
+
+    def get_post_id(self, obj):
+        post = obj.tutoring_posts.filter(is_active=True).order_by('-created_at').first()
+        return post.id if post else None
+        
