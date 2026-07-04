@@ -69,16 +69,11 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
             qs = qs.filter(is_liked=(liked.lower() in ("true", "1")))
 
         subject_ids = parse_int_list(self.request.query_params.get("subject"))
-        qs = apply_subject_filter(qs, Instructor, subject_ids)
+        qs = apply_subject_filter(qs, Instructor, subject_ids, prefix="tutoring_profile__")
 
-        region = self.request.query_params.get("region")
-        if region:
-            from django.db.models import Q
-            region_list = [r.strip() for r in region.split('|') if r.strip()]
-            q = Q()
-            for r in region_list:
-                q |= Q(user__region__icontains=r)
-            qs = qs.filter(q).distinct()
+        region_ids = parse_int_list(self.request.query_params.get("region"))
+        if region_ids:
+            qs = qs.filter(tutoring_profile__regions__number__in=region_ids).distinct()
 
         cost = self.request.query_params.get("cost")
         if cost and cost.isdigit():
