@@ -67,9 +67,9 @@ class TutoringPostListAPIView(generics.ListAPIView):
         subject_ids = parse_int_list(self.request.query_params.get("subject"))
         qs = apply_subject_filter(qs, TutoringPost, subject_ids)
 
-        region = self.request.query_params.get("region")
-        if region:
-            qs = qs.filter(region__icontains=region)
+        region_ids = parse_int_list(self.request.query_params.get("region"))
+        if region_ids:
+            qs = qs.filter(region__number__in=region_ids).distinct()
 
         cost = self.request.query_params.get("cost")
         if cost and cost.isdigit():
