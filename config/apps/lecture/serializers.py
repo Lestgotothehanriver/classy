@@ -25,6 +25,7 @@ class LectureListSerializer(serializers.ModelSerializer):
     is_liked = serializers.BooleanField(read_only=True, default=False)
     instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
+    is_active = serializers.BooleanField(read_only=True, default=True)
 
     class Meta:
         model = Lecture
