@@ -65,7 +65,7 @@ class TutoringPostListAPIView(generics.ListAPIView):
             qs = qs.order_by("-id")
 
         subject_ids = parse_int_list(self.request.query_params.get("subject"))
-        qs = apply_subject_filter(qs, Student, subject_ids, prefix="student__")
+        qs = apply_subject_filter(qs, TutoringPost, subject_ids)
 
         region = self.request.query_params.get("region")
         if region:
