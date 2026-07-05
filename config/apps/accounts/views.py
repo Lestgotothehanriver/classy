@@ -130,7 +130,7 @@ class InstructorSignupAPIView(GenericAPIView):
     """
 
     serializer_class = InstructorSignupSerializer
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         logger.debug("[BACKEND_DEBUG_AUTH] InstructorSignup - email: %s", request.data.get('email'))
