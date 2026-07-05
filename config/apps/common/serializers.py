@@ -35,3 +35,29 @@ class M2MSyncMixin:
                 self._sync_m2m_field(manager, model_cls, data)
                 
         return instance
+
+
+from rest_framework import serializers
+from config.apps.common.utils import get_absolute_media_url
+
+class AbsoluteFileField(serializers.FileField):
+    """
+    항상 절대경로 URL을 반환하는 FileField입니다.
+    """
+    def to_representation(self, value):
+        if not value:
+            return None
+        request = self.context.get('request')
+        return get_absolute_media_url(value, request)
+
+
+class AbsoluteImageField(serializers.ImageField):
+    """
+    항상 절대경로 URL을 반환하는 ImageField입니다.
+    """
+    def to_representation(self, value):
+        if not value:
+            return None
+        request = self.context.get('request')
+        return get_absolute_media_url(value, request)
+

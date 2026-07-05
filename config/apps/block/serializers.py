@@ -14,11 +14,17 @@ class BlockSerializer(serializers.ModelSerializer):
 
     def get_blocked_user_info(self, obj):
         user = obj.blocked_user
-        profile_img = user.profile_img.url if hasattr(user, 'profile_img') and user.profile_img else None
+        profile_image = getattr(user, 'profile_image', None)
+        if not profile_image and hasattr(user, 'profile_img'):
+            profile_image = user.profile_img
+
+        from config.apps.common.utils import get_absolute_media_url
+        profile_img_url = get_absolute_media_url(profile_image, self.context.get('request'))
+
         return {
             "id": user.id,
             "name": getattr(user, 'user_name', user.username),
-            "profile_img": profile_img
+            "profile_img": profile_img_url
         }
 
     def validate(self, attrs):

@@ -7,7 +7,3 @@ class AccountsConfig(AppConfig):
 
     def ready(self):
         import config.apps.common.signals
-        
-        # Apply absolute URL monkeypatches for media/lecture files
-        from config.apps.common.monkeypatches import apply_patches
-        apply_patches()

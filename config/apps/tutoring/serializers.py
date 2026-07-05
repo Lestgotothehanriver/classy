@@ -11,7 +11,7 @@ from .models import (
     TutoringProposal,
     Region,
 )
-from config.apps.common.serializers import M2MSyncMixin
+from config.apps.common.serializers import M2MSyncMixin, AbsoluteFileField, AbsoluteImageField
 from config.apps.common.validators import validate_cost_unit
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -90,7 +90,7 @@ class InstructorListSerializer(SafeModelSerializer):
     region = serializers.CharField(source='user.region', read_only=True)
     user_name = serializers.CharField(source='user.user_name', read_only=True)
     birth_date = serializers.DateField(source='user.birth_date', read_only=True)
-    profile_image = serializers.ImageField(source='user.profile_image', read_only=True)
+    profile_image = AbsoluteImageField(source='user.profile_image', read_only=True)
 
     class Meta:
         model = Instructor
@@ -174,7 +174,7 @@ class StudentPublicSerializer(SafeModelSerializer):
 class TutoringPostListSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.user.user_name', read_only=True)
     student_id = serializers.IntegerField(source='student.id', read_only=True)
-    student_profile_image = serializers.ImageField(source='student.user.profile_image', read_only=True)
+    student_profile_image = AbsoluteImageField(source='student.user.profile_image', read_only=True)
     student_age = serializers.SerializerMethodField()
     student_sex = serializers.CharField(source='student.user.sex', read_only=True)
     student_field = serializers.CharField(source='student.user.field', read_only=True)
@@ -361,6 +361,8 @@ class TutoringProposalSerializer(serializers.ModelSerializer):
         read_only_fields = ["instructor"]
 
 class TutoringResourceFileSerializer(serializers.ModelSerializer):
+    file = AbsoluteFileField(read_only=True)
+
     class Meta:
         from .models import TutoringResourceFile
         model = TutoringResourceFile
@@ -369,6 +371,7 @@ class TutoringResourceFileSerializer(serializers.ModelSerializer):
 class TutoringResourceSerializer(serializers.ModelSerializer):
     """수업 리소스 통합 Serializer (CRUD 모두 사용)"""
     files = TutoringResourceFileSerializer(many=True, read_only=True)
+    fee_confirmation_file = AbsoluteFileField(required=False, allow_null=True)
 
     class Meta:
         from .models import TutoringResource

@@ -52,3 +52,28 @@ def apply_subject_filter(qs, owner_model, subject_ids, prefix=""):
         return qs
     key = f"{prefix}subjects__number__in"
     return qs.filter(**{key: subject_ids}).distinct()
+
+def get_absolute_media_url(url_or_file, request=None):
+    """
+    미디어 파일 객체 또는 상대경로 URL을 받아 절대경로 URL을 반환합니다.
+    """
+    if not url_or_file:
+        return None
+
+    # url_or_file이 FieldFile 객체 등일 수 있으므로 .url 속성 확인
+    url = getattr(url_or_file, "url", url_or_file)
+    if not url:
+        return None
+
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    if request:
+        return request.build_absolute_uri(url)
+
+    from django.conf import settings
+    base_url = getattr(settings, "BASE_URL", "http://localhost:8000")
+    if not url.startswith("/"):
+        url = "/" + url
+    return f"{base_url.rstrip('/')}{url}"
+

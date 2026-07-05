@@ -4,6 +4,7 @@ from django.db.models import Count
 from config.apps.accounts.models import Subject
 from .models import Lecture, Comment, SearchHistory
 from .utils import extract_video_duration_seconds
+from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ class LectureListSerializer(serializers.ModelSerializer):
     is_liked = serializers.BooleanField(read_only=True, default=False)
     instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
+    thumbnail = AbsoluteImageField(read_only=True)
 
     class Meta:
         model = Lecture
@@ -44,10 +46,8 @@ class LectureStreamSerializer(serializers.ModelSerializer):
             return ""
 
         request = self.context.get("request")
-        url = obj.video.url
-        if request is None:
-            return url
-        return request.build_absolute_uri(url)
+        from config.apps.common.utils import get_absolute_media_url
+        return get_absolute_media_url(obj.video, request)
 
 
 class LectureDetailSerializer(serializers.ModelSerializer):
@@ -56,6 +56,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     is_liked = serializers.BooleanField(read_only=True, default=False)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
+    thumbnail = AbsoluteImageField(read_only=True)
 
     class Meta:
         model = Lecture
@@ -71,6 +72,8 @@ class LectureDetailSerializer(serializers.ModelSerializer):
 class LecturePreviewSerializer(serializers.ModelSerializer):
     """프리뷰 강의 — 같은 강사의 is_preview=True 영상."""
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
+    video = AbsoluteFileField(read_only=True)
+    thumbnail = AbsoluteImageField(read_only=True)
 
     class Meta:
         model = Lecture
@@ -86,6 +89,7 @@ class LectureRecommendSerializer(serializers.ModelSerializer):
     """추천 강의 — video 필드 제외, 좋아요 수 포함."""
     like_count = serializers.IntegerField(read_only=True, default=0)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
+    thumbnail = AbsoluteImageField(read_only=True)
 
     class Meta:
         model = Lecture
@@ -97,6 +101,8 @@ class LectureWriteSerializer(serializers.ModelSerializer):
     subjects = serializers.ListField(
         child=serializers.IntegerField(), required=False, write_only=True
     )
+    video = AbsoluteFileField(required=False)
+    thumbnail = AbsoluteImageField(required=False)
 
     class Meta:
         model = Lecture

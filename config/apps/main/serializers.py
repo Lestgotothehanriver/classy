@@ -53,7 +53,8 @@ class StudentMainTutorSerializer(serializers.ModelSerializer):
 
     def get_profile_image(self, obj):
         if obj.user.profile_image:
-            return obj.user.profile_image.url
+            from config.apps.common.utils import get_absolute_media_url
+            return get_absolute_media_url(obj.user.profile_image, self.context.get('request'))
         return None
 
 class InstructorMainStudentSerializer(serializers.ModelSerializer):
@@ -78,7 +79,8 @@ class InstructorMainStudentSerializer(serializers.ModelSerializer):
 
     def get_profile_image(self, obj):
         if obj.user.profile_image:
-            return obj.user.profile_image.url
+            from config.apps.common.utils import get_absolute_media_url
+            return get_absolute_media_url(obj.user.profile_image, self.context.get('request'))
         return None
 
     def get_post_id(self, obj):

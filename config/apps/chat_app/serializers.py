@@ -3,10 +3,14 @@ from .models import ChatRoom, ChatMessage, Image
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 
+from config.apps.common.serializers import AbsoluteImageField
+
 class ImageSerializer(serializers.ModelSerializer):
     """
     이미지 모델을 직렬화하는 클래스.
     """
+    image = AbsoluteImageField()
+
     class Meta:
         model = Image
         fields = ('id', 'image')
@@ -105,8 +109,13 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         """
         profile_imgs = []
         for participant in [obj.student.user, obj.instructor.user]:
-            if hasattr(participant, 'profile_img') and participant.profile_img:
-                profile_imgs.append(participant.profile_img.url)
+            profile_image = getattr(participant, 'profile_image', None)
+            if not profile_image and hasattr(participant, 'profile_img'):
+                profile_image = participant.profile_img
+
+            if profile_image:
+                from config.apps.common.utils import get_absolute_media_url
+                profile_imgs.append(get_absolute_media_url(profile_image, self.context.get('request')))
             else:
                 profile_imgs.append(None)
 
@@ -217,10 +226,17 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         """
         participants_info = []
         for participant in [obj.student.user, obj.instructor.user]:
+            profile_image = getattr(participant, 'profile_image', None)
+            if not profile_image and hasattr(participant, 'profile_img'):
+                profile_image = participant.profile_img
+
+            from config.apps.common.utils import get_absolute_media_url
+            profile_image_url = get_absolute_media_url(profile_image, self.context.get('request')) if profile_image else None
+
             participant_info = {
                 "id": participant.id,
                 "nickname": getattr(participant, 'user_name', participant.username),
-                "profile_image": participant.profile_img.url if hasattr(participant, 'profile_img') and participant.profile_img else None
+                "profile_image": profile_image_url
             }
             participants_info.append(participant_info)
 
