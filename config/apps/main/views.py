@@ -32,13 +32,13 @@ class StudentMainAPIView(APIView):
 
         broad_region = user.region
 
+        queryset = Instructor.objects.filter(tutoring_profile__isnull=False)
+
         # 해당 대규모 지역으로 필터링 예: 서울 강남구 -> 서울로 시작하는 지역들만 필터링
         if broad_region:
             broad_region = broad_region.split(' ')[0]
-            queryset = Instructor.objects.filter(user__region__startswith=broad_region)
-        else:
-            queryset = Instructor.objects.all()
-
+            queryset = queryset.filter(user__region__startswith=broad_region)
+    
         from django.db.models import Exists, OuterRef, Value, BooleanField, Count
         from config.apps.accounts.models import InstructorLike
 
