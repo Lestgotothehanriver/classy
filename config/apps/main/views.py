@@ -120,14 +120,14 @@ class InstructorMainAPIView(APIView):
         ).aggregate(
             total=Coalesce(Sum('purchased_cash'), 0)
         )['total']
-
+        
         # 지역 맞춤 학생 3명 조회
         broad_region = user.region
+        queryset = Student.objects.filter(tutoring_posts__is_active=True)
         if broad_region:
             broad_region = broad_region.split(' ')[0]
-            queryset = Student.objects.filter(user__region__startswith=broad_region)
-        else:
-            queryset = Student.objects.all()
+            queryset = queryset.filter(user__region__startswith=broad_region)
+        recommended_students = queryset.distinct().order_by('?')[:3]
             
         recommended_students = queryset.order_by('?')[:3]
         student_serializer = InstructorMainStudentSerializer(recommended_students, many=True)
