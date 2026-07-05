@@ -24,3 +24,7 @@ media/
 
 # OS
 .DS_Store
+
+# Secrets
+secret/
+

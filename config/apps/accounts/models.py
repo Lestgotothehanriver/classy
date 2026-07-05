@@ -76,6 +76,10 @@ class User(AbstractUser):
     field = models.CharField(max_length=10, choices=field_choices, blank=True)
     cash = models.PositiveIntegerField(default=0)
     profile_image = models.ImageField(upload_to='profile_images/', blank=True, null=True)
+
+    @property
+    def profile_img(self):
+        return self.profile_image
     is_banned = models.BooleanField(default=False)
     withdraw_reason = models.CharField(max_length=255, blank=True)
     withdraw_reason_detail = models.TextField(blank=True)  # 탈퇴 상세 사유
