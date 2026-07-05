@@ -145,7 +145,8 @@ class InstructorReviewSerializer(serializers.ModelSerializer):
         ]
 
     def get_student_label(self, obj):
-        return str(obj.student)
+        user = getattr(obj.student, "user", None)
+        return getattr(user, "user_name", None) or "학생"
 
     def get_subjects(self, obj):
         return SubjectSimpleSerializer(obj.subjects.all(), many=True).data
