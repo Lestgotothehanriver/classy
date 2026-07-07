@@ -9,6 +9,7 @@ from rest_framework.generics import GenericAPIView
 from .models import User
 from config.apps.pending.models import PendingInstructor
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from rest_framework import permissions
 from rest_framework.permissions import IsAuthenticated
 from .serializers import (
@@ -19,6 +20,8 @@ from .serializers import (
 )
 import logging
 import random
+from solapi import SolapiMessageService
+from solapi.model import RequestMessage
 
 logger = logging.getLogger(__name__)
 
@@ -847,8 +850,6 @@ class UserDetailAPIView(APIView):
             "verification_status": verification_status,
             "subjects": subjects,
         })
-
-
 class SubjectListAPIView(APIView):
     """
     URL: /accounts/subjects/
@@ -864,3 +865,118 @@ class SubjectListAPIView(APIView):
         subjects = Subject.objects.all().order_by('number')
         serializer = SubjectSerializer(subjects, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+#_____________________________________________________________
+# API 키와 API Secret을 설정.
+message_service = SolapiMessageService(
+    api_key=settings.SOLAPI_API_KEY, api_secret=settings.SOLAPI_API_SECRET
+)
+
+from_number = settings.SOLAPI_SENDER
+
+def send_auth_sms(phone_number, auth_code):
+    request = RequestMessage(
+        to=phone_number,  # 수신 번호
+        from_=from_number, # 발신 번호
+        text=f"[Classy] 인증번호: {auth_code}",  # 문자 메시지 내용
+    )
+    try:
+        response = message_service.send(request)
+        logger.info(f"[SMS] Sent authentication code to {phone_number}: {response}")
+        return True
+    except Exception as e:
+        failed_msgs = getattr(e, 'failed_messages', None)
+        if failed_msgs:
+            logger.error(f"[SMS] Failed to send authentication code to {phone_number}: {e} | Detailed failure: {failed_msgs}")
+        else:
+            logger.error(f"[SMS] Failed to send authentication code to {phone_number}: {e}")
+        return False
+
+
+class SendAuthSMSAPIView(APIView):
+    """
+    URL: /accounts/send-auth-sms/
+
+    POST /accounts/send-auth-sms/
+    - Send authentication SMS to the given phone number
+
+    request:
+    {
+        "phone_number": "01012345678"
+    }
+
+    response:
+    {
+        "message": "인증번호가 발송되었습니다.",
+        "code": "123456"
+    }
+    """
+    permission_classes = []
+
+    def post(self, request):
+        phone_number = request.data.get('phone_number')
+        if not phone_number:
+            return Response({"error": "전화번호가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        auth_code = str(random.randint(100000, 999999))
+        
+        if not send_auth_sms(phone_number, auth_code):
+            return Response({"error": "인증번호 발송에 실패했습니다. 발송 정보를 확인해 주세요."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from .models import PhoneVerification
+        PhoneVerification.objects.create(
+            user=request.user if request.user and request.user.is_authenticated else None,
+            phone=phone_number,
+            code=auth_code
+        )
+        
+        return Response({
+            "message": "인증번호가 발송되었습니다.",
+            "code": auth_code
+        }, status=status.HTTP_200_OK)
+
+
+class VerifyAuthSMSAPIView(APIView):
+    """
+    URL: /accounts/verify-auth-sms/
+
+    POST /accounts/verify-auth-sms/
+    - Verify authentication SMS with the given phone number and code
+
+    request:
+    {
+        "phone_number": "01012345678",
+        "code": "123456"
+    }
+
+    response:
+    {
+        "message": "전화번호 인증이 완료되었습니다."
+    }
+    """
+    permission_classes = []
+
+    def post(self, request):
+        phone_number = request.data.get('phone_number')
+        code = request.data.get('code')
+        
+        if not all([phone_number, code]):
+            return Response({"error": "전화번호와 인증번호가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from .models import PhoneVerification
+        verification = PhoneVerification.objects.filter(
+            phone=phone_number,
+            code=code,
+            is_verified=False
+        ).order_by('-created_at').first()
+        
+        if not verification:
+            return Response({"error": "인증번호가 올바르지 않거나 만료되었습니다."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        verification.is_verified = True
+        verification.save(update_fields=['is_verified'])
+        
+        return Response({
+            "message": "전화번호 인증이 완료되었습니다."
+        }, status=status.HTTP_200_OK)

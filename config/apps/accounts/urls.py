@@ -11,6 +11,7 @@ from .views import (
     RequestPhoneChangeAPIView, VerifyPhoneChangeAPIView,
     UserDetailAPIView,
     SubjectListAPIView,
+    SendAuthSMSAPIView, VerifyAuthSMSAPIView,
 )
 
 app_name = "accounts"
@@ -32,4 +33,6 @@ urlpatterns = [
     path("me/phone/verify/", VerifyPhoneChangeAPIView.as_view(), name="phone-change-verify"),
     path("user/<int:pk>/", UserDetailAPIView.as_view(), name="user-detail"),
     path("subjects/", SubjectListAPIView.as_view(), name="subject-list"),
+    path("send-auth-sms/", SendAuthSMSAPIView.as_view(), name="send-auth-sms"),
+    path("verify-auth-sms/", VerifyAuthSMSAPIView.as_view(), name="verify-auth-sms"),
 ]

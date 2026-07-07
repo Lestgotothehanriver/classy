@@ -45,3 +45,83 @@ class CheckEmailAPIViewTests(APITestCase):
         response = self.client.get(self.url, {"email": self.user_email})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["available"])
+
+
+from unittest.mock import patch
+
+class PhoneVerificationTests(APITestCase):
+    def setUp(self):
+        self.send_url = reverse("accounts:send-auth-sms")
+        self.verify_url = reverse("accounts:verify-auth-sms")
+        self.phone = "01099998888"
+        self.patcher = patch('config.apps.accounts.views.send_auth_sms', return_value=True)
+        self.mock_send_sms = self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_send_auth_sms_success(self):
+        """전화번호가 제공되면 인증번호가 SMS로 발송(모킹/로그)되고 200 응답과 인증코드를 받아야 합니다."""
+        response = self.client.post(self.send_url, {"phone_number": self.phone})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("code", response.data)
+        
+        from config.apps.accounts.models import PhoneVerification
+        verification = PhoneVerification.objects.filter(phone=self.phone).first()
+        self.assertIsNotNone(verification)
+        self.assertEqual(verification.code, response.data["code"])
+        self.assertFalse(verification.is_verified)
+        self.assertIsNone(verification.user)  # Unregistered user case
+
+    def test_send_auth_sms_failure(self):
+        """SMS 발송에 실패하면 400 에러를 반환해야 합니다."""
+        self.mock_send_sms.return_value = False
+        response = self.client.post(self.send_url, {"phone_number": self.phone})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.data)
+
+    def test_send_auth_sms_missing_phone(self):
+        """전화번호가 누락되면 400 에러를 반환해야 합니다."""
+        response = self.client.post(self.send_url, {})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.data)
+
+    def test_verify_auth_sms_success(self):
+        """올바른 인증코드를 입력하면 인증이 완료되고 200 응답을 받아야 합니다."""
+        # 1. Send code
+        send_response = self.client.post(self.send_url, {"phone_number": self.phone})
+        code = send_response.data["code"]
+
+        # 2. Verify code
+        verify_response = self.client.post(self.verify_url, {
+            "phone_number": self.phone,
+            "code": code
+        })
+        self.assertEqual(verify_response.status_code, 200)
+        
+        from config.apps.accounts.models import PhoneVerification
+        verification = PhoneVerification.objects.filter(phone=self.phone).first()
+        self.assertTrue(verification.is_verified)
+
+    def test_verify_auth_sms_invalid_code(self):
+        """틀린 인증코드를 입력하면 400 에러를 반환해야 합니다."""
+        # 1. Send code
+        self.client.post(self.send_url, {"phone_number": self.phone})
+
+        # 2. Verify with wrong code
+        verify_response = self.client.post(self.verify_url, {
+            "phone_number": self.phone,
+            "code": "000000"
+        })
+        self.assertEqual(verify_response.status_code, 400)
+        self.assertIn("error", verify_response.data)
+
+    def test_verify_auth_sms_missing_fields(self):
+        """필수 입력값이 누락되면 400 에러를 반환해야 합니다."""
+        # missing code
+        response = self.client.post(self.verify_url, {"phone_number": self.phone})
+        self.assertEqual(response.status_code, 400)
+
+        # missing phone_number
+        response = self.client.post(self.verify_url, {"code": "123456"})
+        self.assertEqual(response.status_code, 400)

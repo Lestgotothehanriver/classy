@@ -189,7 +189,7 @@ class PhoneVerification(models.Model):
         is_verified (bool): 사용자가 올바른 코드를 입력하여 인증을 완료했는지 여부.
         created_at (DateTimeField): 인증 코드 발송 일시.
     """
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="phone_verifications")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="phone_verifications")
     phone = models.CharField(max_length=20)
     code = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -221,3 +221,11 @@ LOGGING = {
         },
     },
 }
+
+# ──────────────────────────────────────────────
+# Solapi (SMS) Settings
+# ──────────────────────────────────────────────
+
+SOLAPI_API_KEY = os.environ.get("SOLAPI_API_KEY")
+SOLAPI_API_SECRET = os.environ.get("SOLAPI_API_SECRET")
+SOLAPI_SENDER = os.environ.get("SOLAPI_SENDER")
