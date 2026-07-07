@@ -349,3 +349,47 @@ class InstructorUnverifiedStatusTest(TestCase):
         resp = self.client.get(f"/tutoring/instructors/{self.inst_verified.id}/info/")
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.json()["is_unverified"])
+
+
+class InstructorInfoRegistrationTest(TestCase):
+    """InstructorInfo가 등록되면 Instructor의 is_tutoring 필드가 True로 변경되는지 검증"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.inst_user = User.objects.create_user(username="inst_user", user_name="inst_user", password="pass1234")
+        self.instructor = Instructor.objects.create(user=self.inst_user, university="Test Univ")
+        
+        # Verify initial state of is_tutoring is False
+        self.assertFalse(self.instructor.is_tutoring)
+
+    def test_direct_creation_sets_is_tutoring_true(self):
+        """InstructorInfo 모델을 직접 생성할 때 is_tutoring 필드가 True로 변경되는지 검증"""
+        from config.apps.tutoring.models import InstructorInfo
+        InstructorInfo.objects.create(
+            instructor=self.instructor,
+            cost=25000,
+            schedule="Sat, Sun",
+            method="대면",
+            location="Seoul"
+        )
+        self.instructor.refresh_from_db()
+        self.assertTrue(self.instructor.is_tutoring)
+
+    def test_api_creation_sets_is_tutoring_true(self):
+        """API를 통해 InstructorInfo를 생성할 때 is_tutoring 필드가 True로 변경되는지 검증"""
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.inst_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+        payload = {
+            "cost": 30000,
+            "schedule": "Monday",
+            "method": "비대면",
+            "location": "Online"
+        }
+        resp = self.client.post("/tutoring/instructor-info/", data=payload, format="json")
+        self.assertEqual(resp.status_code, 201)
+
+        self.instructor.refresh_from_db()
+        self.assertTrue(self.instructor.is_tutoring)
+

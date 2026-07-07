@@ -172,6 +172,13 @@ class InstructorInfo(models.Model):
     subjects = models.ManyToManyField(Subject, blank=True, related_name='instructor_infos')
     regions = models.ManyToManyField(Region, blank=True, related_name='instructor_infos')
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.instructor and not self.instructor.is_tutoring:
+            self.instructor.is_tutoring = True
+            self.instructor.save(update_fields=['is_tutoring'])
+
+
 
 #____________________________________________________________________________________________________
 
