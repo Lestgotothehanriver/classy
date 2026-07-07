@@ -54,6 +54,29 @@ class PendingCreateAPIView(APIView):
             "status": pending.status
         }, status=status.HTTP_201_CREATED)
 
+    def get(self, request):
+        user = request.user
+        
+        # 1. 강사 계정인지 검증
+        if not hasattr(user, 'instructor_profile'):
+            return Response({"error": "강사 프로필이 존재하지 않습니다."}, status=status.HTTP_403_FORBIDDEN)
+            
+        instructor = user.instructor_profile
+        
+        # 2. pending_info 존재 여부 확인
+        if not hasattr(instructor, 'pending_info') or not instructor.pending_info:
+            return Response({
+                "exists": False,
+                "status": None
+            }, status=status.HTTP_200_OK)
+            
+        pending_info = instructor.pending_info
+        return Response({
+            "exists": True,
+            "status": pending_info.status
+        }, status=status.HTTP_200_OK)
+
+
 
 class PendingUploadView(APIView):
     """
