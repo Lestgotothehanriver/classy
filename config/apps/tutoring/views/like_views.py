@@ -69,7 +69,7 @@ class TutoringPostLikeAPIView(APIView):
             return Response({"error": "강사 계정만 좋아요를 누를 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
 
         post = get_object_or_404(TutoringPost, id=post_id)
-        like, created = TutoringPostLike.objects.get_or_create(instructor=instructor, post=post)
+        like, created = TutoringPostLike.objects.get_or_create(instructor=instructor, tutoring_post=post)
 
         if not created:
             like.delete()

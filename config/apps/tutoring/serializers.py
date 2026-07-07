@@ -3,6 +3,7 @@ from django.db.models import Avg, Count
 from django.utils import timezone
 
 from config.apps.accounts.models import Instructor, Student, Subject
+from config.apps.pending.models import PendingInstructor
 from .models import (
     TutoringPost,
     InstructorInfo,
@@ -91,6 +92,7 @@ class InstructorListSerializer(SafeModelSerializer):
     user_name = serializers.CharField(source='user.user_name', read_only=True)
     birth_date = serializers.DateField(source='user.birth_date', read_only=True)
     profile_image = AbsoluteImageField(source='user.profile_image', read_only=True)
+    is_unverified = serializers.SerializerMethodField()
 
     class Meta:
         model = Instructor
@@ -99,11 +101,15 @@ class InstructorListSerializer(SafeModelSerializer):
             'instruction', 'student_number', 'is_tutoring', 'last_login', 
             'subjects', 'like_count', 'is_liked', 'average_rate', 
             'review_count', 'current_rank', 'sex', 'region', 
-            'user_name', 'birth_date', 'profile_image'
+            'user_name', 'birth_date', 'profile_image', 'is_unverified'
         ]
 
     def get_subjects(self, obj):
         return extract_subject_numbers(obj)
+
+    def get_is_unverified(self, obj):
+        pending_info = getattr(obj, 'pending_info', None)
+        return pending_info is None or pending_info.status == PendingInstructor.Status.PENDING
 
 
 class InstructorInfoSerializer(serializers.ModelSerializer):
@@ -113,12 +119,14 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
     subjects = serializers.SerializerMethodField()
     regions = serializers.SerializerMethodField()
     instruction = serializers.CharField(source='instructor.instruction', read_only=True)
+    is_unverified = serializers.SerializerMethodField()
 
     class Meta:
         model = InstructorInfo
         fields = [
             'id', 'instructor', 'cost', 'schedule', 'method', 
-            'location', 'etc', 'subjects', 'regions', 'instruction'
+            'location', 'etc', 'subjects', 'regions', 'instruction',
+            'is_unverified'
         ]
 
     def get_subjects(self, obj):
@@ -126,6 +134,11 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
 
     def get_regions(self, obj):
         return RegionSimpleSerializer(obj.regions.all(), many=True).data
+
+    def get_is_unverified(self, obj):
+        instructor = obj.instructor
+        pending_info = getattr(instructor, 'pending_info', None)
+        return pending_info is None or pending_info.status == PendingInstructor.Status.PENDING
 
 
 class InstructorReviewSerializer(serializers.ModelSerializer):
