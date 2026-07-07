@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student
-from config.apps.common.permissions import IsVerifiedInstructor
+from config.apps.common.permissions import IsInstructorUser
 from config.apps.cash.models import LectureRentalHistory
 from .models import Lecture, Comment, SearchHistory
 from .serializers import (
@@ -106,7 +106,7 @@ class LectureViewSet(
             "created_at": "2026-04-26T06:51:26Z"
         }
     """
-    permission_classes = [permissions.IsAuthenticated, IsVerifiedInstructor]
+    permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
     serializer_class = LectureWriteSerializer
 
     def get_queryset(self):

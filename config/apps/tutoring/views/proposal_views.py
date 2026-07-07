@@ -7,7 +7,7 @@ import logging
 from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
-from config.apps.common.permissions import IsVerifiedInstructor
+from config.apps.common.permissions import IsInstructorUser
 from config.apps.chat_app.models import ChatRoom
 from ..models import TutoringPost, TutoringProposal
 from ..serializers import TutoringProposalSerializer
@@ -96,7 +96,7 @@ class InstructorProposeToStudentAPIView(APIView):
             "instructor_id": 5
         }
     """
-    permission_classes = [permissions.IsAuthenticated, IsVerifiedInstructor]
+    permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
 
     def post(self, request):
         post_id = request.data.get("post_id")

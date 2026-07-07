@@ -19,7 +19,7 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     """
     URL: /tutoring/instructors/
 
-    승인 완료된 '강사 목록'을 조회하고 필터링하는 API View입니다.
+    '강사 목록'을 조회하고 필터링하는 API View입니다.
 
     Query Parameters:
         ordering (str): 정렬 기준 ('latest' | 'likes').
@@ -48,8 +48,7 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     serializer_class = InstructorListSerializer
 
     def get_queryset(self):
-        qs = Instructor.objects.filter(pending_info__status='VERIFIED')
-        qs = qs.select_related("tutoring_profile")
+        qs = Instructor.objects.all().select_related("tutoring_profile")
 
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)
@@ -172,8 +171,7 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
     serializer_class = InstructorListSerializer
 
     def get_queryset(self):
-        qs = Instructor.objects.filter(pending_info__status='VERIFIED')
-        qs = qs.select_related("tutoring_profile")
+        qs = Instructor.objects.all().select_related("tutoring_profile")
         return self.annotate_instructor_stats(qs, self.request.user)
 
 class InstructorInfoAPIView(generics.RetrieveAPIView):

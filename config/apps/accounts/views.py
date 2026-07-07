@@ -866,7 +866,6 @@ class SubjectListAPIView(APIView):
         serializer = SubjectSerializer(subjects, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 #_____________________________________________________________
 # API 키와 API Secret을 설정.
 message_service = SolapiMessageService(

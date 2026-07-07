@@ -8,7 +8,7 @@ from config.apps.block.utils import get_blocked_user_ids
 from ..models import TutoringResource, TutoringResourceFile
 from ..serializers import TutoringResourceSerializer, TutoringResourceListSerializer
 
-from config.apps.common.permissions import IsVerifiedInstructor
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         - 인증된 사용자만 접근 가능.
         - 본인이 학생(student) 또는 강사(instructor)로 포함된 리소스만 조회/수정 가능 (IDOR 방지).
     """
-    permission_classes = [permissions.IsAuthenticated, IsResourceParticipant, IsVerifiedInstructor]
+    permission_classes = [permissions.IsAuthenticated, IsResourceParticipant]
     
     def get_serializer_class(self):
         if self.action == 'list':
