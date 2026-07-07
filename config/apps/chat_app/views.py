@@ -1,7 +1,8 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import ChatRoom, ChatMessage, Image, UserDeviceToken
+from .models import ChatRoom, ChatMessage, Image
+from config.apps.notification.models import DeviceToken
 from .serializers import ChatRoomListSerializer, ChatRoomSerializer, ChatMessageSerializer
 from rest_framework.views import APIView
 from config.apps.block.utils import get_blocked_user_ids
@@ -265,7 +266,7 @@ class DeviceTokenView(APIView):
             "is_active": true              // boolean
         }
         """
-        token = UserDeviceToken.objects.filter(user=request.user).first()
+        token = DeviceToken.objects.filter(user=request.user).order_by("-updated_at").first()
         if not token:
             return Response({"error": "디바이스 토큰이 없습니다."}, status=404)
 
@@ -293,14 +294,15 @@ class DeviceTokenView(APIView):
         token = request.data.get("token")
         if not token:
             return Response({"error": "토큰이 필요합니다."}, status=400)
-        platform = request.data.get("platform", "a")
+        platform = request.data.get("platform", "android")
 
-        if UserDeviceToken.objects.filter(user=request.user, is_active=True).exists() or not UserDeviceToken.objects.filter(user=request.user).exists():
-            obj, created = UserDeviceToken.objects.update_or_create(
-                user=request.user,
-                defaults={"token": token, "platform": platform, "is_active": True}
-            )
-        # platform: ios, android
+        # 다른 유저가 사용하던 동일한 토큰은 삭제
+        DeviceToken.objects.filter(token=token).exclude(user=request.user).delete()
+
+        obj, created = DeviceToken.objects.update_or_create(
+            token=token,
+            defaults={"user": request.user, "platform": platform, "is_active": True}
+        )
         return Response({"ok": True, "id": obj.id}, status=200)
 
     def put(self, request):
@@ -313,9 +315,13 @@ class DeviceTokenView(APIView):
             "ok": true                     // boolean
         }
         """
-        token_status = UserDeviceToken.objects.get(user=request.user).is_active 
+        tokens = DeviceToken.objects.filter(user=request.user)
+        if not tokens.exists():
+            return Response({"error": "디바이스 토큰이 없습니다."}, status=404)
+
+        token_status = tokens.first().is_active
         token_status = not token_status
-        UserDeviceToken.objects.filter(user=request.user).update(is_active=token_status) 
+        tokens.update(is_active=token_status) 
         return Response({"ok": True}, status=200)
 
 class ChatNotificationToggleView(APIView):
@@ -328,8 +334,11 @@ class ChatNotificationToggleView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
-        token_obj, created = UserDeviceToken.objects.get_or_create(user=request.user)
-        token_obj.is_chat_active = not token_obj.is_chat_active
-        token_obj.save(update_fields=['is_chat_active'])
-        return Response({"is_chat_active": token_obj.is_chat_active}, status=200)
+        tokens = DeviceToken.objects.filter(user=request.user)
+        if not tokens.exists():
+            return Response({"error": "등록된 디바이스 토큰이 없습니다. 먼저 토큰을 등록해 주세요."}, status=400)
+        
+        new_state = not tokens.first().is_chat_active
+        tokens.update(is_chat_active=new_state)
+        return Response({"is_chat_active": new_state}, status=200)
 
