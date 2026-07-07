@@ -27,6 +27,10 @@ class PendingInstructor(models.Model):
     # 강사 상태 (인증대기/완료/정지)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
 
+    # 반려 사유 (인증이 반려된 경우 입력 및 조회)
+    rejection_reason = models.TextField(blank=True, default="")
+
+
     def __str__(self):
         return f"PendingInstructor: {self.instructor_profile.user.username}"
 

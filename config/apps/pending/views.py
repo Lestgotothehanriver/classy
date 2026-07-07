@@ -31,10 +31,13 @@ class PendingCreateAPIView(APIView):
         
         # 2. 이미 pending_info가 존재하는지 확인
         if hasattr(instructor, 'pending_info') and instructor.pending_info:
-            return Response({
+            err_data = {
                 "error": "이미 인증 신청 내역이 존재합니다.",
                 "status": instructor.pending_info.status
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }
+            if instructor.pending_info.status == PendingInstructor.Status.SUSPENDED:
+                err_data["rejection_reason"] = instructor.pending_info.rejection_reason
+            return Response(err_data, status=status.HTTP_400_BAD_REQUEST)
             
         # 3. 파일 유효성 검증
         files = request.FILES.getlist('pending_file') or request.FILES.getlist('files')
@@ -71,10 +74,14 @@ class PendingCreateAPIView(APIView):
             }, status=status.HTTP_200_OK)
             
         pending_info = instructor.pending_info
-        return Response({
+        resp_data = {
             "exists": True,
             "status": pending_info.status
-        }, status=status.HTTP_200_OK)
+        }
+        if pending_info.status == PendingInstructor.Status.SUSPENDED:
+            resp_data["rejection_reason"] = pending_info.rejection_reason
+        return Response(resp_data, status=status.HTTP_200_OK)
+
 
 
 

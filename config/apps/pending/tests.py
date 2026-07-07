@@ -64,13 +64,37 @@ class PendingGetAPITestCase(TestCase):
         self.assertEqual(response.json(), {"exists": True, "status": "VERIFIED"})
 
     def test_instructor_with_suspended_status(self):
-        """Instructors with a PendingInstructor entry in SUSPENDED status should receive exists: true, status: SUSPENDED."""
+        """Instructors with a PendingInstructor entry in SUSPENDED status should receive exists: true, status: SUSPENDED, and rejection_reason."""
         PendingInstructor.objects.create(
             instructor_profile=self.instructor,
-            status=PendingInstructor.Status.SUSPENDED
+            status=PendingInstructor.Status.SUSPENDED,
+            rejection_reason="서류 화질이 불분명함."
         )
         token, _ = Token.objects.get_or_create(user=self.instructor_user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get("/pending/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"exists": True, "status": "SUSPENDED"})
+        self.assertEqual(response.json(), {
+            "exists": True,
+            "status": "SUSPENDED",
+            "rejection_reason": "서류 화질이 불분명함."
+        })
+
+    def test_instructor_post_with_suspended_status_returns_rejection_reason(self):
+        """이미 SUSPENDED 상태인데 다시 POST 요청을 보내는 경우 rejection_reason이 에러 응답에 포함되어야 함."""
+        PendingInstructor.objects.create(
+            instructor_profile=self.instructor,
+            status=PendingInstructor.Status.SUSPENDED,
+            rejection_reason="인증 서류 누락."
+        )
+        token, _ = Token.objects.get_or_create(user=self.instructor_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        
+        response = self.client.post("/pending/", data={"pending_file": []})  # data content doesn't matter since it blocks at already exists
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json(), {
+            "error": "이미 인증 신청 내역이 존재합니다.",
+            "status": "SUSPENDED",
+            "rejection_reason": "인증 서류 누락."
+        })
+
