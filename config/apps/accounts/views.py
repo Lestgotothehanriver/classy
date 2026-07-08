@@ -18,6 +18,8 @@ from .serializers import (
     InstructorSignupSerializer,
     StudentUpdateSerializer,
     InstructorUpdateSerializer,
+    StudentRoleAddSerializer,
+    InstructorRoleAddSerializer,
 )
 import logging
 import random
@@ -115,8 +117,7 @@ class InstructorSignupAPIView(GenericAPIView):
     강사용 회원가입 및 프로필 업데이트를 처리하는 API View입니다.
 
     POST /accounts/signup/instructor/
-    새로운 강사 계정을 생성하며, 학력/경력 인증을 위한 서류 파일(pending_file) 업로드를 필수로 요구합니다.
-    회원가입 직후 강사 계정은 PENDING 상태로 지정되어 관리자 승인 후 활동이 가능합니다.
+    새로운 강사 계정을 생성합니다.
 
     PUT/PATCH /accounts/signup/instructor/
     강사 사용자의 프로필 정보를 수정(Partial Update)합니다.
@@ -982,3 +983,120 @@ class VerifyAuthSMSAPIView(APIView):
         return Response({
             "message": "전화번호 인증이 완료되었습니다."
         }, status=status.HTTP_200_OK)
+
+
+class ProfileCheckAPIView(APIView):
+    """
+    URL: /accounts/profile-check/
+    Method: GET
+    - 유저의 학생 프로필 및 강사 프로필 여부를 확인하는 view입니다.
+    - 로그인 view의 로직과 유사하게 작성 ( available_roles 목록 반환 및 last_login 업데이트 )
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        available_roles = []
+        now = timezone.now()
+
+        # 학생 계정이 있을 경우 role에 추가 및 last_login 업데이트
+        if hasattr(user, "student_profile"):
+            student = user.student_profile
+            prev_last_login = student.last_login
+            student.last_login = now
+            student.save(update_fields=["last_login"])
+            available_roles.append({
+                "role": "student",
+                "status": "VERIFIED",
+                "last_login": prev_last_login.isoformat() if prev_last_login else None,
+            })
+
+        # 강사 계정이 있을 경우 role에 추가 및 last_login 업데이트
+        if hasattr(user, "instructor_profile"):
+            instructor = user.instructor_profile
+            pending_info = getattr(instructor, 'pending_info', None)
+            pending_status = pending_info.status if pending_info else 'NOT_SUBMITTED'
+            prev_last_login = instructor.last_login
+            instructor.last_login = now
+            instructor.save(update_fields=["last_login"])
+            available_roles.append({
+                "role": "instructor",
+                "status": pending_status,
+                "last_login": prev_last_login.isoformat() if prev_last_login else None,
+            })
+
+        # 토큰 조회/생성
+        token, _ = Token.objects.get_or_create(user=user)
+
+        return Response({
+            "token": token.key,
+            "user_id": user.id,
+            "email": user.email,
+            "available_roles": available_roles,
+        }, status=status.HTTP_200_OK)
+
+
+class RoleAddAPIView(APIView):
+    """
+    URL: /accounts/role-add/
+    Method: POST
+    - 학생 입장에서 강사 role을 추가하거나 강사 입장에서 학생 role을 추가하는 view입니다.
+    - 쿼리 파라미터로 role=student | instructor를 받습니다.
+    - 공통으로 받는 데이터 (User 모델 필드들)을 제외한 나머지 role 특정 필드들을 받아 role을 생성합니다.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        role = request.query_params.get('role', '').strip().lower()
+        user = request.user
+
+        if not role:
+            return Response({"error": "role query parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if role not in ['student', 'instructor']:
+            return Response({"error": "role query parameter must be either 'student' or 'instructor'"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if role == 'student':
+            if hasattr(user, 'student_profile'):
+                return Response({"error": "이미 학생 프로필이 존재합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = StudentRoleAddSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+        elif role == 'instructor':
+            if hasattr(user, 'instructor_profile'):
+                return Response({"error": "이미 강사 프로필이 존재합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = InstructorRoleAddSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+        # 역할이 추가된 후, 로그인 뷰와 유사하게 최신 available_roles 와 사용자 정보 반환
+        available_roles = []
+        if hasattr(user, 'student_profile'):
+            student = user.student_profile
+            available_roles.append({
+                "role": "student",
+                "status": "VERIFIED",
+                "last_login": student.last_login.isoformat() if student.last_login else None,
+            })
+        if hasattr(user, 'instructor_profile'):
+            instructor = user.instructor_profile
+            pending_info = getattr(instructor, 'pending_info', None)
+            pending_status = pending_info.status if pending_info else 'NOT_SUBMITTED'
+            available_roles.append({
+                "role": "instructor",
+                "status": pending_status,
+                "last_login": instructor.last_login.isoformat() if instructor.last_login else None,
+            })
+
+        token, _ = Token.objects.get_or_create(user=user)
+
+        return Response({
+            "token": token.key,
+            "user_id": user.id,
+            "email": user.email,
+            "available_roles": available_roles,
+        }, status=status.HTTP_201_CREATED)
+

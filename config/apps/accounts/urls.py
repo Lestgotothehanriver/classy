@@ -12,6 +12,7 @@ from .views import (
     UserDetailAPIView,
     SubjectListAPIView,
     SendAuthSMSAPIView, VerifyAuthSMSAPIView,
+    ProfileCheckAPIView, RoleAddAPIView,
 )
 
 app_name = "accounts"
@@ -24,7 +25,9 @@ urlpatterns = [
     path("check-username/", CheckUsernameAPIView.as_view(), name="check-username"),
     path("check-email/", CheckEmailAPIView.as_view(), name="check-email"),
     path("check-phone/", CheckPhoneAPIView.as_view(), name="check-phone"),   # 신규
-    path("add-role/", AddRoleAPIView.as_view(), name="add-role"),             # 신규
+    path("add-role/", AddRoleAPIView.as_view(), name="add-role"),             # 기존
+    path("role-add/", RoleAddAPIView.as_view(), name="role-add"),             # 신규
+    path("profile-check/", ProfileCheckAPIView.as_view(), name="profile-check"),  # 신규
     path("logout/", LogoutAPIView.as_view(), name="logout"),
     path("withdraw/", WithdrawAPIView.as_view(), name="withdraw"),
     path("me/", UserProfileAPIView.as_view(), name="user-profile"),

@@ -131,3 +131,206 @@ class PhoneVerificationTests(APITestCase):
         # missing phone_number
         response = self.client.post(self.verify_url, {"code": "123456"})
         self.assertEqual(response.status_code, 400)
+
+
+from config.apps.accounts.models import Student, Instructor, Subject
+from config.apps.pending.models import PendingInstructor
+
+class ProfileCheckAPIViewTests(APITestCase):
+    def setUp(self):
+        self.url = reverse("accounts:profile-check")
+        self.student_email = "student@example.com"
+        self.student_user = User.objects.create_user(
+            username=self.student_email,
+            email=self.student_email,
+            password="securepassword123",
+            user_name="student_user",
+            phone="01011112222"
+        )
+        self.student_profile = Student.objects.create(user=self.student_user)
+
+        self.instructor_email = "instructor@example.com"
+        self.instructor_user = User.objects.create_user(
+            username=self.instructor_email,
+            email=self.instructor_email,
+            password="securepassword123",
+            user_name="instructor_user",
+            phone="01033334444"
+        )
+        self.instructor_profile = Instructor.objects.create(
+            user=self.instructor_user,
+            university="Test University",
+            department="Test Department"
+        )
+        self.pending_info = PendingInstructor.objects.create(
+            instructor_profile=self.instructor_profile,
+            status=PendingInstructor.Status.PENDING
+        )
+
+    def test_profile_check_unauthenticated(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_profile_check_student_only(self):
+        self.client.force_authenticate(user=self.student_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user_id"], self.student_user.id)
+        self.assertEqual(response.data["email"], self.student_email)
+        self.assertEqual(len(response.data["available_roles"]), 1)
+        self.assertEqual(response.data["available_roles"][0]["role"], "student")
+        self.assertEqual(response.data["available_roles"][0]["status"], "VERIFIED")
+        self.assertIsNone(response.data["available_roles"][0]["last_login"])
+
+        # Second hit should have last_login
+        response2 = self.client.get(self.url)
+        self.assertIsNotNone(response2.data["available_roles"][0]["last_login"])
+
+    def test_profile_check_instructor_only(self):
+        self.client.force_authenticate(user=self.instructor_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user_id"], self.instructor_user.id)
+        self.assertEqual(response.data["email"], self.instructor_email)
+        self.assertEqual(len(response.data["available_roles"]), 1)
+        self.assertEqual(response.data["available_roles"][0]["role"], "instructor")
+        self.assertEqual(response.data["available_roles"][0]["status"], "PENDING")
+        self.assertIsNone(response.data["available_roles"][0]["last_login"])
+
+        # Second hit should have last_login
+        response2 = self.client.get(self.url)
+        self.assertIsNotNone(response2.data["available_roles"][0]["last_login"])
+
+    def test_profile_check_both_roles(self):
+        # Add instructor profile to student user
+        instructor_profile = Instructor.objects.create(
+            user=self.student_user,
+            university="Test University 2"
+        )
+        PendingInstructor.objects.create(
+            instructor_profile=instructor_profile,
+            status=PendingInstructor.Status.VERIFIED
+        )
+        
+        self.client.force_authenticate(user=self.student_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["available_roles"]), 2)
+        
+        roles = {r["role"]: r for r in response.data["available_roles"]}
+        self.assertIn("student", roles)
+        self.assertIn("instructor", roles)
+        self.assertEqual(roles["student"]["status"], "VERIFIED")
+        self.assertEqual(roles["instructor"]["status"], "VERIFIED")
+
+
+class RoleAddAPIViewTests(APITestCase):
+    def setUp(self):
+        self.url = reverse("accounts:role-add")
+        self.student_email = "student2@example.com"
+        self.student_user = User.objects.create_user(
+            username=self.student_email,
+            email=self.student_email,
+            password="securepassword123",
+            user_name="student_user2",
+            phone="01055556666"
+        )
+        self.student_profile = Student.objects.create(user=self.student_user)
+
+        self.instructor_email = "instructor2@example.com"
+        self.instructor_user = User.objects.create_user(
+            username=self.instructor_email,
+            email=self.instructor_email,
+            password="securepassword123",
+            user_name="instructor_user2",
+            phone="01077778888"
+        )
+        self.instructor_profile = Instructor.objects.create(
+            user=self.instructor_user,
+            university="Test University",
+            department="Test Department"
+        )
+        PendingInstructor.objects.create(
+            instructor_profile=self.instructor_profile,
+            status=PendingInstructor.Status.PENDING
+        )
+
+    def test_role_add_unauthenticated(self):
+        response = self.client.post(f"{self.url}?role=student")
+        self.assertEqual(response.status_code, 401)
+
+    def test_role_add_missing_role_parameter(self):
+        self.client.force_authenticate(user=self.student_user)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.data)
+
+    def test_role_add_invalid_role_parameter(self):
+        self.client.force_authenticate(user=self.student_user)
+        response = self.client.post(f"{self.url}?role=invalid")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.data)
+
+    def test_role_add_existing_student_role_fails(self):
+        self.client.force_authenticate(user=self.student_user)
+        response = self.client.post(f"{self.url}?role=student")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["error"], "이미 학생 프로필이 존재합니다.")
+
+    def test_role_add_existing_instructor_role_fails(self):
+        self.client.force_authenticate(user=self.instructor_user)
+        response = self.client.post(f"{self.url}?role=instructor")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["error"], "이미 강사 프로필이 존재합니다.")
+
+    def test_role_add_student_role_to_instructor_success(self):
+        self.client.force_authenticate(user=self.instructor_user)
+        # Create subjects for testing
+        subject1, _ = Subject.objects.get_or_create(number=1)
+        subject2, _ = Subject.objects.get_or_create(number=2)
+
+        data = {
+            "studentsubject": [subject1.number, subject2.number]
+        }
+        response = self.client.post(f"{self.url}?role=student", data, format="json")
+        self.assertEqual(response.status_code, 201)
+        
+        # Verify student profile exists
+        self.assertTrue(Student.objects.filter(user=self.instructor_user).exists())
+        student_profile = Student.objects.get(user=self.instructor_user)
+        self.assertEqual(student_profile.subjects.count(), 2)
+        
+        # Verify response structure
+        self.assertEqual(len(response.data["available_roles"]), 2)
+        roles = {r["role"]: r for r in response.data["available_roles"]}
+        self.assertIn("student", roles)
+        self.assertIn("instructor", roles)
+
+    def test_role_add_instructor_role_to_student_success(self):
+        self.client.force_authenticate(user=self.student_user)
+        # Create subjects for testing
+        subject3, _ = Subject.objects.get_or_create(number=3)
+
+        data = {
+            "university": "SNU",
+            "department": "CS",
+            "instruction": "Hello, I am a new instructor",
+            "student_number": "2020-12345",
+            "instructorsubject": f"[{subject3.number}]"
+        }
+        response = self.client.post(f"{self.url}?role=instructor", data, format="json")
+        self.assertEqual(response.status_code, 201)
+
+        # Verify instructor profile and PendingInstructor exists
+        self.assertTrue(Instructor.objects.filter(user=self.student_user).exists())
+        instructor_profile = Instructor.objects.get(user=self.student_user)
+        self.assertEqual(instructor_profile.university, "SNU")
+        self.assertEqual(instructor_profile.department, "CS")
+        self.assertEqual(instructor_profile.instruction, "Hello, I am a new instructor")
+        self.assertEqual(instructor_profile.student_number, "2020-12345")
+        self.assertEqual(instructor_profile.subjects.count(), 1)
+        
+        self.assertTrue(PendingInstructor.objects.filter(instructor_profile=instructor_profile).exists())
+        pending = PendingInstructor.objects.get(instructor_profile=instructor_profile)
+        self.assertEqual(pending.status, PendingInstructor.Status.PENDING)
+

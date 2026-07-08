@@ -114,7 +114,6 @@ class InstructorSignupSerializer(serializers.Serializer):
     """
     강사 회원가입:
     - User 생성 + InstructorProfile 생성
-    - PendingInstructor 생성(status=PENDING)
     - instructorsubject(강의 가능 과목) 저장 지원
 
     요청 데이터 예시 (multipart/form-data):
@@ -133,7 +132,6 @@ class InstructorSignupSerializer(serializers.Serializer):
         "instruction": "자기소개...",
         "student_number": "2018",
         "instructorsubject": [2, 4],   // Subject id 리스트 (프론트에서 JSON string으로 보내도 됨)
-        "pending_file": <파일>
     }
 
     * multipart에서 instructorsubject를 JSON string으로 보내는 경우 예:
@@ -383,3 +381,89 @@ class InstructorUpdateSerializer(serializers.Serializer):
         if self.instance and self.instance.pk:
             queryset = queryset.exclude(pk=self.instance.pk) # 본인 제외
         return not queryset.exists()
+
+
+class StudentRoleAddSerializer(serializers.Serializer):
+    """
+    학생 역할 추가 시 입력받는 데이터 및 저장 로직
+    - 공통 유저 필드는 이미 존재하므로 제외하고 studentsubject만 받습니다.
+    """
+    studentsubject = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        default=list,
+        write_only=True,
+    )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        user = self.context.get('request').user
+        studentsubject_ids = validated_data.pop("studentsubject", []) or []
+
+        student_profile = Student.objects.create(user=user)
+
+        if studentsubject_ids:
+            subjects = []
+            for num in studentsubject_ids:
+                obj, _ = Subject.objects.get_or_create(number=num)
+                subjects.append(obj)
+            student_profile.subjects.set(subjects)
+
+        return student_profile
+
+
+class InstructorRoleAddSerializer(serializers.Serializer):
+    """
+    강사 역할 추가 시 입력받는 데이터 및 저장 로직
+    - 공통 유저 필드는 제외하고 강사 전용 필드들만 받습니다.
+    """
+    university = serializers.CharField()
+    department = serializers.CharField(required=False, allow_blank=True, default='')
+    instruction = serializers.CharField(required=False, allow_blank=True, default='')
+    student_number = serializers.CharField(required=False, allow_blank=True, default='')
+    instructorsubject = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default='[]',
+        write_only=True,
+    )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        import json
+        user = self.context.get('request').user
+        raw = validated_data.pop("instructorsubject", "[]") or "[]"
+        if isinstance(raw, list):
+            instructorsubject_ids = [int(x) for x in raw]
+        elif isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                instructorsubject_ids = [int(x) for x in parsed if str(x).strip().lstrip('-').isdigit()]
+            except Exception:
+                instructorsubject_ids = []
+        else:
+            instructorsubject_ids = []
+
+        instructor_profile = Instructor.objects.create(
+            user=user,
+            university=validated_data["university"],
+            department=validated_data.get("department", ""),
+            instruction=validated_data.get("instruction", ""),
+            student_number=validated_data.get("student_number", ""),
+        )
+
+        if instructorsubject_ids:
+            subjects = []
+            for num in instructorsubject_ids:
+                obj, _ = Subject.objects.get_or_create(number=int(num) if isinstance(num, str) else num)
+                subjects.append(obj)
+            instructor_profile.subjects.set(subjects)
+
+        # PendingInstructor 정보 생성 (기본 PENDING 상태)
+        PendingInstructor.objects.create(
+            instructor_profile=instructor_profile,
+            status=PendingInstructor.Status.PENDING,
+        )
+
+        return instructor_profile
+
