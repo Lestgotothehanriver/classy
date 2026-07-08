@@ -393,3 +393,86 @@ class InstructorInfoRegistrationTest(TestCase):
         self.instructor.refresh_from_db()
         self.assertTrue(self.instructor.is_tutoring)
 
+
+class TutoringPostSearchAPITest(LikeSortingTestBase):
+    """과외 구인 공고 통합 검색(search) API 테스트"""
+
+    def setUp(self):
+        super().setUp()
+        from config.apps.accounts.models import Subject
+        from config.apps.tutoring.models import TutoringPost
+        from rest_framework.authtoken.models import Token
+
+        # Subject 생성
+        self.subject_korean = Subject.objects.create(number=1)  # 초등국어
+        self.subject_math = Subject.objects.create(number=3)    # 초등수학
+
+        # 학생 유저 이름 커스텀 설정
+        self.student_user1.user_name = "홍길동"
+        self.student_user1.save()
+        self.student_user2.user_name = "이순신"
+        self.student_user2.save()
+
+        # 공고 생성
+        self.post_korean = TutoringPost.objects.create(
+            student=self.student1,
+            title="국어 공부 같이해요",
+            situation="기초가 부족합니다.",
+            etc="주말 수업 선호",
+            is_active=True
+        )
+        self.post_korean.subjects.add(self.subject_korean)
+
+        self.post_math = TutoringPost.objects.create(
+            student=self.student2,
+            title="수학 등급 올리고 싶어요",
+            situation="심화 학습 원해요.",
+            etc="친절한 선생님",
+            is_active=True
+        )
+        self.post_math.subjects.add(self.subject_math)
+
+        # 강사 토큰으로 인증
+        self.instructor_token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.instructor_token.key}")
+
+    def test_search_by_title(self):
+        """제목으로 검색"""
+        resp = self.client.get("/tutoring/posts/", {"search": "국어 공부"})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], self.post_korean.id)
+
+    def test_search_by_situation(self):
+        """학생 상황(situation)으로 검색"""
+        resp = self.client.get("/tutoring/posts/", {"search": "심화"})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], self.post_math.id)
+
+    def test_search_by_etc(self):
+        """기타 요청사항(etc)으로 검색"""
+        resp = self.client.get("/tutoring/posts/", {"search": "주말 수업"})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], self.post_korean.id)
+
+    def test_search_by_student_name(self):
+        """학생 닉네임으로 검색"""
+        resp = self.client.get("/tutoring/posts/", {"search": "이순신"})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], self.post_math.id)
+
+    def test_search_by_subject_name(self):
+        """과목 이름으로 검색"""
+        resp = self.client.get("/tutoring/posts/", {"search": "수학"})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], self.post_math.id)
+

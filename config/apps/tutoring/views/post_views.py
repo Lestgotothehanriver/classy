@@ -25,6 +25,7 @@ class TutoringPostListAPIView(generics.ListAPIView):
         cost (int): 최대 희망 과외비 상한선.
         method (str): 수업 방식 ('ONLINE' | 'OFFLINE' | 'BOTH').
         sex (str): 희망 학생 성별 ('M' | 'F' | 'ANY').
+        search (str): 통합 검색어 (제목, 내용 등).
 
     Response (JSON):
         HTTP 200 OK:
@@ -37,7 +38,8 @@ class TutoringPostListAPIView(generics.ListAPIView):
                 "cost": 300000,
                 "student_avg_rating": 4.5,
                 "like_count": 10,
-                "created_at": "2026-04-26T06:51:26Z"
+                "created_at": "2026-04-26T06:51:26Z",
+                "search": "수학"
             }
         ]
     """
@@ -95,6 +97,17 @@ class TutoringPostListAPIView(generics.ListAPIView):
         min_rating = self.request.query_params.get("min_rating")
         if min_rating and min_rating.isdigit():
             qs = qs.filter(student_avg_rating__gte=float(min_rating))
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            q = Q()
+            q |= Q(title__icontains=search)
+            q |= Q(situation__icontains=search)
+            q |= Q(etc__icontains=search)
+            q |= Q(student__user__user_name__icontains=search)
+            q |= Q(subjects__name__icontains=search)
+            qs = qs.filter(q).distinct()
 
         return qs
 
