@@ -100,6 +100,9 @@ class PendingUploadView(APIView):
     def post(self, request):
         user = request.user
         pending_instructor = user.instructor_profile.pending_info
+        pending_instructor.status = PendingInstructor.Status.PENDING
+        pending_instructor.save()
+        
         files = request.FILES.getlist('files')
         if files:
             pending_instructor.files.all().delete()
