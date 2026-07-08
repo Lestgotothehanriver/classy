@@ -13,6 +13,7 @@ class PendingCreateAPIView(APIView):
     URL: /pending/
 
     POST /pending/
+    G
     - 로그인한 강사 회원이 인증 서류를 최초 제출할 때 호출하는 API.
     - MultipartFormData 파서 사용.
     - body field: pending_file (파일) 또는 files (다중 파일)
@@ -31,13 +32,10 @@ class PendingCreateAPIView(APIView):
         
         # 2. 이미 pending_info가 존재하는지 확인
         if hasattr(instructor, 'pending_info') and instructor.pending_info:
-            err_data = {
+            return Response({
                 "error": "이미 인증 신청 내역이 존재합니다.",
                 "status": instructor.pending_info.status
-            }
-            if instructor.pending_info.status == PendingInstructor.Status.SUSPENDED:
-                err_data["rejection_reason"] = instructor.pending_info.rejection_reason
-            return Response(err_data, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_400_BAD_REQUEST)
             
         # 3. 파일 유효성 검증
         files = request.FILES.getlist('pending_file') or request.FILES.getlist('files')
@@ -74,14 +72,10 @@ class PendingCreateAPIView(APIView):
             }, status=status.HTTP_200_OK)
             
         pending_info = instructor.pending_info
-        resp_data = {
+        return Response({
             "exists": True,
             "status": pending_info.status
-        }
-        if pending_info.status == PendingInstructor.Status.SUSPENDED:
-            resp_data["rejection_reason"] = pending_info.rejection_reason
-        return Response(resp_data, status=status.HTTP_200_OK)
-
+        }, status=status.HTTP_200_OK)
 
 
 

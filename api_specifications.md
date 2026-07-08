@@ -25,6 +25,8 @@
 | 프로필 이미지 변경 | `PATCH` | `/accounts/me/image/` | **[Body (Multipart)]**<br>- `profile_image` (file, 필수) | 프로필 이미지를 새로 등록하거나 변경합니다. |
 | 번호 변경 인증 요청 | `POST` | `/accounts/me/phone/request/` | **[Body (JSON)]**<br>- `phone` (str, 필수) | 휴대전화 번호 변경을 위해 새로운 번호로 6자리 SMS 인증번호 전송을 요청합니다. |
 | 번호 변경 인증 확인 | `POST` | `/accounts/me/phone/verify/` | **[Body (JSON)]**<br>- `phone` (str, 필수)<br>- `code` (str, 필수) | 인증번호 대조가 성공하면 유저의 휴대전화 번호를 최종 변경합니다. |
+| SMS 인증번호 발송 | `POST` | `/accounts/send-auth-sms/` | **[Body (JSON)]**<br>- `phone_number` (str, 필수) | 입력한 번호로 6자리 SMS 인증번호를 발송합니다. |
+| SMS 인증번호 확인 | `POST` | `/accounts/verify-auth-sms/` | **[Body (JSON)]**<br>- `phone_number` (str, 필수)<br>- `code` (str, 필수) | 발송된 인증번호를 검증하여 전화번호 인증을 완료합니다. |
 | 유저 공개 프로필 조회 | `GET` | `/accounts/user/<int:pk>/` | **[Path]**<br>- `pk` (int, 필수) | 특정 사용자의 공개 프로필 및 학적, 활동 과목 정보를 조회합니다. |
 | 전체 과목 조회 | `GET` | `/accounts/subjects/` | 없음 | 시스템 내 전체 교과 과목 리스트를 순서대로 조회합니다. |
 
@@ -113,7 +115,16 @@
 
 ---
 
-## 6. Main App (메인화면 대시보드)
+## 6. Report App (신고 및 1:1 고객 문의)
+
+| 기능 | Method | URL | Param | 설명 |
+| :--- | :---: | :--- | :--- | :--- |
+| 사용자 신고 | `POST` | `/report/create/` | **[Body (JSON)]**<br>- `reported_user` (int, 필수)<br>- `choices` (list[str], 필수)<br>- `evidence_image` (file/null, 선택) | 인증된 사용자가 부적절한 사용자 등을 신고합니다. |
+| 1:1 고객센터 문의 | `POST` | `/report/inquiry/` | **[Body (JSON)]**<br>- `title` (str, 필수)<br>- `content` (str, 필수) | 인증된 사용자가 고객센터에 1:1 문의를 남깁니다. |
+
+---
+
+## 7. Main App (메인화면 대시보드)
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
@@ -122,7 +133,7 @@
 
 ---
 
-## 7. Mypage App (마이페이지 개인이력)
+## 8. Mypage App (마이페이지 개인이력)
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
@@ -134,7 +145,7 @@
 
 ---
 
-## 8. Block App (차단 관리)
+## 9. Block App (차단 관리)
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
@@ -144,7 +155,7 @@
 
 ---
 
-## 9. Chat App (1:1 과외 문의 채팅)
+## 10. Chat App (1:1 과외 문의 채팅)
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
@@ -156,14 +167,11 @@
 | 채팅방 찜하기 토글 | `POST` | `/chatrooms/<int:pk>/like/` | **[Path]**<br>- `pk` (int, 채팅방 ID) | 특정 채팅방을 찜(즐겨찾기)하거나 취소 상태로 토글합니다. |
 | 채팅방 알림 음소거 토글 | `POST` | `/chatrooms/<int:pk>/mute/` | **[Path]**<br>- `pk` (int, 채팅방 ID) | 특정 채팅방에 대한 신규 메시지 수신 알림 음소거 여부를 토글합니다. |
 | 이미지 사전 업로드 | `POST` | `/images/` | **[Body (Multipart)]**<br>- `images` (file, 필수, 다중 가능) | 채팅 전송을 위해 이미지 파일을 미리 업로드하여 이후 메시지 전송 시 매핑할 이미지 ID들을 획득합니다. |
-| 채팅 알림 토큰 조회 | `GET` | `/device-token/` | 없음 | 로그인한 사용자의 단말기 디바이스 푸시 알림 수신 동의 상태를 조회합니다. |
-| 채팅 알림 토큰 등록 | `POST` | `/device-token/` | **[Body (JSON)]**<br>- `token` (str, 필수)<br>- `platform` (str, 선택) | 푸시 전송에 쓰일 단말기 토큰값을 신규 등록하거나 갱신 처리합니다. |
-| 채팅 알림 활성화 토글 | `PUT` | `/device-token/` | 없음 | 단말기 알림 활성 상태(`is_active`)를 On/Off 토글합니다. |
 | 채팅 독립 알림 토글 | `PUT` | `/chat-notification/` | 없음 | 다른 시스템 푸시와 무관하게 순수 채팅 알림 상태(`is_chat_active`)만 토글 변경합니다. |
 
 ---
 
-## 10. Notification App (시스템 푸시 및 매칭 알림)
+## 11. Notification App (시스템 푸시 및 매칭 알림)
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |

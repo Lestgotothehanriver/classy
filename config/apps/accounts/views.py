@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from config.throttles import LoginRateThrottle, SMSRateThrottle
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.generics import GenericAPIView
@@ -200,6 +201,7 @@ class LoginAPIView(APIView):
     """
     parser_classes = [JSONParser]  # JSON(앱) + multipart(테스트 등) 모두 허용
     permission_classes = []
+    throttle_classes = [LoginRateThrottle]
     
     def post(self, request):
         logger.info("[BACKEND_DEBUG_AUTH] Login - START (email: %s)", request.data.get('email'))
@@ -912,6 +914,7 @@ class SendAuthSMSAPIView(APIView):
     }
     """
     permission_classes = []
+    throttle_classes = [SMSRateThrottle]
 
     def post(self, request):
         phone_number = request.data.get('phone_number')

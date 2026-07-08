@@ -85,6 +85,17 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_THROTTLE_CLASSES": [
+        "config.throttles.SafeMethodRateThrottle",
+        "config.throttles.UnsafeMethodRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "safe_method": "100/min",
+        "unsafe_method": "30/min",
+        "login": "5/min",
+        "sms": "1/min",
+        "purchase": "3/min",
+    },
 }
 
 # ──────────────────────────────────────────────

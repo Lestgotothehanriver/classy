@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.throttling import UserRateThrottle
+from config.throttles import PurchaseRateThrottle
 
 from datetime import timedelta
 from django.utils import timezone
@@ -40,11 +40,7 @@ PRODUCT_CASH_MAP = {
 STORE_FEE_RATE = 0.30
 
 
-# ──────────────────────────────────────────────
-# 구매 전용 Rate Throttle (유저당 분당 10회)
-# ──────────────────────────────────────────────
-class PurchaseRateThrottle(UserRateThrottle):
-    rate = '10/min'
+# PurchaseRateThrottle is imported from config.throttles
 
 
 # ──────────────────────────────────────────────
@@ -709,6 +705,7 @@ class RefundPurchaseView(APIView):
     URL: /cash/webhook/apple/
     """
     permission_classes = []
+    throttle_classes = []
 
     def post(self, request, *args, **kwargs):
         """
@@ -855,6 +852,7 @@ class GooglePlayWebhookView(APIView):
     URL: /cash/webhook/google/
     """
     permission_classes = []
+    throttle_classes = []
 
     def post(self, request, *args, **kwargs):
         """

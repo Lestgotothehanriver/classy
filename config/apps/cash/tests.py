@@ -12,9 +12,16 @@ User = get_user_model()
 class CashPurchaseTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='testuser', password='testpassword')
+        self.user = User.objects.create_user(username='testuser', password='testpassword', user_name='testuser')
         self.client.force_authenticate(user=self.user)
         self.url = reverse('cash:purchase')
+        
+        # Mock Rate Throttling to prevent 429 errors in tests
+        self.throttle_patcher = patch('rest_framework.throttling.SimpleRateThrottle.allow_request', return_value=True)
+        self.mock_throttle = self.throttle_patcher.start()
+
+    def tearDown(self):
+        self.throttle_patcher.stop()
 
     # ── Apple 결제 성공 ─────────────────────────
     @patch('config.apps.cash.views.verify_apple_receipt')
@@ -160,14 +167,14 @@ from django.utils import timezone
 class RentalAndRefundTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='student1', password='pw')
+        self.user = User.objects.create_user(username='student1', password='pw', user_name='student1')
         self.user.cash = 10000
         self.user.save()
         self.student = Student.objects.create(user=self.user)
         self.client.force_authenticate(user=self.user)
         
         # Setup lecture
-        self.instructor_user = User.objects.create_user(username='inst1', password='pw')
+        self.instructor_user = User.objects.create_user(username='inst1', password='pw', user_name='inst1')
         self.instructor = Instructor.objects.create(user=self.instructor_user, university='Test Univ')
         self.lecture = Lecture.objects.create(
             instructor=self.instructor,

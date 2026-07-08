@@ -1,7 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APITestCase
-
 User = get_user_model()
 
 class CheckEmailAPIViewTests(APITestCase):
@@ -54,11 +53,18 @@ class PhoneVerificationTests(APITestCase):
         self.send_url = reverse("accounts:send-auth-sms")
         self.verify_url = reverse("accounts:verify-auth-sms")
         self.phone = "01099998888"
+        
+        # Mock SMS sending
         self.patcher = patch('config.apps.accounts.views.send_auth_sms', return_value=True)
         self.mock_send_sms = self.patcher.start()
+        
+        # Mock Throttling to prevent 429 errors in tests
+        self.throttle_patcher = patch('rest_framework.throttling.SimpleRateThrottle.allow_request', return_value=True)
+        self.mock_throttle = self.throttle_patcher.start()
 
     def tearDown(self):
         self.patcher.stop()
+        self.throttle_patcher.stop()
 
     def test_send_auth_sms_success(self):
         """전화번호가 제공되면 인증번호가 SMS로 발송(모킹/로그)되고 200 응답과 인증코드를 받아야 합니다."""
