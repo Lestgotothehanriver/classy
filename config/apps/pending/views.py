@@ -1,3 +1,4 @@
+from django.contrib.auth import password_validation
 from django.shortcuts import render
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -94,13 +95,10 @@ class PendingUploadView(APIView):
     - 요구사항에 필수는 아니지만 실무에선 거의 필요해짐.
     """
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        email = request.data.get('email')
-        password = request.data.get('password')
-        user = authenticate(request, email=email, password=password)
-        if not user:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+        user = request.user
         pending_instructor = user.instructor_profile.pending_info
         files = request.FILES.getlist('files')
         if files:
