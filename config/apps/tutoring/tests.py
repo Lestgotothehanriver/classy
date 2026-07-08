@@ -476,3 +476,49 @@ class TutoringPostSearchAPITest(LikeSortingTestBase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["id"], self.post_math.id)
 
+
+class TutoringResourceAPITest(LikeSortingTestBase):
+    """TutoringResource CRUD 및 검증(과목 3개 제한) 테스트"""
+
+    def setUp(self):
+        super().setUp()
+        from config.apps.accounts.models import Subject
+        # Subject들 생성
+        self.subject1 = Subject.objects.create(number=1)
+        self.subject2 = Subject.objects.create(number=2)
+        self.subject3 = Subject.objects.create(number=3)
+        self.subject4 = Subject.objects.create(number=4)
+
+    def test_create_tutoring_resource_with_3_or_less_subjects(self):
+        """과목 3개 이하로 TutoringResource 생성 시 성공"""
+        payload = {
+            "student": self.student1.id,
+            "instructor": self.inst1.id,
+            "subject": [self.subject1.number, self.subject2.number],
+            "class_type": "단기 수업",
+            "first_month_fee": 300000,
+        }
+        resp = self.client.post("/tutoring/resources/", data=payload, format="json")
+        self.assertEqual(resp.status_code, 201)
+        
+        # 상세 데이터 응답 검증
+        data = resp.json()
+        self.assertEqual(len(data["subject"]), 2)
+        self.assertEqual(data["subject"][0]["number"], self.subject1.number)
+        self.assertEqual(data["subject"][1]["number"], self.subject2.number)
+
+    def test_create_tutoring_resource_with_more_than_3_subjects(self):
+        """과목 3개 초과로 TutoringResource 생성 시 실패 (400 Bad Request)"""
+        payload = {
+            "student": self.student1.id,
+            "instructor": self.inst1.id,
+            "subject": [self.subject1.number, self.subject2.number, self.subject3.number, self.subject4.number],
+            "class_type": "단기 수업",
+            "first_month_fee": 300000,
+        }
+        resp = self.client.post("/tutoring/resources/", data=payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("subject", resp.json())
+        self.assertEqual(resp.json()["subject"][0], "과외 성사당 과목은 최대 3개까지만 제한하여 등록할 수 있습니다.")
+
+

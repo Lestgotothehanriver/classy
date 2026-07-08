@@ -381,10 +381,13 @@ class TutoringResourceFileSerializer(serializers.ModelSerializer):
         model = TutoringResourceFile
         fields = ['id', 'file', 'uploaded_at']
 
-class TutoringResourceSerializer(serializers.ModelSerializer):
+class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
     """수업 리소스 통합 Serializer (CRUD 모두 사용)"""
     files = TutoringResourceFileSerializer(many=True, read_only=True)
     fee_confirmation_file = AbsoluteFileField(required=False, allow_null=True)
+    subject = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+
+    m2m_fields = {'subject': Subject}
 
     class Meta:
         from .models import TutoringResource
@@ -396,6 +399,16 @@ class TutoringResourceSerializer(serializers.ModelSerializer):
             'fee_confirmation_file', 'is_student_confirmed', 
             'is_instructor_confirmed', 'fee_payment_status', 'files'
         ]
+
+    def validate_subject(self, value):
+        if value and len(value) > 3:
+            raise serializers.ValidationError("과외 성사당 과목은 최대 3개까지만 제한하여 등록할 수 있습니다.")
+        return value
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['subject'] = SubjectSimpleSerializer(instance.subject.all(), many=True).data
+        return ret
 
 
 class TutoringResourceListSerializer(serializers.ModelSerializer):
@@ -422,6 +435,7 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+        ret['subject'] = SubjectSimpleSerializer(instance.subject.all(), many=True).data
         request = self.context.get('request')
         
         if request and request.user.is_authenticated:

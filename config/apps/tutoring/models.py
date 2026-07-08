@@ -262,7 +262,7 @@ class TutoringResource(models.Model):
         ("장기 수업", "장기 수업"),
     ]
     class_type = models.CharField(max_length=20, choices=class_type_choices, blank=True) # 수업 유형
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="tutoring_resources", blank=True, null=True) # 수업 과목
+    subject = models.ManyToManyField(Subject, blank=True, related_name='tutoring_resources') # 수업 과목
     first_month_fee = models.IntegerField(blank=True, null=True) # 첫 달 수업료 (총 수업료)
     
     # 페이백 계좌 관련 필드 (학생)
