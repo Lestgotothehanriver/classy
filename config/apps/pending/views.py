@@ -13,7 +13,7 @@ class PendingCreateAPIView(APIView):
     URL: /pending/
 
     POST /pending/
-    G
+    GET /pending/
     - 로그인한 강사 회원이 인증 서류를 최초 제출할 때 호출하는 API.
     - MultipartFormData 파서 사용.
     - body field: pending_file (파일) 또는 files (다중 파일)
@@ -68,13 +68,19 @@ class PendingCreateAPIView(APIView):
         if not hasattr(instructor, 'pending_info') or not instructor.pending_info:
             return Response({
                 "exists": False,
-                "status": None
+                "status": None,
+                "university" : instructor.university,
+                "student_number" : instructor.student_number,
+                "field" : instructor.department,
             }, status=status.HTTP_200_OK)
             
         pending_info = instructor.pending_info
         return Response({
             "exists": True,
-            "status": pending_info.status
+            "status": pending_info.status,
+            "university" : instructor.university,
+            "student_number" : instructor.student_number,
+            "field" : instructor.department,
         }, status=status.HTTP_200_OK)
 
 
