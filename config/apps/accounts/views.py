@@ -1139,7 +1139,6 @@ class ProfileCheckAPIView(APIView):
 
     Returns:
         Response: {
-            "token": str,
             "user_id": int,
             "email": str,
             "available_roles": List[dict]
@@ -1178,11 +1177,7 @@ class ProfileCheckAPIView(APIView):
                 "last_login": prev_last_login.isoformat() if prev_last_login else None,
             })
 
-        # 토큰 조회/생성
-        token, _ = Token.objects.get_or_create(user=user)
-
         return Response({
-            "token": token.key,
             "user_id": user.id,
             "email": user.email,
             "available_roles": available_roles,
