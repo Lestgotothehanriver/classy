@@ -36,8 +36,8 @@
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
-| 인증 서류 최초 제출 | `POST` | `/pending/` | **[Body (Multipart)]**<br>- `pending_file` 또는 `files` (file, 필수, 다중 가능) | 로그인한 강사 회원이 자신의 학적/자격 인증 서류를 최초로 제출하여 심사를 요청합니다. |
-| 인증 서류 재제출 | `POST` | `/pending/upload/` | **[Body (Multipart)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수)<br>- `files` (file, 필수, 다중 가능) | 이메일/비밀번호 확인 후 기존 서류를 지우고 새로운 자격 서류로 교체 업로드합니다. |
+| 인증 서류 최초 제출 | `POST` | `/pending/` | **[Body (Multipart)]**<br>- `pending_file` (file, 선택)<br>- `files` (file, 선택, 다중 가능) | 로그인한 강사 회원이 자신의 학적/자격 인증 서류를 최초로 제출하여 심사를 요청합니다. |
+| 인증 서류 재제출 | `POST` | `/pending/upload/` | **[Body (Multipart)]**<br>- `files` (file, 필수, 다중 가능) | 기존에 업로드된 자격 서류를 삭제하고 새로운 자격 서류로 교체하여 인증 대기 상태로 재심사를 신청합니다. |
 
 ---
 
@@ -45,13 +45,13 @@
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
-| 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (파이프 구분 키워드, 선택)<br>- `cost` (최대 요금, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `search` (통합 검색어, 선택) 등 | 승인 완료된 강사 목록을 필터 조건에 맞추어 조회합니다. |
+| 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (콤마 구분 ID, 선택)<br>- `cost` (최대 수업료, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `age` (나이 범위, 선택)<br>- `university` (출신 대학교, 선택)<br>- `department` (학과명, 선택)<br>- `student_id` (학번/사번 필터, 선택)<br>- `search` (통합 검색어, 선택) | 승인 완료된 강사 목록을 다양한 조건에 맞추어 필터링 조회합니다. (차단 유저 제외) |
 | 강사 상세 프로필 | `GET` | `/tutoring/instructors/<int:pk>/` | **[Path]**<br>- `pk` (int, 강사 ID) | 특정 강사의 상세 프로필 정보를 조회합니다. |
 | 강사 과외 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 과외 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. |
 | 강사 리뷰 목록 | `GET` | `/tutoring/instructors/<int:instructor_id>/reviews/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 특정 강사가 학생들에게서 받은 모든 리뷰 목록을 최신순으로 조회합니다. |
-| 과외 구인 공고 목록 | `GET` | `/tutoring/posts/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (지역 필터, 선택)<br>- `cost` (최대 요금, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F'/'ANY', 선택) 등 | 학생들이 등록한 활성화된 과외 구인 공고 목록을 조회합니다. |
+| 과외 구인 공고 목록 | `GET` | `/tutoring/posts/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (지역 ID, 선택)<br>- `cost` (최대 요금, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `grade` (학년 코드, 선택)<br>- `min_rating` (최소 평점, 선택)<br>- `search` (통합 검색어, 선택) | 학생들이 등록한 활성화된 과외 구인 공고 목록을 필터 조건에 맞춰 조회합니다. (차단 유저 제외) |
 | 과외 구인 공고 상세 | `GET` | `/tutoring/posts/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID) | 특정 과외 구인 공고의 상세 내역을 조회합니다. (조회수 1 증가 처리 포함) |
-| 과외 구인 공고 작성 | `POST` | `/tutoring/posts/write/` | **[Body (JSON)]**<br>- `title` (str, 필수)<br>- `content` (str, 필수)<br>- `cost` (int, 필수)<br>- `method` ('ONLINE'/'OFFLINE', 필수)<br>- `subject_names` (list[str], 선택) | 학생 회원이 새로운 과외 구인 공고를 작성합니다. |
+| 과외 구인 공고 작성 | `POST` | `/tutoring/posts/write/` | **[Body (JSON)]**<br>- `title` (str, 필수)<br>- `cost` (int, 필수)<br>- `method` ('ONLINE'/'OFFLINE', 필수)<br>- `subject_ids` (list[int], 선택)<br>- `region_id` (int, 선택)<br>- `grade` (str, 선택)<br>- `sex` (str, 선택)<br>- `situation` (str, 선택)<br>- `etc` (str, 선택) | 학생 회원이 새로운 과외 구인 공고를 작성합니다. |
 | 과외 구인 공고 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/tutoring/posts/write/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID)<br>**[Body (JSON)]** (수정 시)<br>- 수정 대상 정보 | 자신이 작성한 과외 구인 공고의 내용을 변경하거나 삭제합니다. |
 | 내 작성 공고 목록 | `GET` | `/tutoring/my-posts/` | 없음 | 학생 본인이 작성한 전체 과외 구인 공고 목록(비활성 포함)을 최신순으로 가져옵니다. |
 | 강사 리뷰 작성 | `POST` | `/tutoring/reviews/instructor/` | **[Body (JSON)]**<br>- `instructor_id` (int, 필수)<br>- `rating` (int, 1~5, 필수)<br>- `content` (str, 필수) | 학생 회원이 특정 강사에 대해 별점과 후기를 작성합니다. |
@@ -59,7 +59,7 @@
 | 학생 리뷰 작성 | `POST` | `/tutoring/reviews/student/` | **[Body (JSON)]**<br>- `student_id` (int, 필수)<br>- `rating` (int, 1~5, 필수)<br>- `content` (str, 필수) | 강사 회원이 특정 학생에 대해 별점과 후기를 작성합니다. |
 | 학생 리뷰 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/tutoring/reviews/student/<int:pk>/` | **[Path]**<br>- `pk` (int, 리뷰 ID)<br>**[Body (JSON)]** (수정 시) | 본인이 작성한 학생 리뷰를 수정하거나 삭제합니다. |
 | 특정 학생 리뷰 목록 | `GET` | `/tutoring/students/<int:student_id>/reviews/` | **[Path]**<br>- `student_id` (int, 학생 ID) | 특정 학생에 대해 다른 강사들이 작성한 리뷰 목록을 전체 조회합니다. |
-| 강사 과외 정보 등록 | `POST` | `/tutoring/instructor-info/` | **[Body (JSON)]**<br>- `description` (str, 선택)<br>- `method` (str, 선택)<br>- `cost` (int, 선택)<br>- `subject_ids` (list[int], 선택) 등 | 강사 본인의 상세 과외 소개 정보를 새로 등록하거나 덮어써서 업데이트합니다. |
+| 강사 과외 정보 등록 | `POST` | `/tutoring/instructor-info/` | **[Body (JSON)]**<br>- `description` (str, 선택)<br>- `method` (str, 선택)<br>- `cost` (int, 선택)<br>- `subject_ids` (list[int], 선택)<br>- `region_ids` (list[int], 선택) | 강사 본인의 상세 과외 소개 정보를 새로 등록하거나 덮어써서 업데이트합니다. |
 | 강사 과외 정보 상세 조회 | `GET` | `/tutoring/instructor-info/<int:pk>/` | **[Path]**<br>- `pk` (int, 정보 ID) | 강사 과외 정보의 상세 정보를 가져옵니다. |
 | 강사 과외 정보 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/tutoring/instructor-info/<int:pk>/` | **[Path]**<br>- `pk` (int, 정보 ID)<br>**[Body (JSON)]** (수정 시) | 본인의 과외 소개 정보 내용을 변경하거나 완전히 삭제합니다. |
 | 내 과외 정보 조회 | `GET` | `/tutoring/instructor-info/mine/` | 없음 | 로그인한 강사 본인의 과외 소개 정보를 원샷 조회합니다. (없을 시 `204 No Content`) |
@@ -99,18 +99,18 @@
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
-| 동영상 강의 업로드 | `POST` | `/lectures/write/` | **[Body (Multipart)]**<br>- `title` (str, 필수)<br>- `content` (str, 필수)<br>- `video` (file, 필수)<br>- `thumbnail` (file, 필수)<br>- `price` (int, 필수)<br>- `is_preview` (bool, 선택) | 강사 회원이 새로운 VOD 동영상 강의를 업로드합니다. 프리뷰 영상은 강사당 1개만 허용됩니다. |
-| 동영상 강의 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/lectures/write/<int:pk>/` | **[Path]**<br>- `pk` (int, 강의 ID)<br>**[Body (Multipart)]** (수정 시) | 자신이 업로드한 VOD 강의의 메타데이터 및 파일을 수정하거나 삭제 처리합니다. |
-| 강의 판매 중지 | `POST` | `/lectures/write/<int:pk>/stop-sales/` | **[Path]**<br>- `pk` (int, 강의 ID) | 강의 판매를 중지(`is_active=False`)하여 검색 및 전체 목록 노출을 중단합니다. |
-| 판매 중 강의 목록 | `GET` | `/lectures/` | **[Query]**<br>- `q` (검색 키워드, 선택)<br>- `subject` (과목 ID, 선택)<br>- `max_price` (최대 요금, 선택)<br>- `video_length` (길이 범위, 선택)<br>- `region` (강사 지역, 선택)<br>- `liked` (bool, 선택) 등 | 판매 중인 전체 VOD 동영상 강의 목록을 필터링 조건에 맞추어 최신순으로 반환합니다. |
-| 강의 상세 페이지 조회 | `GET` | `/lectures/<int:pk>/` | **[Path]**<br>- `pk` (int, 강의 ID) | VOD 강의 기본 정보, 대여 상태, 강사의 무료 프리뷰 강의, 추천 강의 10개 목록을 종합 조회합니다. (조회수 1 증가) |
-| 강의 스트리밍 URL | `GET` | `/lectures/<int:pk>/stream/` | **[Path]**<br>- `pk` (int, 강의 ID) | 대여 기간이 유효하거나 프리뷰 영상/본인 영상인 경우 실제 시청용 동영상 스트리밍 주소를 반환합니다. |
-| 강의 찜하기 토글 | `POST` | `/lectures/<int:pk>/like/` | **[Path]**<br>- `pk` (int, 강의 ID) | 학생 회원이 동영상 강의를 찜 목록에 등록하거나 취소합니다. |
-| 강의 댓글 목록 조회 | `GET` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID) | 특정 강의에 작성된 댓글 목록을 대댓글 중첩 계층 구조를 적용하여 반환합니다. |
-| 강의 댓글 작성 | `POST` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID)<br>**[Body (JSON)]**<br>- `content` (str, 필수)<br>- `parent` (int, 부모 댓글 ID, 선택)<br>- `referenced_person` (int, 유저 ID, 선택) | VOD 강의에 새로운 댓글 또는 대댓글(멘션 포함)을 작성합니다. |
-| 댓글 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/lectures/comments/<int:pk>/` | **[Path]**<br>- `pk` (int, 댓글 ID)<br>**[Body (JSON)]** (수정 시) | 본인이 작성한 댓글의 텍스트 내용을 변경하거나 완전히 삭제합니다. |
-| 최근 검색어 조회 | `GET` | `/lectures/search-history/` | 없음 | 학생 회원 본인의 최근 검색 키워드 내역을 가져옵니다. |
-| 최근 검색어 추가 저장 | `POST` | `/lectures/search-history/` | **[Body (JSON)]**<br>- `query` (str, 필수) | 검색한 단어를 최근 검색 이력에 저장합니다. (1인당 최대 5개 유지 및 FIFO 처리) |
+| 동영상 강의 업로드 | `POST` | `/lectures/write/` | **[Body (Multipart)]**<br>- `title` (str, 필수)<br>- `content` (str, 필수)<br>- `video` (file, 필수)<br>- `thumbnail` (file, 필수)<br>- `price` (int, 필수)<br>- `is_preview` (bool, 선택) | 강사 회원이 새로운 VOD 동영상 강의를 업로드합니다. 프리뷰 강의(is_preview=True) 업로드 시 기존 프리뷰는 트랜잭션 하에서 원자적으로 자동 삭제되어 강사당 1개의 프리뷰 영상만 유지됩니다. |
+| 동영상 강의 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/lectures/write/<int:pk>/` | **[Path]**<br>- `pk` (int, 강의 ID)<br>**[Body (Multipart)]** (수정 시) | 자신이 업로드한 VOD 강의의 메타데이터 및 파일을 수정하거나 삭제 처리합니다. 본인이 작성한 강의만 조작할 수 있습니다. |
+| 강의 판매 중지 | `POST` | `/lectures/write/<int:pk>/stop-sales/` | **[Path]**<br>- `pk` (int, 강의 ID) | 특정 강의의 판매 상태를 중지(is_active=False)하여 검색 및 전체 목록 노출을 중단합니다. |
+| 판매 중 강의 목록 | `GET` | `/lectures/` | **[Query]**<br>- `q` (str, 선택)<br>- `subject` (str, 선택)<br>- `max_price` (int, 선택)<br>- `video_length` (str, 선택)<br>- `region` (str, 선택)<br>- `university` (str, 선택)<br>- `department` (str, 선택)<br>- `student_number` (str, 선택)<br>- `liked` (bool, 선택)<br>- `is_tutoring` (bool, 선택)<br>- `instructor` (str, 선택) | 판매 중인 전체 VOD 동영상 강의 목록을 다중 키워드, 과목, 가격, 영상 길이 범위, 강사의 지역 및 학적 등의 복합 조건으로 필터링하여 반환합니다. 로그인한 학생 유저의 경우 찜 여부(is_liked)를 동적 계산하여 제공합니다. |
+| 강의 상세 페이지 조회 | `GET` | `/lectures/<int:pk>/` | **[Path]**<br>- `pk` (int, 강의 ID) | 특정 강의의 상세 정보를 조회합니다. 강의 기본 정보(LectureDetailSerializer), 로그인한 유저의 대여 상태, 강사의 무료 프리뷰 영상, 연관 과목 기반 추천 강의 10개를 종합 반환하며 조회수가 1 증가합니다. |
+| 강의 스트리밍 URL | `GET` | `/lectures/<int:pk>/stream/` | **[Path]**<br>- `pk` (int, 강의 ID) | 로그인한 유저의 대여 권한(LectureRentalHistory)을 검증하여 유효한 대여 상태이거나, 프리뷰 강의 또는 강사 본인의 강의인 경우 시청용 동영상 스트리밍 주소를 반환합니다. |
+| 강의 찜하기 토글 | `POST` | `/lectures/<int:pk>/like/` | **[Path]**<br>- `pk` (int, 강의 ID) | 학생 회원이 동영상 강의를 찜 목록에 등록하거나 취소(토글)합니다. 강사 계정 등 학생 프로필이 없는 경우 404를 반환합니다. |
+| 강의 댓글 목록 조회 | `GET` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID) | 특정 강의에 작성된 최상위 부모 댓글 목록을 최신순 조회하며, 대댓글은 replies 필드 아래 중첩 반환합니다. 차단한 유저의 댓글은 제외됩니다. |
+| 강의 댓글 작성 | `POST` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID)<br>**[Body (JSON)]**<br>- `content` (str, 필수)<br>- `parent` (int, 선택)<br>- `referenced_person` (int, 선택) | VOD 강의에 새로운 댓글 또는 대댓글을 작성합니다. 대댓글 작성 시 부모 댓글 및 멘션 대상 유저를 연결할 수 있습니다. |
+| 댓글 수정/삭제 | `PATCH`<br>`DELETE` | `/lectures/comments/<int:pk>/` | **[Path]**<br>- `pk` (int, 댓글 ID)<br>**[Body (JSON)]** (PATCH 시)<br>- `content` (str, 필수) | 본인이 작성한 댓글의 내용을 변경(PATCH)하거나 완전히 삭제(DELETE)합니다. |
+| 최근 검색어 조회 | `GET` | `/lectures/search-history/` | 없음 | 로그인한 학생 회원의 최근 검색 키워드 내역을 최대 5개까지 최신순으로 조회합니다. 학생 프로필이 없으면 빈 목록이 반환됩니다. |
+| 최근 검색어 추가 저장 | `POST` | `/lectures/search-history/` | **[Body (JSON)]**<br>- `query` (str, 필수) | 검색한 단어를 최근 검색 이력에 저장합니다. 저장 후 최대 보관 개수인 5개를 초과하면 가장 오래된 기록을 자동으로 삭제(FIFO)합니다. |
 | 최근 검색어 개별 삭제 | `DELETE` | `/lectures/search-history/<int:pk>/` | **[Path]**<br>- `pk` (int, 검색어 기록 ID) | 본인의 최근 검색어 이력 중 특정 항목 하나를 개별 삭제합니다. |
 
 ---

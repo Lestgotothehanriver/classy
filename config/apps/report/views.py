@@ -12,25 +12,17 @@ class ReportCreateAPIView(APIView):
     """
     URL: /report/create/
 
-    POST /report/create/
-    인증된 사용자가 다른 사용자를 신고합니다.
+    인증된 사용자가 다른 사용자를 신고하는 API View입니다.
 
-    Request:
-    {
-        "reported_user": 3,
-        "evidence_image": null,
-        "choices": ["inappropriate_content", "abusive_language", "other"]
-    }
+    POST 요청 시, 신고 대상 유저 ID(reported_user), 신고 유형 리스트(choices), 그리고 증빙 이미지 파일(evidence_image)을 수신하여 신고 내역을 생성합니다.
 
-    Response (201):
-    {
-        "id": 1,
-        "reporter": 5,
-        "reported_user": 3,
-        "evidence_image": null,
-        "choices": ["inappropriate_content", "abusive_language", "other"],
-        "created_at": "2026-03-11T04:25:00Z"
-    }
+    Request Body (POST, Multipart/Form-data):
+        reported_user (int): 신고 대상 사용자 ID (필수).
+        choices (list[str]): 신고 사유 종류 목록 (필수).
+        evidence_image (File, optional): 신고 증빙 이미지 파일.
+
+    Returns:
+        Response: ReportResponseSerializer 데이터 (HTTP 201 Created)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -52,23 +44,16 @@ class InquiryCreateAPIView(APIView):
     """
     URL: /report/inquiry/
 
-    POST /report/inquiry/
-    인증된 사용자가 고객센터에 1:1 문의를 남깁니다.
+    인증된 사용자가 고객센터에 1:1 문의를 등록하는 API View입니다.
 
-    Request:
-    {
-        "title": "이름 변경 문의",
-        "content": "이름을 개명해서 변경하고 싶습니다."
-    }
+    POST 요청 시, 사용자가 남긴 문의 제목(title)과 본문(content)을 입력받아 1:1 문의 내역을 등록합니다.
 
-    Response (201):
-    {
-        "id": 1,
-        "title": "이름 변경 문의",
-        "content": "이름을 개명해서 변경하고 싶습니다.",
-        "is_resolved": false,
-        "created_at": "2026-03-11T04:25:00Z"
-    }
+    Request Body:
+        title (str): 문의 제목 (필수).
+        content (str): 문의 본문 내용 (필수).
+
+    Returns:
+        Response: InquirySerializer 데이터 (HTTP 201 Created)
     """
     permission_classes = [permissions.IsAuthenticated]
 

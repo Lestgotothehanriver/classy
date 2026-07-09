@@ -15,16 +15,15 @@ class InstructorLikeAPIView(APIView):
 
     학생이 특정 강사를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
-    학생 계정(Student)을 가진 사용자만 접근 가능하며, 
-    요청 시마다 좋아요 상태가 반전(Toggle)되어 현재 상태(is_liked)를 반환합니다.
+    POST 요청 시, 학생 계정(Student)을 가진 사용자만 접근 가능하며 호출 시마다 찜 관계가 반전(추가 또는 삭제)되어 현재의 찜 여부(is_liked)를 반환합니다. 학생 계정이 아닐 시 403 에러를 반환합니다.
 
     Path Parameters:
         instructor_id (int): 좋아요를 누를 대상 강사의 ID.
 
     Returns:
-        Response: 
-            {"is_liked": True/False} 및 201/200 상태 코드 반환.
-            학생 계정이 아닐 시 403 에러 반환.
+        Response: {
+            "is_liked": bool
+        }
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -49,16 +48,15 @@ class TutoringPostLikeAPIView(APIView):
 
     강사가 특정 '과외 구인 공고(TutoringPost)'를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
-    강사 계정(Instructor)을 가진 사용자만 접근 가능하며,
-    요청 시마다 좋아요 상태가 반전(Toggle)되어 현재 상태(is_liked)를 반환합니다.
+    POST 요청 시, 강사 계정(Instructor)을 가진 사용자만 접근 가능하며 호출 시마다 찜 관계가 반전(추가 또는 삭제)되어 현재의 찜 여부(is_liked)를 반환합니다. 강사 계정이 아닐 시 403 에러를 반환합니다.
 
     Path Parameters:
         post_id (int): 좋아요를 누를 대상 과외 공고의 ID.
 
     Returns:
-        Response: 
-            {"is_liked": True/False} 및 201/200 상태 코드 반환.
-            강사 계정이 아닐 시 403 에러 반환.
+        Response: {
+            "is_liked": bool
+        }
     """
     permission_classes = [permissions.IsAuthenticated]
 

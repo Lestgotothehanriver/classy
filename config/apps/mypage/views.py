@@ -18,17 +18,10 @@ class StudentRentedLectureListView(generics.ListAPIView):
 
     학생 본인이 대여 중인 VOD 강의 목록을 조회하는 API View입니다.
 
-    Response (JSON):
-        HTTP 200 OK:
-        [
-            {
-                "id": 1,
-                "title": "강의 제목",
-                "instructor_name": "강사님",
-                "thumbnail_url": "...",
-                "created_at": "2026-04-26T06:51:26Z"
-            }
-        ]
+    GET 요청 시, 현재 로그인한 학생이 대여하고 아직 취소되지 않은 VOD 강의들의 전체 목록을 최신순으로 반환하며 찜 여부(is_liked)를 함께 반환합니다.
+
+    Returns:
+        Response: List[LectureListSerializer] 데이터
     """
     serializer_class = LectureListSerializer
 
@@ -73,17 +66,10 @@ class StudentLikedLectureListView(generics.ListAPIView):
 
     학생이 '찜(좋아요)'한 VOD 강의 목록을 조회하는 API View입니다.
 
-    Response (JSON):
-        HTTP 200 OK:
-        [
-            {
-                "id": 10,
-                "title": "찜한 강의",
-                "instructor_name": "강사님",
-                "is_liked": true,
-                "like_count": 5
-            }
-        ]
+    GET 요청 시, 현재 로그인한 학생 유저가 찜(좋아요) 처리한 동영상 강의 목록을 최신순 조회하며 is_liked=True로 마킹하여 반환합니다.
+
+    Returns:
+        Response: List[LectureListSerializer] 데이터
     """
     serializer_class = LectureListSerializer
 
@@ -117,8 +103,12 @@ class InstructorUploadedLectureListView(generics.ListAPIView):
     """
     URL: /mypage/instructor/uploaded-lectures/
 
-    강사 본인이 업로드한 동영상들을 조회하는 view
-    GET /mypage/instructor/uploaded-lectures/
+    강사 본인이 직접 업로드한 VOD 동영상 강의 목록을 조회하는 API View입니다.
+
+    GET 요청 시, 본인(강사)이 업로드한 전체 동영상 강의 중 삭제되지 않은 리스트를 최신순으로 조회하여 반환합니다.
+
+    Returns:
+        Response: List[LectureListSerializer] 데이터
     """
     permission_classes = [IsAuthenticated]
     serializer_class = LectureListSerializer
@@ -147,8 +137,17 @@ class InstructorSettlementRequestView(APIView):
     """
     URL: /mypage/instructor/request-settlement/
 
-    정산을 요청하는 view
-    POST /mypage/instructor/request-settlement/
+    강사 본인의 판매 수익에 대한 정산 지급을 요청하는 API View입니다.
+
+    POST 요청 시, 아직 정산 처리되지 않은(is_settled=False) 렌탈 결제 내역들을 합산하고 SettlementRecord를 PENDING 상태로 신규 생성하여 정산 신청을 처리합니다.
+
+    Returns:
+        Response: {
+            "detail": "Settlement requested successfully.",
+            "settlement_id": int,
+            "amount": int,
+            "status": "PENDING"
+        } (HTTP 201 Created)
     """
     permission_classes = [IsAuthenticated]
 
@@ -195,8 +194,18 @@ class InstructorSettlementInfoView(APIView):
     """
     URL: /mypage/instructor/settlement-info/
 
-    정산 정보를 반환하는 view
-    GET /mypage/instructor/settlement-info/
+    강사의 누적 수익 및 정산 계좌 정보 등의 요약을 조회하는 API View입니다.
+
+    GET 요청 시, 강사 계정의 총 누적 수익(total_revenue), 완료된 정산액(completed_revenue), 대기 상태 금액(pending_revenue), 정산 가능액(settleable_revenue) 및 연동된 정산 계좌 정보(account_info)를 조회하여 반환합니다.
+
+    Returns:
+        Response: {
+            "total_revenue": int,
+            "completed_revenue": int,
+            "settleable_revenue": int,
+            "pending_revenue": int,
+            "account_info": dict | None
+        }
     """
     permission_classes = [IsAuthenticated]
 

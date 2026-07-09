@@ -21,8 +21,12 @@ class StudentMainAPIView(APIView):
     """
     URL: /main/student/
 
-    학생 메인 화면 정보를 제공합니다.
-    내 지역 기반의 추천 강사 목록을 포함합니다.
+    학생용 메인 대시보드 화면 데이터를 제공하는 API View입니다.
+
+    GET 요청 시 로그인한 학생 유저 본인의 거주 지역을 기반으로, 과외 매칭 프로필을 가지고 있는 강사 중 동일 지역(예: 서울 강남구 → 서울 광역권) 소속의 추천 강사 3명을 무작위(랜덤)로 추출하여 반환하며 로그인한 학생이 해당 강사를 찜했는지 여부(is_liked) 및 누적 좋아요 개수를 계산하여 제공합니다.
+
+    Returns:
+        Response: List[StudentMainTutorSerializer] 데이터
     """
     permission_classes = [IsAuthenticated]
 
@@ -71,8 +75,16 @@ class InstructorMainAPIView(APIView):
     """
     URL: /main/instructor/
 
-    강사 메인 화면 정보를 제공합니다.
-    월간 순위, 이번 달 수익, 지역 기반 추천 학생 목록을 포함합니다.
+    강사용 메인 대시보드 화면 데이터를 제공하는 API View입니다.
+
+    GET 요청 시 강사 본인의 저번 달 정산 랭킹 정보(순위 및 합산액), 이번 달 VOD 판매로 획득한 누적 수익금 합계(this_month_total_cash), 그리고 강사 본인의 거주 지역과 매칭되는 활성화된 구인 공고를 올린 학생 3명을 무작위로 조회하여 요약 결과를 반환합니다.
+
+    Returns:
+        Response: {
+            "previous_month_rank_info": dict | None,
+            "this_month_total_cash": int,
+            "recommended_students": List[InstructorMainStudentSerializer]
+        }
     """
     permission_classes = [IsAuthenticated]
 

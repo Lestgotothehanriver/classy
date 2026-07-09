@@ -19,30 +19,26 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     """
     URL: /tutoring/instructors/
 
-    '강사 목록'을 조회하고 필터링하는 API View입니다.
+    과외 강사 목록을 조회하고 필터링하는 API View입니다.
+
+    GET 요청 시, 검색 키워드(search), 정렬 기준(ordering), 찜 여부(liked), 과목 필터(subject), 지역 필터(region), 성별(sex), 나이대(age), 출신 학교명(university), 학과명(department) 등의 쿼리 스트링 조건에 기반하여 가입된 강사 중 차단한 강사를 제외한 목록을 최신순 혹은 인기순으로 반환합니다.
 
     Query Parameters:
-        ordering (str): 정렬 기준 ('latest' | 'likes').
-        liked (bool): 본인이 찜한 강사만 볼지 여부.
-        subject (str): 과목 ID 목록 (콤마 구분, 예: '1,2').
-        region (str): 지역 키워드 (파이프 구분, 예: '서울|강남').
-        cost (int): 최대 과외비 상한.
-        method (str): 수업 방식 ('ONLINE' | 'OFFLINE').
-        search (str): 통합 검색어 (닉네임, 지역, 대학 등).
+        ordering (str, optional): 정렬 기준 ('latest' | 'likes', 기본값 'latest').
+        liked (bool, optional): 본인이 찜한 강사만 볼지 여부.
+        subject (str, optional): 과목 ID 목록 (콤마 구분, 예: '1,2').
+        region (str, optional): 지역 ID 목록 (콤마 구분, 예: '11110,11120').
+        cost (int, optional): 최대 수업료 상한액 필터.
+        method (str, optional): 수업 방식 ('ONLINE' | 'OFFLINE', 콤마 구분 가능).
+        sex (str, optional): 강사 성별 ('M' | 'F').
+        age (str, optional): 강사 나이 또는 나이 범위 (콤마 구분, 예: '25-30,35').
+        university (str, optional): 대학교명 키워드 검색.
+        department (str, optional): 학과명 키워드 검색.
+        search (str, optional): 이름/학교/학과/지역/소개글 통합 검색어.
+        student_id (str, optional): 학번/사번 필터링용 접두사 목록 (콤마 구분).
 
-    Response (JSON):
-        HTTP 200 OK:
-        [
-            {
-                "id": 5,
-                "user_name": "강사님",
-                "university": "서울대학교",
-                "department": "컴퓨터공학",
-                "like_count": 25,
-                "is_liked": true,
-                "avg_rating": 4.8
-            }
-        ]
+    Returns:
+        Response: List[InstructorListSerializer] 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorListSerializer
@@ -151,21 +147,13 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
 
     특정 강사의 상세 프로필 정보를 조회하는 API View입니다.
 
-    Path Parameters:
-        pk (int): 강사의 ID.
+    GET 요청 시, 강사 식별자(pk)를 활용하여 해당 강사의 기본 인적 사항, 출신 대학교/학과, 찜 수(like_count), 평균 별점(avg_rating) 및 로그인한 유저의 찜 여부(is_liked) 데이터를 포함한 프로필 상세를 조회하여 반환합니다.
 
-    Response (JSON):
-        HTTP 200 OK:
-        {
-            "id": 5,
-            "user_name": "강사님",
-            "instruction": "꼼꼼하게 가르칩니다.",
-            "university": "서울대학교",
-            "subjects": ["수학", "영어"],
-            "like_count": 25,
-            "avg_rating": 4.8,
-            "reviews": [...]
-        }
+    Path Parameters:
+        pk (int): 대상 강사의 ID.
+
+    Returns:
+        Response: InstructorListSerializer 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorListSerializer
@@ -178,16 +166,15 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
     """
     URL: /tutoring/instructors/<instructor_id>/info/
 
-    특정 강사가 직접 작성한 '과외 소개(InstructorInfo)' 상세 탭 데이터를 조회하는 API View입니다.
+    특정 강사의 과외 소개 및 상세 통계 탭 정보를 조회하는 API View입니다.
 
-    기본 프로필 외에, 강사의 자기소개(description), 수업 방식(method), 
-    진행 중인 과외 횟수, 월간 랭킹 정보(InstructorMonthlyRank), 그리고 리뷰 요약(평균)을 반환합니다.
+    GET 요청 시, 강사가 작성한 자기소개 본문(description), 수업 방식(method), 소속 및 전문 분야를 비롯하여 강사의 평점 내역 평균치(avg_rating), 총 리뷰 개수(review_count), 최신 월간 순위(current_rank)를 종합 집계하여 제공합니다.
 
     Path Parameters:
-        pk (int): 강사의 Instructor ID.
+        instructor_id (int): 대상 강사의 Instructor ID.
 
     Returns:
-        InstructorInfoSerializer: 강사 과외 상세 소개 정보.
+        Response: InstructorInfoSerializer 데이터 + 추가 집계 통계 객체 (avg_rating, review_count, current_rank, is_tutoring 포함)
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorInfoSerializer
@@ -226,13 +213,15 @@ class InstructorReviewListAPIView(generics.ListAPIView):
     """
     URL: /tutoring/instructors/<instructor_id>/reviews/
 
-    특정 강사가 학생들로부터 받은 '강사 리뷰(InstructorReview)' 목록을 조회하는 API View입니다.
+    특정 강사에게 등록된 모든 리뷰 목록을 조회하는 API View입니다.
+
+    GET 요청 시, 해당 강사가 과거 과외 학생들로부터 받은 모든 평가 항목(전문성, 교수법, 시간 준수 등)과 리뷰 글 및 평가 과목 목록을 최신순으로 정렬하여 반환하며 차단된 학생 유저가 남긴 리뷰는 제외합니다.
 
     Path Parameters:
         instructor_id (int): 리뷰 대상 강사의 ID.
 
     Returns:
-        List[InstructorReviewSerializer]: 해당 강사가 받은 리뷰 리스트.
+        Response: List[InstructorReviewSerializer] 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorReviewSerializer

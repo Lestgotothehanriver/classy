@@ -88,23 +88,29 @@ class LectureViewSet(
 
     강사가 자신의 VOD '강의(Lecture)'를 업로드하고 관리하는 API ViewSet입니다.
 
-    Request (POST /):
+    강사 권한을 가진 유저가 새로운 VOD 강의를 업로드하거나(POST), 기존 강의를 수정(PUT/PATCH) 및 삭제(DELETE)할 수 있습니다.
+    새로운 프리뷰 강의(is_preview=True)를 업로드하면 기존 프리뷰 강의는 자동으로 삭제되어 강사당 1개의 프리뷰 영상만 유지하도록 처리하며, 해당 연산은 트랜잭션 하에서 안전하게 수행됩니다.
+    또한, stop-sales 액션을 호출하여 특정 강의의 판매 상태를 중지(is_active=False)할 수 있습니다.
+
+    Path Parameters:
+        pk (int): 관리할 강의 ID.
+
+    Request Body (POST /lectures/write/):
         title (str): 강의 제목.
         content (str): 강의 설명.
-        video (File): 강의 영상 파일 (S3 등 스토리지 업로드).
+        video (File): 강의 영상 파일.
         thumbnail (File): 강의 썸네일 이미지.
         price (int): 강의 가격.
-        is_preview (bool, optional): 프리뷰 영상 여부 (강사당 1개만 유지됨).
+        is_preview (bool, optional): 프리뷰 영상 여부.
 
-    Response (POST /):
-        HTTP 201 Created:
-        {
-            "id": 1,
-            "title": "강의 제목",
-            "video_url": "...",
-            "is_preview": false,
-            "created_at": "2026-04-26T06:51:26Z"
+    Returns:
+        Response (POST /lectures/write/): LectureWriteSerializer 데이터 (HTTP 201 Created)
+        Response (PUT/PATCH /lectures/write/<pk>/): LectureWriteSerializer 데이터
+        Response (POST /lectures/write/<pk>/stop-sales/): {
+            "detail": "강의 판매가 중지되었습니다.",
+            "is_active": False
         }
+        Response (DELETE /lectures/write/<pk>/): HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
     serializer_class = LectureWriteSerializer
@@ -166,19 +172,24 @@ class LectureListAPIView(generics.ListAPIView):
 
     판매 중(is_active=True)인 전체 '강의 목록'을 조회하고 필터링하는 API View입니다.
 
-    학생들이 강의를 검색할 수 있도록 다중 키워드, 지역, 가격, 길이 등 복합 필터링을 지원하며,
-    학생 로그인 시 해당 강의의 찜(좋아요) 여부를 서브쿼리로 동적 계산하여 응답합니다.
+    학생들이 강의를 검색할 수 있도록 다중 키워드(q), 과목 번호 리스트(subject), 최대 가격(max_price), 영상 길이 범위(video_length), 강사의 지역 및 소속(region, university, department, student_number) 등 복합 필터링을 제공합니다.
+    인증된 학생 유저가 요청하는 경우 차단된 강사의 강의는 목록에서 제외되며, 서브쿼리를 이용하여 로그인한 학생의 각 강의 찜(좋아요) 여부를 동적으로 계산하여 응답에 포함합니다.
 
     Query Parameters:
-        q (str): 제목/과목/강사명 포괄 검색어.
-        subject (str): 과목 ID (콤마 구분).
-        max_price (str): 최대 가격 상한선.
-        video_length (str): 영상 길이 범위 (예: 'under_5', '10_30').
-        region, university, department, student_number: 강사 프로필 관련 필터.
-        liked (bool): 본인이 찜한 강의만 조회할지 여부.
+        q (str, optional): 제목/과목/강사명/대학/학과 등 통합 검색어.
+        subject (str, optional): 과목 ID 목록 (콤마 구분).
+        max_price (int, optional): 최대 가격 제한.
+        video_length (str, optional): 영상 길이 범위 ('under_5' | '10_30' | '30_60' | '60_90' | 'over_90').
+        region (str, optional): 강사 활동 지역 목록 (콤마 구분).
+        university (str, optional): 강사 소속 대학교명.
+        department (str, optional): 강사 소속 학과명.
+        student_number (str, optional): 강사 학번 목록 (콤마 구분).
+        liked (bool, optional): 본인이 찜한 강의만 필터링할지 여부.
+        is_tutoring (bool, optional): 과외 가능 여부 필터.
+        instructor (str, optional): 'me' 입력 시 본인의 강의만 필터링하거나 강사 ID로 필터링.
 
     Returns:
-        List[LectureListSerializer]: 조건에 맞는 강의 목록.
+        Response: List[LectureListSerializer] 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LectureListSerializer
@@ -284,15 +295,15 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
 
     유효한 대여 권한이 있는지 검증한 후, '강의 영상(Streaming URL)'을 반환하는 API View입니다.
 
-    프리뷰 강의(is_preview=True)이거나 자신의 강의인 경우 권한 검증을 통과하며,
-    그 외에는 LectureRentalHistory를 통해 결제 및 만료 여부를 체크합니다.
+    요청받은 강의가 프리뷰용 강의(is_preview=True)이거나, 강사 본인의 강의인 경우 권한을 패스합니다.
+    그 외의 경우, 로그인한 사용자의 LectureRentalHistory 대여 이력을 조회하여 현재 시점 기준 유효한 대여 상태("valid")인지 검증합니다.
+    대여 내역이 없거나 만료된 경우에는 403 에러를 반환합니다.
 
     Path Parameters:
         pk (int): 재생하려는 강의 ID.
 
     Returns:
-        LectureStreamSerializer: 영상 URL 및 재생 관련 메타데이터.
-        403 Forbidden: 대여 내역이 없거나 만료된 경우.
+        Response: LectureStreamSerializer 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LectureStreamSerializer
@@ -451,19 +462,20 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     특정 강의의 '댓글(Comment)' 목록을 조회하고 새 댓글을 작성하는 API View입니다.
 
-    목록 조회 시 부모 댓글(최상위)만 가져오며, 대댓글(replies)은 중첩되어 반환됩니다.
-    
-    Path Parameters:
-        lecture_id (int): 댓글을 달 대상 강의 ID.
+    GET 요청 시, 특정 강의에 작성된 최상위 부모 댓글 목록만 정렬하여 가져오며, 각 부모 댓글 객체 안에 대댓글(replies) 리스트가 중첩되어 반환됩니다. 차단한 유저의 댓글 및 대댓글은 목록에서 제외됩니다.
+    POST 요청 시, 로그인한 사용자의 새 댓글 또는 대댓글 작성을 처리하며, 대댓글의 경우 부모 댓글(parent) ID 및 언급 대상 유저(referenced_person) ID를 추가로 전달받아 연결합니다.
 
-    HTTP Methods:
-        GET: 강의 댓글 리스트 반환 (대댓글 포함).
-        POST: 새 댓글 또는 대댓글 작성.
+    Path Parameters:
+        lecture_id (int): 댓글을 작성하거나 조회할 강의 ID.
 
     Request Body (POST):
         content (str): 댓글 내용.
         parent (int, optional): 대댓글인 경우 부모 댓글 ID.
         referenced_person (int, optional): 멘션 대상의 User ID.
+
+    Returns:
+        Response (GET): List[CommentSerializer] 데이터
+        Response (POST): CommentSerializer 데이터 (HTTP 201 Created)
     """
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
@@ -517,14 +529,18 @@ class CommentUpdateDeleteAPIView(generics.UpdateAPIView, generics.DestroyAPIView
 
     본인이 작성한 '댓글(Comment)'의 내용을 수정하거나 삭제하는 API View입니다.
 
-    자신이 작성한 댓글(`author=request.user`)만 조작 가능하도록 제한됩니다.
+    자신이 작성한 댓글(author=request.user)만 수정(PATCH) 또는 삭제(DELETE)가 가능합니다.
+    PATCH 요청 시 전달받은 내용으로 댓글의 본문(content)을 변경하고, DELETE 요청 시 데이터베이스에서 완전히 삭제합니다.
 
     Path Parameters:
         pk (int): 수정/삭제할 댓글 ID.
 
-    HTTP Methods:
-        PATCH: 댓글 내용 일부 수정.
-        DELETE: 댓글 완전 삭제.
+    Request Body (PATCH):
+        content (str): 수정할 댓글 내용.
+
+    Returns:
+        Response (PATCH): CommentWriteSerializer 데이터
+        Response (DELETE): HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CommentWriteSerializer
@@ -546,15 +562,15 @@ class SearchHistoryCreateAPIView(generics.ListCreateAPIView):
 
     학생 유저의 '최근 검색 기록(SearchHistory)'을 조회하고 저장하는 API View입니다.
 
-    학생 계정(student_profile)만 이용 가능하며, 개인당 최대 5개까지만 보관됩니다.
-    5개 초과 저장 시 가장 오래된 기록을 자동으로 삭제하여 FIFO를 유지합니다.
-
-    HTTP Methods:
-        GET: 본인의 검색 기록 최근순 반환.
-        POST: 새로운 검색어 저장.
+    GET 요청 시, 로그인한 학생의 최근 검색 기록을 최대 5개까지 최신순으로 조회하여 반환합니다. 학생 프로필이 없는 경우 빈 목록이 반환됩니다.
+    POST 요청 시, 새로운 검색 키워드를 생성하여 저장하며, 해당 학생의 저장된 검색 기록이 5개를 초과하게 될 경우, 가장 오래된 검색 기록을 데이터베이스에서 자동으로 조회하여 삭제하는 FIFO 정책을 원자적으로 수행합니다.
 
     Request Body (POST):
         query (str): 검색한 키워드.
+
+    Returns:
+        Response (GET): List[SearchHistorySerializer] 데이터
+        Response (POST): SearchHistorySerializer 데이터 (HTTP 201 Created)
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = SearchHistorySerializer
@@ -611,10 +627,13 @@ class SearchHistoryDeleteAPIView(generics.DestroyAPIView):
 
     학생 유저가 자신의 '검색 기록(SearchHistory)' 중 하나를 개별 삭제하는 API View입니다.
 
-    본인(`student=request.user.student_profile`)의 기록에만 접근할 수 있습니다.
+    로그인한 학생 유저 본인의 검색 기록(student=request.user.student_profile)에만 한정하여 조회가 가능하며, DELETE 호출 시 해당 기록을 데이터베이스에서 즉시 삭제합니다.
 
     Path Parameters:
         pk (int): 삭제할 검색 기록 ID.
+
+    Returns:
+        Response: HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = SearchHistorySerializer
@@ -634,13 +653,17 @@ class LectureLikeAPIView(APIView):
 
     학생이 특정 VOD '강의(Lecture)'를 '찜(좋아요)' 하거나 취소(Toggle)하는 API View입니다.
 
-    학생 계정(Student)만 접근 가능하며, 호출 시마다 상태가 토글됩니다.
+    학생 계정(Student)을 가진 유저만 강의 찜하기(좋아요) 토글이 가능합니다.
+    POST 호출 시, 이미 해당 강의를 찜한 학생의 경우 찜 관계를 제거하고, 그렇지 않은 경우 찜 관계를 추가한 후 최종 찜 여부와 찜의 누적 총 개수를 계산하여 반환합니다. 강사 등 학생 프로필이 없는 계정은 404를 반환합니다.
 
     Path Parameters:
         pk (int): 대상 강의 ID.
 
     Returns:
-        Response: {"is_liked": True/False, "like_count": 총 좋아요 수}
+        Response: {
+            "is_liked": bool,
+            "like_count": int
+        }
     """
     permission_classes = [permissions.IsAuthenticated]
 

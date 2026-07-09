@@ -10,13 +10,19 @@ class BlockViewSet(viewsets.ModelViewSet):
 
     유저 차단 목록(Block)을 관리하는 API ViewSet입니다.
 
-    Endpoints:
-        GET /blocks/       : 내 차단 목록 조회.
-        POST /blocks/      : 새로운 유저 차단.
-        DELETE /blocks/<id>/: 유저 차단 해제.
+    GET /blocks/ 요청 시 본인의 전체 차단 유저 리스트를 조회하고, POST /blocks/ 요청 시 입력받은 상대 유저 ID(blocked_user)를 차단 등록합니다.
+    DELETE /blocks/<pk>/ 요청 시 등록되었던 차단 관계를 해제(삭제)합니다.
+
+    Path Parameters:
+        pk (int): 해제할 차단 관계의 ID.
 
     Request Body (POST):
-        blocked_user (int): 차단할 대상 유저 ID.
+        blocked_user (int): 차단할 상대방 유저 ID.
+
+    Returns:
+        Response (GET): List[BlockSerializer] 데이터
+        Response (POST): BlockSerializer 데이터 (HTTP 201 Created)
+        Response (DELETE): HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = BlockSerializer

@@ -30,38 +30,27 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
 
     과외 수업 관련 계약, 수업료 지불 상태 및 증빙 파일을 관리하는 API ViewSet입니다.
 
-    학생과 강사 간의 합의된 수업료 내역과 입금 확인증(이미지/PDF)을 관리하며,
-    강사가 입금 확인 요청을 보내면 상태가 'AWAITING_CONFIRMATION'으로 변경됩니다.
+    GET /tutoring/resources/ 요청 시, 본인이 학생이나 강사로 속해 있는 전체 과외 계약 리소스 목록을 조회합니다. 차단된 유저의 계약은 배제됩니다.
+    POST /tutoring/resources/ 요청 시, 입금 증빙 파일(fee_confirmation_file) 등을 첨부하여 새로운 과외 계약 정보를 생성합니다.
+    GET /tutoring/resources/<pk>/ 요청 시, 특정 과외 계약 리소스의 상세 내역을 조회합니다.
+    POST /tutoring/resources/<pk>/confirm-payment/ 요청 시, 강사가 직접 입금을 확인하고 상태를 AWAITING_CONFIRMATION으로 갱신 처리합니다.
 
-    Endpoints:
-        GET    /tutoring-resources/ : 본인이 참여 중인 모든 과외 리소스 목록 조회.
-        POST   /tutoring-resources/ : 새로운 과외 계약/수업료 내역 생성.
-        GET    /tutoring-resources/{id}/ : 특정 리소스의 상세 내역 조회.
-        POST   /tutoring-resources/{id}/confirm-payment/ : 강사의 입금 확인 요청 처리.
+    Path Parameters:
+        pk (int): 대상 과외 계약(TutoringResource) ID.
 
-    Request (POST /):
-        student (int): 참여 학생의 ID.
-        instructor (int): 담당 강사의 ID.
-        fee_amount (int): 합의된 수업료 금액.
-        fee_confirmation_file (File, optional): 입금 증빙 파일 (Multipart/form-data, 다중 파일 가능).
+    Request Body (POST /tutoring/resources/):
+        student (int): 학생 ID (필수).
+        instructor (int): 강사 ID (필수).
+        fee_amount (int): 과외 수업료 금액 (필수).
+        fee_confirmation_file (File, optional): 입금 증빙 파일 (다중 파일 가능).
 
-    Response (POST /):
-        HTTP 201 Created:
-        {
-            "id": 10,
-            "student": 5,
-            "instructor": 2,
-            "fee_amount": 300000,
-            "fee_payment_status": "PENDING",
-            "created_at": "2026-04-26T06:51:26Z",
-            "files": [
-                {"id": 1, "file": "/media/fee_receipts/sample.jpg"}
-            ]
+    Returns:
+        Response (GET /tutoring/resources/): List[TutoringResourceListSerializer] 데이터
+        Response (POST /tutoring/resources/): TutoringResourceSerializer 데이터 (HTTP 201 Created)
+        Response (GET /tutoring/resources/<pk>/): TutoringResourceSerializer 데이터
+        Response (POST /tutoring/resources/<pk>/confirm-payment/): {
+            "fee_payment_status": str
         }
-
-    Permissions:
-        - 인증된 사용자만 접근 가능.
-        - 본인이 학생(student) 또는 강사(instructor)로 포함된 리소스만 조회/수정 가능 (IDOR 방지).
     """
     permission_classes = [permissions.IsAuthenticated, IsResourceParticipant]
     

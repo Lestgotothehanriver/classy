@@ -13,11 +13,27 @@ class PendingCreateAPIView(APIView):
     """
     URL: /pending/
 
-    POST /pending/
-    GET /pending/
-    - 로그인한 강사 회원이 인증 서류를 최초 제출할 때 호출하는 API.
-    - MultipartFormData 파서 사용.
-    - body field: pending_file (파일) 또는 files (다중 파일)
+    강사 자격 서류 제출 및 등록 상태를 조회하는 API View입니다.
+
+    POST 요청 시, 로그인한 강사 회원이 자신의 학력/경력 인증을 위한 서류 파일(pending_file 또는 files)을 최초로 제출하고 심사 상태를 등록합니다.
+    GET 요청 시, 본인의 서류 제출 유무, 인증 현황(status), 대학 및 학과 명세 정보를 반환합니다.
+
+    Request Body (POST, Multipart):
+        pending_file (File, optional): 최초 제출할 인증 서류 파일.
+        files (File, optional): 다중 제출 시 서류 파일 목록.
+
+    Returns:
+        Response (POST): {
+            "message": "인증 신청서와 서류가 정상적으로 접수되었습니다.",
+            "status": "PENDING"
+        } (HTTP 201 Created)
+        Response (GET): {
+            "exists": bool,
+            "status": str | None,
+            "university": str,
+            "student_number": str,
+            "field": str
+        }
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -90,9 +106,17 @@ class PendingUploadView(APIView):
     """
     URL: /pending/upload/
 
-    POST /pending/upload/
-    - 강사 본인이 서류 다시 업로드(재신청) 같은 기능이 필요할 때.
-    - 요구사항에 필수는 아니지만 실무에선 거의 필요해짐.
+    강사 회원이 자격 서류를 재제출(재업로드)하는 API View입니다.
+
+    POST 요청 시 기존에 등록되었던 강사의 심사 파일을 모두 삭제하고, 새로 전달받은 서류 파일(files)로 교체하여 인증 대기 상태(PENDING)로 재심사 접수를 완료합니다.
+
+    Request Body (Multipart):
+        files (File): 새로 제출할 자격 서류 파일 목록.
+
+    Returns:
+        Response: {
+            "message": "Files uploaded successfully"
+        }
     """
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]

@@ -26,20 +26,27 @@ class StudentProposeToInstructorAPIView(APIView):
     """
     URL: /tutoring/propose-to-instructor/
 
-    학생이 강사에게 과외 문의를 보내고 대화를 시작하는 API View입니다.
+    학생이 강사에게 과외 상담 및 제안을 보내고 취소하는 API View입니다.
 
-    제안 성공 시 강사와의 채팅방(ChatRoom)이 생성되며, 학생의 첫 메시지가 자동 발송됩니다.
-    강사가 답장을 하면 제안이 수락된 상태로 전환됩니다.
+    POST 요청 시, 학생이 특정 강사(instructor_id)에게 본인의 구인 공고(post_id)를 기반으로 과외를 신청합니다. 성공 시 대기 상태의 1:1 채팅방(ChatRoom)이 개설됩니다.
+    DELETE 요청 시, 강사에게 보냈던 과외 제안을 취소하고 생성되었던 매칭 채팅방을 파기(삭제)합니다.
 
-    Request (POST):
-        instructor_id (int): 문의를 받을 강사의 고유 ID.
-        post_id (int): 문의의 대상이 되는 학생의 과외 공고 ID.
+    Request Body (POST):
+        instructor_id (int): 제안을 보낼 강사의 고유 ID (필수).
+        post_id (int): 제안에 연동할 학생의 구인 공고 ID (필수).
 
-    Response (POST):
-        HTTP 201 Created / 200 OK:
-        {
-            "post_id": 101
-        }
+    Request Body (DELETE) 또는 Query Parameters:
+        instructor_id (int): 취소할 대상 강사 ID.
+        post_id (int): 취소할 대상 구인 공고 ID.
+
+    Returns:
+        Response (POST): {
+            "post_id": int,
+            "room_id": int
+        } (HTTP 201 Created)
+        Response (DELETE): {
+            "detail": "요청이 취소되었습니다."
+        } (HTTP 204 No Content)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -81,20 +88,26 @@ class InstructorProposeToStudentAPIView(APIView):
     """
     URL: /tutoring/propose-to-student/
 
-    강사가 학생의 공고를 보고 역제안을 보내는 API View입니다.
+    강사가 학생의 구인 공고를 대상으로 역제안을 하거나 취소하는 API View입니다.
 
-    제안 시 제안서(TutoringProposal)와 채팅방이 생성됩니다.
-    학생이 채팅방을 확인하고 답장을 보내면 제안이 성립된 것으로 간주됩니다.
+    POST 요청 시, 강사 사용자가 특정 구인 공고(post_id)에 대해 한 줄 소개 메시지(message)를 작성해 역제안(TutoringProposal)을 발송하며 매칭 채팅방을 개설합니다.
+    DELETE 요청 시, 보냈던 역제안 내역을 파기(삭제)하고 매칭 채팅방도 파기 처리합니다. 강사 권한이 필요합니다.
 
-    Request (POST):
-        post_id (int): 제안을 보낼 학생의 과외 공고 ID.
-        message (str): 학생에게 보낼 어필 메시지.
+    Request Body (POST):
+        post_id (int): 역제안 대상 학생 구인 공고 ID (필수).
+        message (str, optional): 역제안 시 첨부할 어필 메시지 본문.
 
-    Response (POST):
-        HTTP 201 Created:
-        {
-            "instructor_id": 5
-        }
+    Request Body (DELETE) 또는 Query Parameters:
+        post_id (int): 취소할 대상 구인 공고 ID.
+
+    Returns:
+        Response (POST): {
+            "instructor_id": int,
+            "room_id": int
+        } (HTTP 201 Created)
+        Response (DELETE): {
+            "detail": "제안이 취소되었습니다."
+        } (HTTP 204 No Content)
     """
     permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
 
@@ -138,14 +151,17 @@ class TutoringProposalViewSet(mixins.ListModelMixin,
     URL: /tutoring/proposals/
     URL: /tutoring/proposals/<pk>/
 
-    과외 제안서(TutoringProposal)의 목록 및 상세 조회를 담당하는 API ViewSet입니다.
+    과외 제안서(TutoringProposal)의 목록 및 상세 조회를 관리하는 API ViewSet입니다.
 
-    읽기 전용(Read-Only) 액션만 지원하며, 조회하는 사용자(학생 혹은 강사) 본인과
-    연관된 제안서만 볼 수 있도록 `get_queryset`에서 필터링됩니다.
+    GET /tutoring/proposals/ 요청 시, 조회 주체(학생 또는 강사)가 수신 및 송신한 전체 과외 제안 목록을 조회합니다. 차단된 사용자의 제안 내역은 배제됩니다.
+    GET /tutoring/proposals/<pk>/ 요청 시, 특정 과외 제안서 항목의 상세 내용을 조회합니다.
 
-    Actions:
-        list: 본인과 연관된 모든 제안서 목록 조회.
-        retrieve: 특정 제안서 상세 조회.
+    Path Parameters:
+        pk (int): 대상 제안서 ID.
+
+    Returns:
+        Response (GET /tutoring/proposals/): List[TutoringProposalSerializer] 데이터
+        Response (GET /tutoring/proposals/<pk>/): TutoringProposalSerializer 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = TutoringProposalSerializer

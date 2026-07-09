@@ -33,28 +33,35 @@ class StudentSignupAPIView(APIView):
     """
     URL: /accounts/signup/student/
 
-    학생용 회원가입 및 프로필 관리를 위한 API View입니다.
+    학생용 회원가입 및 프로필 관리를 처리하는 API View입니다.
 
-    Request (POST /):
+    POST 요청 시 신규 학생 유저의 회원가입을 처리하고 자동 로그인 인증 토큰 및 역할 정보를 발급합니다.
+    PUT/PATCH 요청 시 로그인한 학생 유저의 프로필 정보를 부분 수정합니다.
+
+    Request Body (POST):
         email (str): 이메일 주소.
         password (str): 비밀번호.
         user_name (str): 사용자 닉네임.
         phone (str): 전화번호.
-        studentsubject (list[int]): 관심 과목 ID 리스트.
+        studentsubject (list[int], optional): 관심 과목 ID 리스트.
 
-    Response (POST /):
-        HTTP 201 Created:
-        {
-            "token": "...",
-            "user_id": 1,
-            "email": "user@example.com",
-            "available_roles": [
-                {
-                    "role": "student",
-                    "status": "VERIFIED",
-                    "last_login": "2026-04-26T06:51:26Z"
-                }
-            ]
+    Request Body (PUT/PATCH):
+        user_name (str, optional): 변경할 닉네임.
+        phone (str, optional): 변경할 전화번호.
+        region (str, optional): 변경할 지역.
+
+    Returns:
+        Response (POST): {
+            "token": str,
+            "user_id": int,
+            "email": str,
+            "available_roles": List[dict],
+            "message": "Signup successful"
+        } (HTTP 201 Created)
+        Response (PUT/PATCH): {
+            "id": int,
+            "email": str,
+            "role": "STUDENT"
         }
     """
 
@@ -114,24 +121,38 @@ class InstructorSignupAPIView(GenericAPIView):
     """
     URL: /accounts/signup/instructor/
 
-    강사용 회원가입 및 프로필 업데이트를 처리하는 API View입니다.
+    강사 회원가입 및 프로필 업데이트를 처리하는 API View입니다.
 
-    POST /accounts/signup/instructor/
-    새로운 강사 계정을 생성합니다.
+    POST 요청 시 강사 회원가입 처리를 진행하며 학력/경력 인증을 위한 서류 파일(pending_file)을 함께 제출받아 PENDING 상태로 심사 요청을 등록합니다.
+    PUT/PATCH 요청 시 로그인한 강사 유저의 소속 및 정보 프로필을 부분 수정합니다.
 
-    PUT/PATCH /accounts/signup/instructor/
-    강사 사용자의 프로필 정보를 수정(Partial Update)합니다.
+    Request Body (POST, Multipart):
+        email (str): 이메일 주소.
+        password (str): 비밀번호.
+        user_name (str): 사용자 닉네임.
+        phone (str): 전화번호.
+        university (str): 소속 대학교명.
+        department (str, optional): 소속 학과명.
+        pending_file (File): 인증 서류 이미지 또는 PDF 파일.
 
-    Args:
-        request (Request): 클라이언트의 요청 객체. 포함될 주요 데이터는 다음과 같습니다.
-            - email (str), password (str), user_name (str), phone (str) 등 기본 정보
-            - university (str), department (str): 대학 및 학과 정보
-            - pending_file (File): 인증 서류 이미지 또는 PDF (POST 요청 시 필수)
+    Request Body (PUT/PATCH):
+        university (str, optional): 대학교명.
+        department (str, optional): 학과명.
 
     Returns:
-        Response: 처리 결과와 HTTP 상태 코드를 포함한 JSON 데이터.
-            성공 시 (201 Created / 200 OK): 계정 ID, 이메일, 그리고 pending_status 반환.
-            실패 시 (400 Bad Request): 유효성 검증 실패 혹은 파일 누락 사유 반환.
+        Response (POST): {
+            "id": int,
+            "email": str,
+            "role": "INSTRUCTOR",
+            "pending_status": str,
+            "token": str
+        } (HTTP 201 Created)
+        Response (PUT/PATCH): {
+            "id": int,
+            "email": str,
+            "role": "INSTRUCTOR",
+            "pending_status": str
+        }
     """
 
     serializer_class = InstructorSignupSerializer
@@ -187,18 +208,20 @@ class LoginAPIView(APIView):
 
     이메일과 비밀번호를 사용하여 인증(Login) 토큰을 발급하는 API View입니다.
 
-    - 학생 계정은 즉시 접속 가능합니다.
-    - 강사 계정은 PENDING 혹은 SUSPENDED 상태일 경우 로그인이 제한(403)됩니다.
-    - 만약 학생과 강사 역할을 모두 가진 유저라면 권한 및 상태 배열(available_roles)을 반환합니다.
+    POST 요청 시 입력된 이메일과 비밀번호로 계정을 인증하고 토큰을 반환합니다.
+    학생 계정은 즉시 로그인 및 사용이 가능하며, 강사 계정인 경우 심사가 거류(PENDING) 또는 정지(SUSPENDED)된 상태라면 로그인이 제한될 수 있으며 해당 유저의 모든 활성 역할(student, instructor) 정보를 함께 구성하여 응답합니다.
 
-    Args:
-        request (Request): email과 password를 포함하는 JSON 요청 데이터.
+    Request Body:
+        email (str): 이메일 주소.
+        password (str): 비밀번호.
 
     Returns:
-        Response:
-            성공 (200 OK): 인증 토큰(token)과 사용자가 보유한 가능한 역할(available_roles) 반환.
-            실패 (400 Bad Request): 인증 정보 불일치 혹은 파라미터 누락.
-            제한 (403 Forbidden): 강사 심사가 거류(PENDING) 또는 정지(SUSPENDED)된 경우.
+        Response: {
+            "token": str,
+            "user_id": int,
+            "email": str,
+            "available_roles": List[dict]
+        }
     """
     parser_classes = [JSONParser]  # JSON(앱) + multipart(테스트 등) 모두 허용
     permission_classes = []
@@ -267,16 +290,18 @@ class CheckUsernameAPIView(APIView):
     """
     URL: /accounts/check-username/
 
-    회원가입 또는 프로필 수정 과정에서 닉네임(user_name) 중복 여부를 검사하는 API View입니다.
+    닉네임(user_name)의 중복 여부를 검사하는 API View입니다.
 
-    현재 로그인된 사용자(Token 제공 시)의 경우 자신의 기존 닉네임은 중복 체크에서 제외합니다.
+    GET 요청 시 쿼리 파라미터로 전달된 user_name의 중복 여부를 조회합니다.
+    인증된 유저가 프로필 수정 중에 요청하는 경우에는 본인의 현재 닉네임은 중복 검사에서 제외합니다.
 
-    Args:
-        request (Request): Query Parameters에 'user_name'이 포함되어야 합니다.
+    Query Parameters:
+        user_name (str): 중복 여부를 검사할 닉네임.
 
     Returns:
-        Response:
-            성공 (200 OK): "available": true (사용 가능) 또는 false (중복됨) 반환.
+        Response: {
+            "available": bool
+        }
     """
 
     permission_classes = [] # 인증 없이 접근 가능
@@ -303,16 +328,18 @@ class CheckEmailAPIView(APIView):
     """
     URL: /accounts/check-email/
 
-    회원가입 또는 프로필 수정 과정에서 이메일(email) 중복 여부를 검사하는 API View입니다.
+    이메일(email)의 중복 여부를 검사하는 API View입니다.
 
-    현재 로그인된 사용자(Token 제공 시)의 경우 자신의 기존 이메일은 중복 체크에서 제외합니다.
+    GET 요청 시 쿼리 파라미터로 전달된 이메일의 중복 여부를 조회합니다.
+    인증된 유저가 프로필 수정 중에 요청하는 경우에는 본인의 현재 이메일은 중복 검사에서 제외합니다.
 
-    Args:
-        request (Request): Query Parameters에 'email'이 포함되어야 합니다.
+    Query Parameters:
+        email (str): 중복 여부를 검사할 이메일 주소.
 
     Returns:
-        Response:
-            성공 (200 OK): "available": true (사용 가능) 또는 false (중복됨) 반환.
+        Response: {
+            "available": bool
+        }
     """
 
     permission_classes = [] # 인증 없이 접근 가능
@@ -339,8 +366,14 @@ class LogoutAPIView(APIView):
     """
     URL: /accounts/logout/
 
-    POST /accounts/logout/
-    - Authorization: Token <token>
+    사용자 로그아웃 및 인증 토큰을 파기하는 API View입니다.
+
+    POST 요청 시, 요청 유저의 DeviceToken을 비활성화(is_active=False)하여 알림 수신을 차단하고, DB에 저장된 Django REST Framework 인증 토큰을 즉시 파기(삭제)합니다.
+
+    Returns:
+        Response: {
+            "message": "Logged out successfully"
+        }
     """
     # 로그인한 유저만 호출 가능
     permission_classes = [IsAuthenticated]
@@ -363,9 +396,18 @@ class WithdrawAPIView(APIView):
     """
     URL: /accounts/withdraw/
 
-    POST /accounts/withdraw/
-    - Authorization: Token <token>
-    Body: { "reason": "더 이상 과외를 구하지 않아요", "reason_detail": "..." }
+    회원 탈퇴(Soft Delete)를 처리하는 API View입니다.
+
+    POST 요청 시 탈퇴 사유(reason, reason_detail)를 저장하고 계정 상태를 비활성화(is_active=False) 처리하며, FCM 디바이스 토큰 및 사용자의 인증 토큰을 파기합니다.
+
+    Request Body:
+        reason (str, optional): 탈퇴 사유.
+        reason_detail (str, optional): 탈퇴 상세 내용.
+
+    Returns:
+        Response: {
+            "message": "Account deactivated successfully"
+        }
     """
 
     permission_classes = [IsAuthenticated]
@@ -398,17 +440,23 @@ class CheckPhoneAPIView(APIView):
     """
     URL: /accounts/check-phone/
 
-    입력된 휴대전화 번호로 이미 가입된 계정이 존재하는지 여부와 해당 계정의 역할을 확인합니다.
+    입력된 휴대전화 번호로 가입된 계정 존재 여부 및 역할을 검사하는 API View입니다.
 
-    Args:
-        request (Request): Query Parameters로 'phone'을 전달받습니다.
+    GET 요청 시, 전달받은 번호로 가입된 User가 없으면 exists: false를 반환합니다.
+    가입된 계정이 존재하는 경우, 정지(Banned) 및 탈퇴(Inactive) 계정 여부를 확인하고, 학생/강사 역할이 둘 다 있는지 한쪽 역할만 있는지에 따라 missing_role 또는 role_full 여부를 계산하여 응답합니다.
+
+    Query Parameters:
+        phone (str): 검사할 휴대전화 번호.
 
     Returns:
-        Response:
-            - 미가입: "exists": false (신규 가입 가능)
-            - 한쪽 역할만 가입됨: "exists": true, "missing_role": "instructor" 또는 "student" (역할 추가 가능)
-            - 양쪽 모두 가입됨: "exists": true, "role_full": true (추가 가입 불가)
-            - 밴(Ban)/탈퇴(Inactive) 계정 여부 포함.
+        Response: {
+            "exists": bool,
+            "email": str (존재 시),
+            "is_banned": bool (정지된 경우),
+            "is_inactive": bool (탈퇴한 경우),
+            "missing_role": "student" | "instructor",
+            "role_full": bool
+        }
     """
     permission_classes = []
 
@@ -453,15 +501,26 @@ class AddRoleAPIView(APIView):
     """
     URL: /accounts/add-role/
 
-    POST /accounts/add-role/
-    - 기존 phone으로 가입된 유저에게 새로운 역할(student/instructor)을 추가합니다.
-    - 토큰 불필요 (전화번호 + 비밀번호로 본인 확인)
-    Body: {
-        "phone": "01012345678",
-        "password": "...",
-        "role": "student" | "instructor",
-        ...역할별 추가 필드
-    }
+    기존 가입 계정에 새로운 역할(student 또는 instructor)을 추가 등록하는 API View입니다.
+
+    POST 요청 시 휴대전화 번호와 비밀번호를 통해 인증을 진행한 후, 아직 보유하지 않은 역할의 프로필을 생성합니다.
+    학생 역할을 추가할 때에는 관심 과목 목록(studentsubject)을 처리하며, 강사 역할을 추가할 때에는 대학 정보(university, department)를 등록받고 자격 증명 심사 상태를 생성합니다.
+
+    Request Body (Multipart):
+        phone (str): 인증할 전화번호.
+        password (str): 인증할 비밀번호.
+        role (str): 추가할 역할 ('student' | 'instructor').
+        studentsubject (list[int] 또는 str, optional): 학생 역할 추가 시 관심 과목 번호 목록.
+        university (str, optional): 강사 역할 추가 시 대학교명 (필수).
+        department (str, optional): 강사 역할 추가 시 학과명.
+
+    Returns:
+        Response: {
+            "token": str,
+            "user_id": int,
+            "email": str,
+            "available_roles": List[dict]
+        } (HTTP 201 Created)
     """
     permission_classes = []
     parser_classes = [MultiPartParser, FormParser]
@@ -551,15 +610,38 @@ class UserProfileAPIView(APIView):
     """
     URL: /accounts/me/
 
-    GET  /accounts/me/   — 내 프로필 조회
-    PATCH /accounts/me/  — 공통 텍스트 필드 수정 (닉네임, 전화번호, 지역)
+    본인의 프로필 조회 및 수정을 처리하는 API View입니다.
 
-    PATCH request body (모두 optional, application/json):
-    {
-        "user_name": "새닉네임",
-        "phone": "01012345678",
-        "region": "서울|강남구"
-    }
+    GET 요청 시 로그인한 유저 본인의 닉네임, 이름, 캐시 잔액, 프로필 이미지 주소, 거주 지역 정보 및 번호 정보를 반환합니다.
+    PATCH 요청 시 닉네임, 전화번호, 지역, 분야(field) 정보를 부분 변경합니다. 닉네임 수정 시 중복 검사를 거칩니다.
+
+    Request Body (PATCH):
+        user_name (str, optional): 수정할 닉네임.
+        phone (str, optional): 수정할 전화번호.
+        region (str, optional): 수정할 지역 정보 ('시|구' 포맷).
+        field (str, optional): 수정할 분야 정보.
+
+    Returns:
+        Response (GET): {
+            "nickname": str,
+            "last_name": str,
+            "first_name": str,
+            "cash": int,
+            "profile_image": str,
+            "district": str,
+            "province": str,
+            "phonenumber": str
+        }
+        Response (PATCH): {
+            "id": int,
+            "email": str,
+            "nickname": str,
+            "phone": str,
+            "field": str,
+            "province": str,
+            "district": str,
+            "profile_image": str
+        }
     """
     permission_classes = [IsAuthenticated]
 
@@ -620,9 +702,18 @@ class RequestPhoneChangeAPIView(APIView):
     """
     URL: /accounts/me/phone/request/
 
-    POST /accounts/me/phone/request/
-    - 전화번호 변경을 위한 인증번호 요청
-    Body: { "phone": "01012345678" }
+    전화번호 변경을 위한 SMS 인증번호 발송을 요청하는 API View입니다.
+
+    POST 요청 시, 변경할 신규 전화번호를 입력받아 이미 다른 계정에서 가입된 번호가 아닌지 중복을 검사하고, 6자리 난수의 인증 코드를 생성하여 PhoneVerification 내역에 기록합니다. 개발 편의를 위해 생성된 코드가 응답에 반환됩니다.
+
+    Request Body:
+        phone (str): 변경할 전화번호.
+
+    Returns:
+        Response: {
+            "message": "인증번호가 발송되었습니다.",
+            "code": str
+        }
     """
     permission_classes = [IsAuthenticated]
 
@@ -659,9 +750,20 @@ class VerifyPhoneChangeAPIView(APIView):
     """
     URL: /accounts/me/phone/verify/
 
-    POST /accounts/me/phone/verify/
-    - 인증번호 확인 후 전화번호 업데이트
-    Body: { "phone": "01012345678", "code": "123456" }
+    발송된 인증번호를 대조하여 사용자의 휴대전화 번호를 최종 변경하는 API View입니다.
+
+    POST 요청 시 신규 번호와 6자리 코드를 입력받아 PhoneVerification 테이블의 최근 미인증 데이터를 검증합니다.
+    인증이 성공하면 해당 유저의 phone 값을 새 번호로 갱신하고 인증 완료 마킹을 진행합니다.
+
+    Request Body:
+        phone (str): 인증한 전화번호.
+        code (str): 인증 코드.
+
+    Returns:
+        Response: {
+            "message": "전화번호가 성공적으로 변경되었습니다.",
+            "phone": str
+        }
     """
     permission_classes = [IsAuthenticated]
 
@@ -701,9 +803,17 @@ class ProfileImageAPIView(APIView):
     """
     URL: /accounts/me/image/
 
-    PATCH /accounts/me/image/  — 프로필 이미지 업로드/교체
-    Content-Type: multipart/form-data
-    Form field: profile_image (file)
+    로그인한 유저의 프로필 이미지 업로드 및 교체를 처리하는 API View입니다.
+
+    PATCH 요청 시 업로드된 프로필 이미지 파일을 전달받아 사용자 계정의 profile_image 경로에 등록하고, 변경된 프로필 이미지의 절대 경로 URL을 반환합니다.
+
+    Request Body (Multipart):
+        profile_image (File): 업로드할 이미지 파일.
+
+    Returns:
+        Response: {
+            "profile_image": str
+        }
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -724,16 +834,24 @@ class InstructorRetryAPIView(APIView):
     """
     URL: /accounts/signup/instructor/retry/
 
-    POST /accounts/signup/instructor/retry/
-    - Content-Type: multipart/form-data
-    - email 기반 심사 재요청 API (토큰 없이 호출 가능)
-    
-    필수 필드:
-    - email: 유저 이메일
-    - pending_file: 재심사용 서류 (파일)
-    
-    선택 필드 (보강 정보):
-    - university, department, student_number 등
+    강사 승인 거절 상태에서 인증 서류를 보강하여 재인증을 요청하는 API View입니다.
+
+    POST 요청 시, 이메일을 식별자로 하여 해당 강사의 심사 내역(PendingInstructor) 상태를 PENDING으로 재설정하고, 기존 업로드 파일을 삭제한 후 새 서류 파일(pending_file)로 교체합니다.
+    선택적으로 소속 대학 및 학번 정보를 추가 보강하며, 푸시용 FCM 디바이스 토큰 정보를 함께 갱신 처리합니다.
+
+    Request Body (Multipart):
+        email (str): 강사 계정 이메일 주소.
+        pending_file (File): 재심사용 인증 서류 파일.
+        university (str, optional): 보강할 대학교명.
+        department (str, optional): 보강할 학과명.
+        student_number (str, optional): 보강할 학번.
+        fcm_token (str, optional): 최신 FCM 디바이스 토큰.
+        platform (str, optional): 디바이스 플랫폼 ('android' | 'ios' 등).
+
+    Returns:
+        Response: {
+            "message": "재심사 요청이 성공적으로 접수되었습니다."
+        }
     """
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = []
@@ -803,8 +921,31 @@ class UserDetailAPIView(APIView):
     """
     URL: /accounts/user/<pk>/
 
-    GET /accounts/user/<int:pk>/
-    - 특정 유저의 공개 프로필 정보를 조회합니다.
+    지정한 특정 사용자의 공개 프로필 정보를 조회하는 API View입니다.
+
+    GET 요청 시, 지정한 pk에 해당하는 유저의 닉네임, 역할군(student 또는 instructor), 활동 지역, 성별, 생년월일, 프로필 이미지 URL, 관심/지도 과목 리스트, 그리고 강사일 경우 서류 심사 인증 상태(certified, pending, rejected) 정보를 한 번에 결합하여 제공합니다.
+
+    Path Parameters:
+        pk (int): 정보를 조회할 대상 사용자(User) ID.
+
+    Returns:
+        Response: {
+            "id": int,
+            "email": str,
+            "nickname": str,
+            "first_name": str,
+            "last_name": str,
+            "role": "student" | "instructor",
+            "region": str,
+            "province": str,
+            "district": str,
+            "sex": str,
+            "field": str,
+            "birth_date": str,
+            "profile_image": str,
+            "verification_status": "certified" | "pending" | "rejected" | None,
+            "subjects": List[str]
+        }
     """
     permission_classes = [permissions.AllowAny]
 
@@ -857,8 +998,12 @@ class SubjectListAPIView(APIView):
     """
     URL: /accounts/subjects/
 
-    GET /accounts/subjects/
-    - Return the list of all available subjects
+    시스템 내 등록된 전체 과목(Subject) 목록을 조회하는 API View입니다.
+
+    GET 요청 시, 데이터베이스에 등록된 모든 교과목 목록을 번호(number) 순으로 정렬하여 반환합니다.
+
+    Returns:
+        Response: List[SubjectSerializer] 데이터
     """
     permission_classes = []
 
@@ -900,19 +1045,18 @@ class SendAuthSMSAPIView(APIView):
     """
     URL: /accounts/send-auth-sms/
 
-    POST /accounts/send-auth-sms/
-    - Send authentication SMS to the given phone number
+    입력한 번호로 가입/본인인증을 위한 6자리 SMS 인증번호를 발송하는 API View입니다.
 
-    request:
-    {
-        "phone_number": "01012345678"
-    }
+    POST 요청 시, 전달받은 번호로 솔라피(Solapi) 서비스를 호출하여 인증 문자를 발송하고, 생성된 코드를 PhoneVerification 테이블에 미인증 상태로 저장합니다. 개발용 편의를 위해 발송된 코드가 응답에 함께 반환됩니다.
 
-    response:
-    {
-        "message": "인증번호가 발송되었습니다.",
-        "code": "123456"
-    }
+    Request Body:
+        phone_number (str): 문자를 수신할 휴대전화 번호.
+
+    Returns:
+        Response: {
+            "message": "인증번호가 발송되었습니다.",
+            "code": str
+        }
     """
     permission_classes = []
     throttle_classes = [SMSRateThrottle]
@@ -944,19 +1088,19 @@ class VerifyAuthSMSAPIView(APIView):
     """
     URL: /accounts/verify-auth-sms/
 
-    POST /accounts/verify-auth-sms/
-    - Verify authentication SMS with the given phone number and code
+    입력된 SMS 인증번호와 전화번호를 대조하여 인증을 완료 처리하는 API View입니다.
 
-    request:
-    {
-        "phone_number": "01012345678",
-        "code": "123456"
-    }
+    POST 요청 시 휴대전화 번호와 수신한 6자리 인증 코드를 확인하여 데이터베이스에 저장된 내역을 대조합니다.
+    검증에 성공하는 경우, 해당 인증 내역을 인증 완료(is_verified=True)로 업데이트합니다.
 
-    response:
-    {
-        "message": "전화번호 인증이 완료되었습니다."
-    }
+    Request Body:
+        phone_number (str): 인증할 휴대전화 번호.
+        code (str): 수신한 6자리 인증 번호.
+
+    Returns:
+        Response: {
+            "message": "전화번호 인증이 완료되었습니다."
+        }
     """
     permission_classes = []
 
@@ -988,9 +1132,18 @@ class VerifyAuthSMSAPIView(APIView):
 class ProfileCheckAPIView(APIView):
     """
     URL: /accounts/profile-check/
-    Method: GET
-    - 유저의 학생 프로필 및 강사 프로필 여부를 확인하는 view입니다.
-    - 로그인 view의 로직과 유사하게 작성 ( available_roles 목록 반환 및 last_login 업데이트 )
+
+    현재 로그인 유저의 프로필 역할 정보 및 인증 토큰 상태를 조회하는 API View입니다.
+
+    GET 요청 시, 로그인된 사용자의 학생 및 강사 프로필 보유 여부를 계산하고, 각 역할의 심사 상태 및 마지막 로그인 일시(last_login)를 갱신 및 결합하여 반환합니다.
+
+    Returns:
+        Response: {
+            "token": str,
+            "user_id": int,
+            "email": str,
+            "available_roles": List[dict]
+        }
     """
     permission_classes = [IsAuthenticated]
 
@@ -1039,10 +1192,27 @@ class ProfileCheckAPIView(APIView):
 class RoleAddAPIView(APIView):
     """
     URL: /accounts/role-add/
-    Method: POST
-    - 학생 입장에서 강사 role을 추가하거나 강사 입장에서 학생 role을 추가하는 view입니다.
-    - 쿼리 파라미터로 role=student | instructor를 받습니다.
-    - 공통으로 받는 데이터 (User 모델 필드들)을 제외한 나머지 role 특정 필드들을 받아 role을 생성합니다.
+
+    로그인한 유저에게 반대 역할군(학생 유저는 강사 프로필, 강사 유저는 학생 프로필)의 역할 권한을 추가로 부여하는 API View입니다.
+
+    POST 요청 시, 쿼리 파라미터로 추가할 role을 전달받아 유효성 검사 및 프로필 생성(StudentRoleAddSerializer 또는 InstructorRoleAddSerializer 호출)을 완료합니다.
+    추가 작업이 정상 수행되면 갱신된 사용자의 전체 가능 역할군 목록(available_roles)과 인증 토큰 정보를 반환합니다.
+
+    Query Parameters:
+        role (str): 추가할 역할군 ('student' | 'instructor').
+
+    Request Body (POST):
+        studentsubject (list[int], optional): 학생 프로필 추가 시의 관심 과목 번호 목록.
+        university (str, optional): 강사 프로필 추가 시의 대학교명 (필수).
+        department (str, optional): 강사 프로필 추가 시의 학과명.
+
+    Returns:
+        Response: {
+            "token": str,
+            "user_id": int,
+            "email": str,
+            "available_roles": List[dict]
+        } (HTTP 201 Created)
     """
     permission_classes = [IsAuthenticated]
 

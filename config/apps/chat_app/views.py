@@ -21,28 +21,41 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
 
     1:1 과외 문의 및 상담을 위한 '채팅방(ChatRoom)'을 관리하는 API ViewSet입니다.
 
-    Endpoints:
-        GET /chatrooms/ : 참여 중인 채팅방 목록 조회 (QueryParam: role=student|instructor).
-        GET /chatrooms/{id}/ : 특정 채팅방 상세 정보 및 이전 메시지 목록 조회.
-        POST /chatrooms/{id}/message/ : 메시지 발송.
-        POST /chatrooms/{id}/read/{msg_id}/ : 메시지 읽음 처리.
+    GET /chatrooms/ 요청 시 본인이 참여 중인 전체 활성 채팅방 목록을 조회하며 차단한 유저의 방은 배제합니다.
+    GET /chatrooms/<pk>/ 요청 시 특정 채팅방의 상세 정보와 이전 대화 메시지 내역을 조회합니다.
+    POST /chatrooms/<pk>/message/ 요청 시 텍스트나 사전에 업로드한 이미지 ID들을 첨부하여 상대방에게 전송합니다.
+    POST /chatrooms/<pk>/read/<msg_id>/ 요청 시 특정 메시지를 읽은 사람 목록에 자신을 추가합니다.
+    DELETE /chatrooms/<pk>/out/ 요청 시 채팅방을 삭제하고 퇴장합니다.
+    POST /chatrooms/<pk>/like/ 요청 시 특정 채팅방을 찜 목록에 추가하거나 취소합니다.
+    POST /chatrooms/<pk>/mute/ 요청 시 채팅방의 알림 수신 상태를 음소거로 변경하거나 취소합니다.
 
-    Request (POST /{id}/message/):
-        text (str, optional): 전송할 텍스트 메시지.
-        img_ids (list, optional): 미리 업로드한 이미지 ID 리스트.
+    Path Parameters:
+        pk (int): 대상 채팅방 ID.
+        msg_id (int): 읽음 처리할 메시지 ID.
 
-    Response (GET /chatrooms/):
-        HTTP 200 OK:
-        [
-            {
-                "id": 1,
-                "title": "과외 문의",
-                "instructor": 5,
-                "student": 9,
-                "last_message": "안녕하세요",
-                "created_at": "2026-03-04T12:00:00Z"
-            }
-        ]
+    Query Parameters:
+        role (str, optional): 'student' | 'instructor' 필터링 역할.
+
+    Request Body (POST /chatrooms/<pk>/message/):
+        text (str, optional): 전송할 메시지 내용.
+        img_ids (list[int], optional): 사전 업로드된 이미지 파일 ID 목록.
+
+    Returns:
+        Response (GET /chatrooms/): List[ChatRoomListSerializer] 데이터
+        Response (GET /chatrooms/<pk>/): ChatRoomSerializer 데이터
+        Response (POST /chatrooms/<pk>/message/): ChatMessageSerializer 데이터
+        Response (POST /chatrooms/<pk>/read/<msg_id>/): {
+            "read_count": int
+        }
+        Response (POST /chatrooms/<pk>/like/): {
+            "is_liked": bool
+        }
+        Response (POST /chatrooms/<pk>/mute/): {
+            "is_muted": bool
+        }
+        Response (DELETE /chatrooms/<pk>/out/): {
+            "message": "채팅방을 삭제하고 나갔습니다."
+        }
     """
 
     queryset = ChatRoom.objects.all()  # 기본적으로 전체 방을 가져오지만 아래 get_queryset에서 필터링함
@@ -217,11 +230,15 @@ class ImageUploadView(APIView):
 
     채팅방 내 메시지에 첨부될 '이미지 파일(Image)'을 사전 업로드하는 API View입니다.
 
-    클라이언트가 이미지를 먼저 업로드하여 `image_ids`를 발급받은 후,
-    이후 메시지 전송(POST /chatrooms/<pk>/message/) 시 해당 ID 배열을 포함해 보냅니다.
+    POST 요청 시 하나 이상의 이미지 파일을 수신하여 Image 레코드로 저장하고, 이후 메시지 발송 API에 첨부할 수 있도록 업로드된 이미지들의 고유 ID 리스트를 반환합니다.
 
-    HTTP Methods:
-        POST: 이미지 업로드 처리.
+    Request Body (Multipart):
+        images (File): 업로드할 이미지 파일 (다중 첨부 가능).
+
+    Returns:
+        Response: {
+            "image_ids": List[int]
+        }
     """
 
     permission_classes = [permissions.IsAuthenticated]  # 로그인한 사람만 접근 가능
@@ -253,19 +270,32 @@ class ImageUploadView(APIView):
 class DeviceTokenView(APIView):
     """
     URL: /device-token/
+
+    FCM 푸시 알림 전송용 '디바이스 토큰(DeviceToken)' 정보를 조회 및 갱신하는 API View입니다.
+
+    GET 요청 시 현재 로그인한 유저의 최신 디바이스 토큰의 푸시 동의 및 활성화 여부를 조회합니다.
+    POST 요청 시 최신 단말 토큰 정보를 등록받아 생성 및 갱신하며, 타 유저가 이전에 쓰던 중복 토큰이 있을 경우 즉시 삭제합니다.
+    PUT 요청 시 등록된 토큰의 푸시 활성 여부(is_active)를 토글(True/False)합니다.
+
+    Request Body (POST):
+        token (str): FCM 디바이스 토큰 문자열 (필수).
+        platform (str, optional): 디바이스 플랫폼 종류 (기본값 'android').
+
+    Returns:
+        Response (GET): {
+            "is_active": bool
+        }
+        Response (POST): {
+            "ok": True,
+            "id": int
+        }
+        Response (PUT): {
+            "ok": True
+        }
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        """
-        GET /device-token/
-        현재 로그인한 사용자의 디바이스 토큰 상태를 조회합니다
-        
-        Response (200):
-        {
-            "is_active": true              // boolean
-        }
-        """
         token = DeviceToken.objects.filter(user=request.user).order_by("-updated_at").first()
         if not token:
             return Response({"error": "디바이스 토큰이 없습니다."}, status=404)
@@ -306,15 +336,6 @@ class DeviceTokenView(APIView):
         return Response({"ok": True, "id": obj.id}, status=200)
 
     def put(self, request):
-        """
-        PUT /device-token/
-        단말 토큰 상태 변경 (is_active 상태 토글)
-        
-        Response (200):
-        {
-            "ok": true                     // boolean
-        }
-        """
         tokens = DeviceToken.objects.filter(user=request.user)
         if not tokens.exists():
             return Response({"error": "디바이스 토큰이 없습니다."}, status=404)
@@ -328,8 +349,14 @@ class ChatNotificationToggleView(APIView):
     """
     URL: /chat-notification/
 
-    PUT /chat-notification/
-    채팅 알림 상태(is_chat_active)만 독립적으로 토글합니다.
+    채팅 관련 알림 수신 동의 여부만 독립적으로 수정하는 API View입니다.
+
+    PUT 요청 시 현재 로그인한 사용자의 DeviceToken 내역을 확인하고, 다른 푸시 알림과 무관하게 오직 1:1 채팅 메시지 푸시 알림 상태(is_chat_active) 값만 반전(토글)합니다.
+
+    Returns:
+        Response: {
+            "is_chat_active": bool
+        }
     """
     permission_classes = [permissions.IsAuthenticated]
 

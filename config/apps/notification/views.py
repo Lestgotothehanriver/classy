@@ -17,25 +17,17 @@ class NotificationListAPIView(APIView):
 
     유저가 수신한 '알림(Notification)' 목록을 조회하거나 일괄 삭제하는 API View입니다.
 
-    Response (GET /):
-        HTTP 200 OK:
-        [
-            {
-                "id": 1,
-                "type": "NEW_PROPOSAL",
-                "role": "student",
-                "title": "과외 제안이 도착했습니다",
-                "body": "홍길동 강사님이 제안을 보냈습니다.",
-                "data": {"proposal_id": 123},
-                "is_read": false,
-                "created_at": "2026-04-26T06:51:26Z"
-            }
-        ]
+    GET 요청 시, 본인이 수신한 전체 알림 목록을 최신순으로 반환하며 쿼리 파라미터를 통해 특정 역할군(student | instructor)의 알림만 필터링 조회할 수 있습니다.
+    DELETE 요청 시, 로그인한 사용자의 알림 중 이미 읽음(is_read=True) 상태인 알림을 일괄 삭제합니다.
 
-    Endpoints:
-        GET /notification/             : 본인의 전체 알림 조회.
-        GET /notification/?role=student: 특정 역할의 알림만 필터링 조회.
-        DELETE /notification/          : 읽은 알림 전체 삭제.
+    Query Parameters:
+        role (str, optional): 필터링할 역할 ('student' | 'instructor').
+
+    Returns:
+        Response (GET): List[dict] 데이터 (각 항목당 id, type, role, title, body, data, is_read, created_at 포함)
+        Response (DELETE): {
+            "deleted": int
+        }
     """
 
     permission_classes = [IsAuthenticated]
@@ -67,11 +59,13 @@ class NotificationUnreadCountAPIView(APIView):
 
     본인의 '안 읽은 알림(is_read=False) 개수'를 역할별로 조회하는 API View입니다.
 
-    앱 진입 시 뱃지(Badge) 업데이트를 위해 호출됩니다.
-    이후의 갱신은 WebSocket(notification.counts)을 통해 실시간으로 처리됩니다.
+    GET 요청 시 앱 진입 또는 갱신을 위해 안 읽은 알림 수를 각각 student 및 instructor 역할별 카운트로 나누어 반환합니다.
 
-    Endpoints:
-        GET /notification/unread-count/
+    Returns:
+        Response: {
+            "student": int,
+            "instructor": int
+        }
     """
 
     permission_classes = [IsAuthenticated]
@@ -93,21 +87,22 @@ class NotificationReadAPIView(APIView):
 
     특정 알림을 '읽음 처리(is_read=True)'하는 API View입니다.
 
-    Response (PATCH /):
-        HTTP 200 OK:
-        {
-            "id": 1,
-            "type": "NEW_PROPOSAL",
-            "role": "student",
-            "title": "과외 제안이 도착했습니다",
-            "body": "홍길동 강사님이 제안을 보냈습니다.",
-            "data": {"proposal_id": 123},
-            "is_read": true,
-            "created_at": "2026-04-26T06:51:26Z"
-        }
+    PATCH 요청 시, 지정한 알림의 읽음(is_read) 여부를 True로 갱신하고 변경 사항을 저장한 뒤 갱신된 알림의 상세 정보를 반환합니다.
 
-    Endpoints:
-        PATCH /notification/<pk>/read/
+    Path Parameters:
+        pk (int): 읽음 처리할 알림 ID.
+
+    Returns:
+        Response: {
+            "id": int,
+            "type": str,
+            "role": str,
+            "title": str,
+            "body": str,
+            "data": dict,
+            "is_read": True,
+            "created_at": str (ISO datetime)
+        }
     """
 
     permission_classes = [IsAuthenticated]
@@ -140,11 +135,12 @@ class NotificationReadAllAPIView(APIView):
 
     본인이 수신한 '모든 안 읽은 알림'을 일괄적으로 '읽음 처리(is_read=True)'하는 API View입니다.
 
-    알림 탭에서 "모두 읽음" 버튼을 클릭할 때 사용되며,
-    처리 후 WebSocket 채널로 0으로 초기화된 카운트를 브로드캐스트합니다.
+    PATCH 요청 시 로그인한 사용자가 수신한 모든 읽지 않은 알림을 일괄적으로 읽음(is_read=True) 상태로 업데이트합니다.
 
-    Endpoints:
-        PATCH /notification/read-all/
+    Returns:
+        Response: {
+            "updated": int
+        }
     """
 
     permission_classes = [IsAuthenticated]
@@ -161,17 +157,36 @@ class DeviceTokenAPIView(APIView):
     """
     URL: /device-token/
 
-    FCM(Firebase Cloud Messaging) 또는 APNs의 '디바이스 푸시 토큰(DeviceToken)'을 
-    생성, 조회, 수정(알림 켜기/끄기)하는 API View입니다.
+    FCM(Firebase Cloud Messaging) 또는 APNs의 '디바이스 푸시 토큰(DeviceToken)'을 생성, 조회, 수정(알림 켜기/끄기)하는 API View입니다.
 
-    앱 로그인 시 디바이스 토큰이 서버로 전송되어 `post` 엔드포인트를 통해 갱신되며,
-    알림 설정(수신 거부/허용)은 `put` 엔드포인트를 통해 상태(is_active)를 토글합니다.
-    다른 유저가 동일한 토큰을 사용할 경우, 해당 토큰은 이전 유저에게서 삭제되고 현재 유저에게 할당됩니다.
+    GET 요청 시 로그인한 사용자의 최신 단말 토큰에 설정된 푸시 알림 수신 상태(is_active) 및 채팅 알림 수신 상태(is_chat_active)를 조회합니다.
+    POST 요청 시 최신 FCM 토큰 정보와 플랫폼, 활성화 상태 정보를 등록받아 생성 및 업데이트를 완료합니다. 타 유저의 기기 이전으로 인한 중복 토큰이 있는 경우 삭제 처리합니다.
+    PUT 요청 시 단말 토큰의 전체 알림 수신 여부(is_active) 또는 채팅 알림 수신 여부(is_chat_active)를 전달받은 상태로 수정하거나 명시적 파라미터가 없으면 반전(토글)합니다.
 
-    Endpoints:
-        GET /device-token/   : 현재 디바이스의 푸시 알림 활성화 여부 반환.
-        POST /device-token/  : 새 푸시 토큰 등록 및 기기 플랫폼(OS) 업데이트.
-        PUT /device-token/   : 푸시 알림 수신 동의 상태(is_active) 토글.
+    Request Body (POST):
+        token (str): FCM 디바이스 토큰 문자열 (필수).
+        platform (str, optional): 디바이스 플랫폼 종류 ('android' | 'ios', 기본값 'android').
+        is_active (bool, optional): 전체 알림 수신 동의 여부.
+        is_chat_active (bool, optional): 채팅 알림 수신 동의 여부.
+
+    Request Body (PUT):
+        is_active (bool, optional): 전체 알림 수신 활성 상태 값.
+        is_chat_active (bool, optional): 채팅 알림 수신 활성 상태 값.
+
+    Returns:
+        Response (GET): {
+            "is_active": bool,
+            "is_chat_active": bool
+        }
+        Response (POST): {
+            "registered": True,
+            "is_active": bool,
+            "is_chat_active": bool
+        } (HTTP 201 Created)
+        Response (PUT): {
+            "is_active": bool,
+            "is_chat_active": bool
+        }
     """
 
     permission_classes = [IsAuthenticated]

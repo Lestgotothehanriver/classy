@@ -35,23 +35,24 @@ class InstructorReviewViewSet(
     URL: /tutoring/reviews/instructor/
     URL: /tutoring/reviews/instructor/<pk>/
 
-    학생이 강사에 대한 별점과 후기를 관리하는 API ViewSet입니다.
+    학생이 강사에 대한 별점과 후기(InstructorReview)를 생성, 수정, 삭제하는 API ViewSet입니다.
 
-    Request (POST /):
-        instructor_id (int): 리뷰를 남길 강사의 ID.
-        rating (int): 별점 (1~5).
-        content (str): 후기 내용.
+    POST /tutoring/reviews/instructor/ 요청 시, 본인의 학생 프로필을 작성자로 설정하여 특정 강사에 대한 별점(rating)과 텍스트 리뷰(content)를 남깁니다. 학생 프로필이 없으면 403 에러가 납니다.
+    PUT/PATCH /tutoring/reviews/instructor/<pk>/ 요청 시, 자신이 작성했던 리뷰를 수정합니다.
+    DELETE /tutoring/reviews/instructor/<pk>/ 요청 시, 자신이 작성한 리뷰를 삭제합니다.
 
-    Response (POST /):
-        HTTP 201 Created:
-        {
-            "id": 1,
-            "instructor": 5,
-            "student": 9,
-            "rating": 5,
-            "content": "정말 잘 가르치십니다!",
-            "created_at": "2026-04-26T06:51:26Z"
-        }
+    Path Parameters:
+        pk (int): 대상 강사 리뷰 ID.
+
+    Request Body (POST):
+        instructor_id (int): 대상 강사 ID (필수).
+        rating (int): 별점 (1~5, 필수).
+        content (str): 후기 내용 (필수).
+
+    Returns:
+        Response (POST): InstructorReviewWriteSerializer 데이터 (HTTP 201 Created)
+        Response (PUT/PATCH): InstructorReviewWriteSerializer 데이터 (HTTP 200 OK)
+        Response (DELETE): HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorReviewWriteSerializer
@@ -95,23 +96,24 @@ class StudentReviewViewSet(
     URL: /tutoring/reviews/student/
     URL: /tutoring/reviews/student/<pk>/
 
-    강사가 학생에 대한 별점과 후기를 관리하는 API ViewSet입니다.
+    강사가 학생에 대한 별점과 후기(StudentReview)를 생성, 수정, 삭제하는 API ViewSet입니다.
 
-    Request (POST /):
-        student_id (int): 리뷰를 남길 학생의 ID.
-        rating (int): 별점 (1~5).
-        content (str): 후기 내용.
+    POST /tutoring/reviews/student/ 요청 시, 본인의 강사 프로필을 작성자로 설정하여 특정 학생에 대한 별점(rating)과 텍스트 리뷰(content)를 남깁니다. 강사 프로필이 없으면 403 에러가 납니다.
+    PUT/PATCH /tutoring/reviews/student/<pk>/ 요청 시, 자신이 작성했던 학생 리뷰를 수정합니다.
+    DELETE /tutoring/reviews/student/<pk>/ 요청 시, 자신이 작성한 학생 리뷰를 삭제합니다.
 
-    Response (POST /):
-        HTTP 201 Created:
-        {
-            "id": 1,
-            "student": 9,
-            "instructor": 5,
-            "rating": 4,
-            "content": "수업 태도가 아주 좋습니다.",
-            "created_at": "2026-04-26T06:51:26Z"
-        }
+    Path Parameters:
+        pk (int): 대상 학생 리뷰 ID.
+
+    Request Body (POST):
+        student_id (int): 대상 학생 ID (필수).
+        rating (int): 별점 (1~5, 필수).
+        content (str): 후기 내용 (필수).
+
+    Returns:
+        Response (POST): StudentReviewWriteSerializer 데이터 (HTTP 201 Created)
+        Response (PUT/PATCH): StudentReviewWriteSerializer 데이터 (HTTP 200 OK)
+        Response (DELETE): HTTP 204 No Content
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = StudentReviewWriteSerializer
@@ -151,13 +153,13 @@ class StudentReviewListAPIView(generics.ListAPIView):
 
     특정 학생이 여러 강사들로부터 받은 '학생 리뷰(StudentReview)' 목록을 조회하는 API View입니다.
 
-    과외 성사 전 강사가 학생의 성향이나 이전 평가를 참고할 수 있도록 제공되는 정보입니다.
+    GET 요청 시, 대상 학생 ID(student_id)를 기준으로 등록된 평점 및 리뷰 전체 목록을 최신순 조회하며 차단된 강사 유저가 작성한 리뷰는 제외합니다.
 
     Path Parameters:
-        student_id (int): 평가를 받은 학생의 ID.
+        student_id (int): 대상 학생 ID.
 
     Returns:
-        List[StudentReviewSerializer]: 해당 학생에 대한 리뷰 리스트 (강사 프로필 등 포함).
+        Response: List[StudentReviewSerializer] 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = StudentReviewSerializer
@@ -195,18 +197,30 @@ class InstructorInfoViewSet(
     URL: /tutoring/instructor-info/<pk>/
     URL: /tutoring/instructor-info/mine/
 
-    강사가 자신의 상세 '과외 소개 정보(InstructorInfo)'를 작성 및 관리하는 API ViewSet입니다.
+    강사가 자신의 상세 '과외 소개 정보(InstructorInfo)'를 작성, 수정, 삭제하는 API ViewSet입니다.
 
-    1명의 강사는 단 1개의 상세 정보(InstructorInfo) 객체만 가질 수 있습니다(1:1 관계).
-    작성 시 이미 존재하는 경우 덮어쓰기(Update) 방식으로 동작하며,
-    본인의 과외 소개 정보만을 관리(수정/삭제)할 수 있습니다.
+    POST /tutoring/instructor-info/ 요청 시, 새로운 과외 상세 프로필을 등록합니다. 이미 프로필이 있다면 덮어쓰기 형태로 정보를 업데이트합니다.
+    GET /tutoring/instructor-info/<pk>/ 요청 시, 해당 ID를 키로 하는 강사의 과외 프로필 상세 항목을 조회합니다.
+    PUT/PATCH /tutoring/instructor-info/<pk>/ 요청 시, 본인의 과외 소개 정보를 갱신합니다.
+    DELETE /tutoring/instructor-info/<pk>/ 요청 시, 등록된 본인의 과외 소개 프로필을 삭제합니다.
+    GET /tutoring/instructor-info/mine/ 요청 시, 현재 로그인한 강사 본인의 과외 소개 프로필 정보를 조회하여 반환하며 존재하지 않는 경우 204 No Content를 응답합니다.
 
-    Actions:
-        create: 상세 과외 정보 작성(또는 기존 정보 수정).
-        retrieve: 과외 정보 상세 조회.
-        partial_update: 과외 정보 일부 내용만 수정 (PATCH).
-        destroy: 작성한 과외 정보 삭제.
-        mine (GET): 본인(현재 로그인 강사)의 과외 정보 요약 조회용 커스텀 액션.
+    Path Parameters:
+        pk (int): 대상 과외 소개 정보 ID.
+
+    Request Body (POST):
+        description (str): 자기소개 글.
+        method (str): 수업 방식 (ONLINE, OFFLINE 등).
+        cost (int): 시간당/월별 희망 수업료.
+        subject_ids (list[int]): 교육 가능 과목 ID 목록.
+        region_ids (list[int]): 활동 지역 ID 목록.
+
+    Returns:
+        Response (POST): InstructorInfoWriteSerializer 데이터 (HTTP 201 Created)
+        Response (GET /<pk>/): InstructorInfoWriteSerializer 데이터
+        Response (PUT/PATCH): InstructorInfoWriteSerializer 데이터
+        Response (DELETE): HTTP 204 No Content
+        Response (GET /mine/): InstructorInfoSerializer 데이터
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorInfoWriteSerializer

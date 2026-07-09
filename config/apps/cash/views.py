@@ -239,12 +239,8 @@ class InstructorAccountView(APIView):
 
     강사가 자신의 '정산 계좌 정보(Account)'를 조회, 등록, 수정하는 API View입니다.
 
-    캐시 환전 등을 위해 실명 및 은행 계좌 정보가 등록되어야 하며,
-    강사 프로필(instructor_profile)이 존재하는 유저만 이용 가능합니다.
-
-    HTTP Methods:
-        GET: 현재 등록된 본인의 정산 계좌 반환 (없을 시 404).
-        POST: 새로운 계좌 등록 또는 기존 계좌 덮어쓰기.
+    GET 요청 시 현재 강사에게 등록된 본인의 정산 계좌 정보를 조회합니다. 등록 정보가 없으면 404를 반환합니다.
+    POST 요청 시 새로운 계좌 정보를 등록하거나 기존 계좌를 덮어씁니다. 강사 프로필(instructor_profile)이 있는 사용자만 이 기능을 사용할 수 있습니다.
 
     Request Body (POST):
         bank (str): 은행명 (예: '국민은행').
@@ -252,7 +248,16 @@ class InstructorAccountView(APIView):
         account_holder (str): 예금주명.
 
     Returns:
-        Response: 계좌 정보 JSON 객체.
+        Response (GET): {
+            "bank": str,
+            "account_number": str,
+            "account_holder": str
+        }
+        Response (POST): {
+            "bank": str,
+            "account_number": str,
+            "account_holder": str
+        }
     """
     permission_classes = [IsAuthenticated]
 
@@ -315,33 +320,29 @@ class InstructorAccountView(APIView):
 class PurchaseCashView(APIView):
     """
     URL: /cash/purchase/
+
+    인앱 결제(Apple/Google) 영수증을 검증하고, 성공 시 유저에게 '캐시(Cash)'를 적립하는 API View입니다.
+
+    POST 요청 시 전달받은 인앱 결제 영수증 데이터를 각각 Apple verifyReceipt API 혹은 Google Play API를 통해 검증합니다.
+    영수증 검증이 통과되면, 중복 결제를 방지하기 위해 unique 트랜잭션 ID 여부를 검사하고, 트랜잭션 내에서 유저의 캐시 컬럼을 동시성 락(select_for_update) 하에 원자적으로 차감/증가 처리한 후 구매 내역을 생성합니다.
+
+    Request Body:
+        platform (str): 결제 플랫폼 ('apple' | 'google').
+        product_id (str): 결제 상품 ID (예: 'cash_5000').
+        receipt_data (str, optional): Apple 영수증 Base64 데이터.
+        purchase_token (str, optional): Google 구매 토큰.
+
+    Returns:
+        Response: {
+            "message": "Cash purchased successfully",
+            "purchased_cash": int,
+            "remaining_cash": int
+        }
     """
     permission_classes = [IsAuthenticated]
     throttle_classes = [PurchaseRateThrottle]
 
     def post(self, request):
-        """
-        인앱 결제(Apple/Google) 영수증을 검증하고, 성공 시 유저에게 '캐시(Cash)'를 적립하는 API.
-
-        Atomic 트랜잭션과 select_for_update()를 통해 동시 결제 시 발생할 수 있는 
-        Race Condition을 방지하며, 영수증 번호의 중복 처리를 차단합니다.
-
-        Request (JSON):
-            platform (str): 'apple' | 'google'
-            product_id (str): 결제 상품 ID (예: 'cash_5000')
-            receipt_data (str, optional): Apple 영수증 Base64 데이터 (Apple 전용)
-            purchase_token (str, optional): Google 구매 토큰 (Google 전용)
-
-        Response (JSON):
-            HTTP 200 OK:
-            {
-                "message": "Cash purchased successfully",
-                "purchased_cash": 5000,
-                "remaining_cash": 15000
-            }
-            HTTP 409 Conflict: 이미 처리된 영수증인 경우.
-            HTTP 400 Bad Request: 검증 실패 또는 잘못된 상품 ID.
-        """
         serializer = CashPurchaseSerializer(data=request.data)
         logger.debug("[BACKEND_DEBUG_CASH] PurchaseCash Attempt - data: %s", request.data)
         if not serializer.is_valid():
@@ -442,21 +443,22 @@ class RedeemCouponView(APIView):
 
     프로모션 '쿠폰(Coupon)' 코드를 입력받아 캐시를 충전해주는 API View입니다.
 
-    Atomic 트랜잭션을 사용하여 쿠폰의 상태(사용 여부, 만료 여부)를 검증하고,
-    유효한 경우 즉시 사용자 계정에 명시된 금액(cash_amount)을 적립합니다.
+    POST 요청 시 쿠폰 코드를 입력받아 활성화 여부, 기사용 여부, 만료 여부를 트랜잭션 하에서 원자적으로 검증합니다.
+    검증 결과 쿠폰이 유효한 경우 해당 쿠폰에 명시된 금액(cash_amount)만큼 유저에게 캐시를 즉시 적립하고 쿠폰 사용 내역을 갱신합니다.
+
+    Request Body:
+        code (str): 사용할 쿠폰 코드.
+
+    Returns:
+        Response: {
+            "message": "Coupon redeemed successfully.",
+            "redeemed_cash": int,
+            "remaining_cash": int
+        }
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """
-        쿠폰 사용 요청 처리.
-
-        Request Body:
-            code (str): 사용할 쿠폰 코드.
-
-        Returns:
-            Response: 충전된 캐시 및 잔여 캐시 정보 (또는 에러 사유 반환).
-        """
         serializer = RedeemCouponSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -532,30 +534,26 @@ class RedeemCouponView(APIView):
 class RentLectureView(APIView):
     """
     URL: /cash/rentals/
+
+    보유한 캐시를 소모하여 특정 VOD '강의(Lecture)'를 대여하는 API View입니다.
+
+    POST 요청 시, 대여할 강의 ID를 전달받아 현재 사용자가 동일 강의에 대해 활성 대여 내역을 가지고 있는지 검사합니다.
+    이후 보유 중인 캐시가 강의 가격 이상인지 검증하고, 트랜잭션 내에서 유저의 캐시 차감 및 강의 대여 이력 생성을 원자적으로 처리합니다.
+
+    Request Body:
+        lecture_id (int): 대여할 강의 ID.
+
+    Returns:
+        Response: {
+            "message": "Lecture rented successfully.",
+            "rental_id": int,
+            "remaining_cash": int,
+            "expiration_date": str (ISO datetime)
+        } (HTTP 201 Created)
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """
-        보유한 캐시를 소모하여 특정 VOD '강의(Lecture)'를 대여하는 API.
-
-        Atomic 트랜잭션을 적용하여 캐시 차감과 대여 기록 생성을 원자적으로 처리합니다.
-        대여 성공 시 즉시 시청 권한이 부여됩니다.
-
-        Request (JSON):
-            lecture_id (int): 대여하려는 강의의 고유 ID.
-
-        Response (JSON):
-            HTTP 201 Created:
-            {
-                "message": "Lecture rented successfully.",
-                "rental_id": 45,
-                "remaining_cash": 8000,
-                "expiration_date": "2026-03-19T15:18:56Z"
-            }
-            HTTP 400 Bad Request: 이미 대여 중이거나 캐시가 부족한 경우.
-            HTTP 404 Not Found: 해당 강의를 찾을 수 없는 경우.
-        """
 
         serializer = LectureRentalSerializer(data=request.data)
         logger.debug("[BACKEND_DEBUG_CASH] RentLecture Attempt - data: %s", request.data)
@@ -626,28 +624,25 @@ class RentLectureView(APIView):
 class CancelLectureRentalView(APIView):
     """
     URL: /cash/rentals/<pk>/cancel/
+
+    결제(대여) 후 7일 이내인 VOD 강의에 대해 '대여 취소 및 환불'을 진행하는 API View입니다.
+
+    POST 요청 시, 지정한 대여 ID의 대여 상태가 취소되지 않았으며 구매한 지 7일 이내인지 검증합니다.
+    조건을 충족하면 트랜잭션 하에서 대여 상태를 canceled로 변경하고, 결제에 사용된 캐시 금액을 유저에게 즉시 복구(환불)합니다.
+
+    Path Parameters:
+        pk (int): 취소할 대여 기록(LectureRentalHistory) ID.
+
+    Returns:
+        Response: {
+            "message": "Rental canceled and cash refunded.",
+            "refunded_cash": int,
+            "remaining_cash": int
+        }
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        """
-        결제(대여) 후 7일 이내인 VOD 강의에 대해 '대여 취소 및 환불'을 진행하는 API.
-
-        취소 시 즉시 결제에 사용된 캐시가 복구되며, 대여 내역은 취소 상태로 변경됩니다.
-
-        Path Parameters:
-            pk (int): 취소할 대여 기록(LectureRentalHistory)의 ID.
-
-        Response (JSON):
-            HTTP 200 OK:
-            {
-                "message": "Rental canceled and cash refunded.",
-                "refunded_cash": 2000,
-                "remaining_cash": 10000
-            }
-            HTTP 400 Bad Request: 이미 취소되었거나 7일이 경과한 경우.
-            HTTP 404 Not Found: 대여 내역을 찾을 수 없는 경우.
-        """
 
         try:
             with transaction.atomic():
@@ -703,27 +698,26 @@ class CancelLectureRentalView(APIView):
 class RefundPurchaseView(APIView):
     """
     URL: /cash/webhook/apple/
+
+    Apple App Store Server Notifications 환불 알림용 웹훅(Webhook) API View입니다.
+
+    POST 요청 시, Apple V2 알림의 signedPayload (JWT) 서명을 확인 및 검증하여 REFUND 이벤트를 처리합니다.
+    환불 대상 트랜잭션을 식별하고, 해당 유저의 충전 캐시 금액만큼 계정 캐시에서 즉시 차감(회수)하며 최소 0원으로 보정합니다. 인증이 필요하지 않습니다.
+
+    Request Body:
+        signedPayload (str): Apple 서명된 JWT 데이터.
+
+    Returns:
+        Response: {
+            "message": str,
+            "deducted_cash": int (환불 적용 시),
+            "remaining_cash": int (환불 적용 시)
+        }
     """
     permission_classes = []
     throttle_classes = []
 
     def post(self, request, *args, **kwargs):
-        """
-        Apple App Store Server Notifications 환불 알림용 웹훅(Webhook) 엔드포인트입니다.
-
-        Apple V2 Notification 의 signedPayload (JWS) 를 파싱하여
-        REFUND 혹은 REFUND_DECLINED 서버 알림을 처리합니다.
-        
-        주의:
-        - Apple 서버 간 통신이므로 사용자 인증(IsAuthenticated)이 제외됩니다.
-        - 환불이 확정되면, 유저의 캐시 잔액을 차감하며 음수가 되지 않도록 최소 0으로 보정합니다.
-
-        Request Body:
-            signedPayload (str): Apple 서명된 JWT 데이터.
-
-        Returns:
-            Response: 웹훅 처리 상태 (200 OK 반환을 통해 Apple 측의 재시도 방지).
-        """
         signed_payload = request.data.get('signedPayload')
 
         if not signed_payload:
@@ -850,24 +844,26 @@ class RefundPurchaseView(APIView):
 class GooglePlayWebhookView(APIView):
     """
     URL: /cash/webhook/google/
+
+    Google Play Store 환불 및 취소 알림용 웹훅(Webhook) API View입니다.
+
+    POST 요청 시, Pub/Sub 메시지 데이터를 디코딩하고 CANCELED (취소/환불) 이벤트인 경우 AndroidPublisher API를 통해 orderId를 획득합니다.
+    해당 orderId를 갖는 PurchaseHistory 구매 건을 찾아 충전되었던 캐시 금액을 회수(차감) 처리하고 최소 0원으로 보정합니다. 인증이 필요하지 않습니다.
+
+    Request Body:
+        message (dict): Google Pub/Sub 데이터 포맷.
+
+    Returns:
+        Response: {
+            "message": str,
+            "deducted_cash": int (환불 적용 시),
+            "remaining_cash": int (환불 적용 시)
+        }
     """
     permission_classes = []
     throttle_classes = []
 
     def post(self, request, *args, **kwargs):
-        """
-        Google Play Developer API Real-time Developer Notifications (RTDN) 용
-        환불 및 상태 변경 알림 웹훅(Webhook) 엔드포인트입니다.
-
-        Pub/Sub 메세지로부터 Base64 데이터를 디코딩하고,
-        취소(CANCELED) 상태의 알림인 경우 해당 구매 트랜잭션을 찾아 캐시를 차감합니다.
-
-        Request Body:
-            message (dict): Google Pub/Sub 데이터 포맷.
-
-        Returns:
-            Response: 성공 처리 여부 (테스트/무시 알림도 200 처리하여 재시도 방지).
-        """
         message = request.data.get('message', {})
         data_base64 = message.get('data')
 
@@ -1001,10 +997,12 @@ class PurchaseHistoryListView(APIView):
     """
     URL: /cash/purchase-history/
 
-    본인의 인앱 결제를 통한 '캐시 충전 내역(PurchaseHistory)' 목록을 최신순으로 조회합니다.
+    본인의 인앱 결제를 통한 '캐시 충전 내역(PurchaseHistory)' 목록을 최신순으로 조회하는 API View입니다.
+
+    GET 요청 시, 현재 로그인한 사용자 본인의 전체 충전 거래 일시, 충전 금액, 실제 지불액, 잔여액 및 환불 완료 여부 목록을 반환합니다.
 
     Returns:
-        List[dict]: 충전 날짜, 구매한 캐시, 실제 결제 금액, 환불 여부 등.
+        Response: List[dict] 데이터 (각 항목당 id, date, purchased_cash, paid_amount, remaining_cash, is_refunded 포함)
     """
     permission_classes = [IsAuthenticated]
 
@@ -1034,12 +1032,12 @@ class RentalHistoryListView(APIView):
     """
     URL: /cash/rental-history/
 
-    본인이 대여한 'VOD 강의 결제 내역(LectureRentalHistory)' 목록을 최신순으로 조회합니다.
+    본인이 대여한 'VOD 강의 결제 내역(LectureRentalHistory)' 목록을 최신순으로 조회하는 API View입니다.
 
-    7일 내에 취소 가능한지 여부(is_cancelable)를 동적으로 계산하여 함께 반환합니다.
+    GET 요청 시, 본인이 대여한 전체 강의 ID, 강의명, 대여 일시, 가격 및 취소 가능 여부(결제 후 7일 이내 및 취소 미진행 상태) 목록을 반환합니다.
 
     Returns:
-        List[dict]: 대여 날짜, 차감 캐시, 강의 제목, 취소 가능 여부 등.
+        Response: List[dict] 데이터 (각 항목당 id, date, lecture_id, lecture_title, purchased_cash, remaining_cash, is_canceled, is_cancelable 포함)
     """
     permission_classes = [IsAuthenticated]
 
