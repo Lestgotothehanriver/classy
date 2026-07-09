@@ -459,11 +459,5 @@ class InstructorRoleAddSerializer(serializers.Serializer):
                 subjects.append(obj)
             instructor_profile.subjects.set(subjects)
 
-        # PendingInstructor 정보 생성 (기본 PENDING 상태)
-        PendingInstructor.objects.create(
-            instructor_profile=instructor_profile,
-            status=PendingInstructor.Status.PENDING,
-        )
-
         return instructor_profile
 
