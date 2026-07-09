@@ -1,4 +1,5 @@
 from rest_framework import generics, permissions, viewsets, mixins
+from rest_framework.response import Response
 from django.db.models import Avg, Count, F
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
@@ -6,6 +7,7 @@ import logging
 from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
+from config.apps.chat_app.models import ChatRoom
 from config.apps.common.utils import parse_int_list, apply_subject_filter
 from ..models import TutoringPost
 from ..serializers import TutoringPostListSerializer, TutoringPostDetailSerializer, TutoringPostWriteSerializer, StudentMyPostSerializer
@@ -122,7 +124,19 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         TutoringPost.objects.filter(pk=kwargs["pk"]).update(view_count=F("view_count") + 1)
-        return super().retrieve(request, *args, **kwargs)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        data = serializer.data
+
+        has_chat_room = False
+        if request.user.is_authenticated and hasattr(request.user, "instructor_profile"):
+            has_chat_room = ChatRoom.objects.filter(
+                student=instance.student,
+                instructor=request.user.instructor_profile
+            ).exists()
+        data["has_chat_room"] = has_chat_room
+
+        return Response(data)
 
 class TutoringPostViewSet(mixins.CreateModelMixin,
                           mixins.UpdateModelMixin,

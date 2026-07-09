@@ -9,6 +9,7 @@ from config.apps.block.utils import get_blocked_user_ids
 from config.apps.accounts.models import Instructor, Student, InstructorLike
 from config.apps.cash.models import InstructorMonthlyRank
 from config.apps.common.utils import parse_int_list, apply_subject_filter
+from config.apps.chat_app.models import ChatRoom
 from ..models import InstructorInfo, InstructorReview
 from ..serializers import InstructorListSerializer, InstructorInfoSerializer, InstructorReviewSerializer
 from config.apps.common.mixins import InstructorAnnotateMixin
@@ -206,6 +207,14 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
         )
         data["current_rank"] = latest_rank["rank"] if latest_rank else None
         data["is_tutoring"] = instructor.is_tutoring
+
+        has_chat_room = False
+        if request.user.is_authenticated and hasattr(request.user, "student_profile"):
+            has_chat_room = ChatRoom.objects.filter(
+                student=request.user.student_profile,
+                instructor=instructor
+            ).exists()
+        data["has_chat_room"] = has_chat_room
 
         return Response(data)
 
