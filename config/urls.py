@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf.urls.static import static
 from django.conf import settings
-from django.views.static import serve
+from config.apps.common.media import serve_media_with_range
 from config.apps.notification.views import DeviceTokenAPIView
 
 urlpatterns = [
@@ -42,7 +42,7 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
-    # DEBUG=False 환경(테스트 등)에서도 로컬 미디어를 제공하기 위한 fallback
+    # DEBUG=False 환경에서도 앱 동영상 플레이어가 요구하는 Range 요청을 지원합니다.
     urlpatterns += [
-        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+        re_path(r'^media/(?P<path>.*)$', serve_media_with_range),
     ]
