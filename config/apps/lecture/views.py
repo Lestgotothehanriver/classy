@@ -339,6 +339,13 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
             "[STREAM] 스트리밍 허용. user_id=%s, lecture_id=%s",
             request.user.pk, lecture.pk
         )
+        from .utils import normalize_field_file_for_mobile_playback
+        if normalize_field_file_for_mobile_playback(lecture.video):
+            lecture.save(update_fields=["video"])
+            logger.info(
+                "[STREAM] 모바일 재생 호환 포맷으로 영상 변환 완료. lecture_id=%s",
+                lecture.pk
+            )
         serializer = self.get_serializer(lecture)
         return Response(serializer.data)
 

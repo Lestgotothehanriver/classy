@@ -3,7 +3,7 @@ from django.db.models import Count
 
 from config.apps.accounts.models import Subject
 from .models import Lecture, Comment, SearchHistory
-from .utils import extract_video_duration_seconds
+from .utils import extract_video_duration_seconds, transcode_video_for_mobile_playback
 from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
 
 
@@ -132,21 +132,40 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         if inferred_duration is not None:
             validated_data["video_duration"] = inferred_duration
 
+    def _prepare_video_for_playback(self, validated_data):
+        video = validated_data.get("video")
+        if not video:
+            return None
+
+        playable_video, cleanup = transcode_video_for_mobile_playback(video)
+        validated_data["video"] = playable_video
+        return cleanup
+
     def create(self, validated_data):
         subjects_data = validated_data.pop("subjects", None)
-        self._populate_video_duration(validated_data)
-        instance = super().create(validated_data)
-        if subjects_data is not None:
-            _sync_subjects(instance.subjects, subjects_data)
-        return instance
+        cleanup = self._prepare_video_for_playback(validated_data)
+        try:
+            self._populate_video_duration(validated_data)
+            instance = super().create(validated_data)
+            if subjects_data is not None:
+                _sync_subjects(instance.subjects, subjects_data)
+            return instance
+        finally:
+            if cleanup:
+                cleanup()
 
     def update(self, instance, validated_data):
         subjects_data = validated_data.pop("subjects", None)
-        self._populate_video_duration(validated_data)
-        instance = super().update(instance, validated_data)
-        if subjects_data is not None:
-            _sync_subjects(instance.subjects, subjects_data)
-        return instance
+        cleanup = self._prepare_video_for_playback(validated_data)
+        try:
+            self._populate_video_duration(validated_data)
+            instance = super().update(instance, validated_data)
+            if subjects_data is not None:
+                _sync_subjects(instance.subjects, subjects_data)
+            return instance
+        finally:
+            if cleanup:
+                cleanup()
 
 
 # ────────────────────────────────────────────────────────────────────
