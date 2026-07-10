@@ -522,3 +522,34 @@ class TutoringResourceAPITest(LikeSortingTestBase):
         self.assertEqual(resp.json()["subject"][0], "과외 성사당 과목은 최대 3개까지만 제한하여 등록할 수 있습니다.")
 
 
+class StudentProposalRoomTest(LikeSortingTestBase):
+    """학생의 과외 상담 요청 및 첫 번째 메시지 문구 테스트"""
+
+    def setUp(self):
+        super().setUp()
+        self.post = TutoringPost.objects.create(student=self.student1, is_active=True)
+
+    def test_student_propose_initial_message_text(self):
+        """학생이 강사에게 과외 제안 시 첫 번째 메시지의 수정된 텍스트 확인"""
+        from config.apps.chat_app.models import ChatRoom, ChatMessage
+        
+        payload = {
+            "instructor_id": self.inst1.id,
+            "post_id": self.post.id,
+        }
+        resp = self.client.post("/tutoring/propose-to-instructor/", data=payload, format="json")
+        self.assertEqual(resp.status_code, 201)
+        
+        room_id = resp.json()["room_id"]
+        room = ChatRoom.objects.get(id=room_id)
+        
+        # 첫 번째 메시지 조회
+        messages = ChatMessage.objects.filter(room=room).order_by("created_at")
+        self.assertEqual(messages.count(), 1)
+        first_msg = messages.first()
+        
+        expected_text = f"{self.student_user1.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
+        self.assertEqual(first_msg.text, expected_text)
+
+
+

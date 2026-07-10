@@ -32,7 +32,7 @@ def create_student_proposal_room(user, instructor_id, post_id):
         notify_tutoring_request(room)
         
         # 첫 번째 안내 메시지 전송 (학생)
-        initial_text = f"안녕하세요! {student.user.user_name} 학생입니다. 선생님께 과외를 받고 싶어 연락드렸습니다."
+        initial_text = f"{student.user.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
         ChatMessage.objects.create(
             room=room,
             sender=user,
