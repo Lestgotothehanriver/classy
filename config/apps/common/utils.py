@@ -69,11 +69,18 @@ def get_absolute_media_url(url_or_file, request=None):
         return url
 
     if request:
-        return request.build_absolute_uri(url)
+        absolute_url = request.build_absolute_uri(url)
+        if request.is_secure() or request.META.get('HTTP_X_FORWARDED_PROTO') == 'https':
+            if absolute_url.startswith("http://"):
+                absolute_url = absolute_url.replace("http://", "https://", 1)
+        return absolute_url
 
     from django.conf import settings
     base_url = getattr(settings, "BASE_URL", "http://localhost:8000")
     if not url.startswith("/"):
         url = "/" + url
-    return f"{base_url.rstrip('/')}{url}"
+    absolute_url = f"{base_url.rstrip('/')}{url}"
+    if base_url.startswith("https://") and absolute_url.startswith("http://"):
+        absolute_url = absolute_url.replace("http://", "https://", 1)
+    return absolute_url
 

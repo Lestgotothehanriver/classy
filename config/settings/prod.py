@@ -22,6 +22,9 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
+# Base URL (Ensure HTTPS on Render)
+BASE_URL = env('BASE_URL', default=f"https://{RENDER_EXTERNAL_HOSTNAME}" if RENDER_EXTERNAL_HOSTNAME else "https://classystudy.com")
+
 # Security settings
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
