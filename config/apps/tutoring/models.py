@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from config.apps.accounts.models import Instructor, Student, Subject
 from config.apps.tutoring.constant import REGION_CHOICES, STUDENT_SUBJECT_CHOICES
 
@@ -304,3 +306,189 @@ class TutoringResourceFile(models.Model):
     tutoring_resource = models.ForeignKey(TutoringResource, on_delete=models.CASCADE, related_name="files")
     file = models.FileField(upload_to='fee_confirmations/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+
+class TutoringRegistration(models.Model):
+    """채팅방에서 양측이 독립적으로 제출하는 하나의 과외 계약 등록."""
+
+    class AttributeValidationStatus(models.TextChoices):
+        UNCHECKED = "UNCHECKED", "미확인"
+        MATCHED = "MATCHED", "일치"
+        MISMATCHED = "MISMATCHED", "불일치"
+
+    class ContractStatus(models.TextChoices):
+        COLLECTING = "COLLECTING", "계약 정보 수집 중"
+        REGISTERED = "REGISTERED", "등록 완료"
+        ACTIVE = "ACTIVE", "과외 진행 중"
+        CANCELLED = "CANCELLED", "취소"
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="student_tutoring_registrations",
+    )
+    instructor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="instructor_tutoring_registrations",
+    )
+    chat_room = models.OneToOneField(
+        "chat_app.ChatRoom",
+        on_delete=models.PROTECT,
+        related_name="tutoring_registration",
+    )
+    subject = models.CharField(max_length=100)
+    start_date = models.DateField()
+    attribute_validation_status = models.CharField(
+        max_length=20,
+        choices=AttributeValidationStatus.choices,
+        default=AttributeValidationStatus.UNCHECKED,
+    )
+    contract_status = models.CharField(
+        max_length=20,
+        choices=ContractStatus.choices,
+        default=ContractStatus.COLLECTING,
+    )
+    confirmed_class_type = models.CharField(max_length=20, blank=True)
+    confirmed_first_month_fee = models.PositiveBigIntegerField(null=True, blank=True)
+    terms_confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class TutoringSubmission(models.Model):
+    class Role(models.TextChoices):
+        STUDENT = "STUDENT", "학생"
+        INSTRUCTOR = "INSTRUCTOR", "강사"
+
+    class ClassType(models.TextChoices):
+        REGULAR = "REGULAR", "정규 수업"
+        SHORT_TERM = "SHORT_TERM", "단기 수업"
+
+    registration = models.ForeignKey(
+        TutoringRegistration,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="tutoring_submissions",
+    )
+    class_type = models.CharField(max_length=20, choices=ClassType.choices)
+    first_month_fee = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["registration", "role"],
+                name="unique_tutoring_submission_per_role",
+            ),
+        ]
+
+
+class StudentPaybackAccount(models.Model):
+    class VerificationStatus(models.TextChoices):
+        UNVERIFIED = "UNVERIFIED", "미인증"
+        VERIFIED = "VERIFIED", "인증 완료"
+        FAILED = "FAILED", "인증 실패"
+
+    registration = models.OneToOneField(
+        TutoringRegistration,
+        on_delete=models.PROTECT,
+        related_name="student_payback_account",
+    )
+    bank_code = models.CharField(max_length=20)
+    encrypted_account_number = models.TextField()
+    account_holder = models.CharField(max_length=30)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.UNVERIFIED,
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class CommissionInvoice(models.Model):
+    class InvoiceType(models.TextChoices):
+        INITIAL = "INITIAL", "최초 수수료"
+        ADJUSTMENT = "ADJUSTMENT", "추가 정산"
+
+    class Status(models.TextChoices):
+        READY = "READY", "결제 준비"
+        PAYMENT_PENDING = "PAYMENT_PENDING", "입금 대기"
+        PAID = "PAID", "납부 완료"
+        FAILED = "FAILED", "결제 실패"
+        CANCELLED = "CANCELLED", "취소"
+
+    registration = models.ForeignKey(
+        TutoringRegistration,
+        on_delete=models.PROTECT,
+        related_name="commission_invoices",
+    )
+    invoice_type = models.CharField(
+        max_length=20,
+        choices=InvoiceType.choices,
+        default=InvoiceType.INITIAL,
+    )
+    base_amount = models.PositiveBigIntegerField()
+    commission_rate_bps = models.PositiveIntegerField()
+    commission_amount = models.PositiveBigIntegerField()
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.READY)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["registration"],
+                condition=Q(invoice_type="INITIAL"),
+                name="unique_initial_commission_invoice",
+            ),
+        ]
+
+
+class VirtualAccountPayment(models.Model):
+    class FeePaymentStatus(models.TextChoices):
+        ISSUING = "ISSUING", "가상계좌 발급 중"
+        WAITING_FOR_DEPOSIT = "WAITING_FOR_DEPOSIT", "입금 대기"
+        DONE = "DONE", "납부 완료"
+        FAILED = "FAILED", "결제 처리 실패"
+        EXPIRED = "EXPIRED", "입금 기한 만료"
+        CANCELLED = "CANCELLED", "결제 취소"
+
+    invoice = models.ForeignKey(
+        CommissionInvoice,
+        on_delete=models.PROTECT,
+        related_name="virtual_account_payments",
+    )
+    order_id = models.CharField(max_length=64, unique=True)
+    payment_key = models.CharField(max_length=200, null=True, blank=True, unique=True)
+    expected_amount = models.PositiveBigIntegerField()
+    bank_code = models.CharField(max_length=20, blank=True)
+    account_number = models.CharField(max_length=50, blank=True)
+    account_holder = models.CharField(max_length=100, blank=True)
+    toss_secret = models.TextField(null=True, blank=True)
+    due_at = models.DateTimeField(null=True, blank=True)
+    fee_payment_status = models.CharField(
+        max_length=30,
+        choices=FeePaymentStatus.choices,
+        default=FeePaymentStatus.ISSUING,
+    )
+    toss_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class TossWebhookEvent(models.Model):
+    transaction_key = models.CharField(max_length=200, unique=True)
+    order_id = models.CharField(max_length=64)
+    event_status = models.CharField(max_length=30)
+    payload = models.JSONField()
+    processed_at = models.DateTimeField(auto_now_add=True)

@@ -3,12 +3,13 @@ import json
 
 import requests
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 from config.throttles import PurchaseRateThrottle
 
 from datetime import timedelta
@@ -23,6 +24,115 @@ from .models import PurchaseHistory, LectureRentalHistory, Account, Coupon
 from config.apps.lecture.models import Lecture
 
 logger = logging.getLogger(__name__)
+
+
+class TossVirtualAccountWebhookView(APIView):
+    """토스 DEPOSIT_CALLBACK을 검증하고 중복 없이 결제 상태를 반영한다."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from config.apps.tutoring.models import (
+            CommissionInvoice,
+            TossWebhookEvent,
+            VirtualAccountPayment,
+        )
+        from config.apps.tutoring.registration_services import webhook_secret_matches
+
+        payload = request.data
+        event = payload.get("data", payload) if isinstance(payload, dict) else {}
+        order_id = event.get("orderId")
+        transaction_key = event.get("transactionKey")
+        event_status = event.get("status")
+        supplied_secret = event.get("secret")
+        if not all([order_id, transaction_key, event_status, supplied_secret]):
+            return Response(
+                {"detail": "필수 웹훅 필드가 누락되었습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if event_status not in {
+            "DONE",
+            "WAITING_FOR_DEPOSIT",
+            "CANCELED",
+            "PARTIAL_CANCELED",
+            "EXPIRED",
+            "ABORTED",
+        }:
+            return Response(
+                {"detail": "지원하지 않는 결제 상태입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            payment = VirtualAccountPayment.objects.select_for_update().filter(
+                order_id=order_id
+            ).first()
+            if payment is None:
+                return Response(
+                    {"detail": "결제 주문을 찾을 수 없습니다."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if not webhook_secret_matches(payment, supplied_secret):
+                return Response(
+                    {"detail": "유효하지 않은 웹훅 secret입니다."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if TossWebhookEvent.objects.filter(
+                transaction_key=transaction_key
+            ).exists():
+                return Response({"processed": False, "duplicate": True})
+
+            try:
+                with transaction.atomic():
+                    TossWebhookEvent.objects.create(
+                        transaction_key=transaction_key,
+                        order_id=order_id,
+                        event_status=event_status,
+                        payload=payload,
+                    )
+            except IntegrityError:
+                return Response({"processed": False, "duplicate": True})
+
+            invoice = payment.invoice
+            now = timezone.now()
+            if event_status == "DONE":
+                payment.fee_payment_status = (
+                    VirtualAccountPayment.FeePaymentStatus.DONE
+                )
+                invoice.status = CommissionInvoice.Status.PAID
+                invoice.paid_at = now
+            elif event_status == "WAITING_FOR_DEPOSIT":
+                payment.fee_payment_status = (
+                    VirtualAccountPayment.FeePaymentStatus.WAITING_FOR_DEPOSIT
+                )
+                invoice.status = CommissionInvoice.Status.PAYMENT_PENDING
+                invoice.paid_at = None
+            elif event_status in {"CANCELED", "PARTIAL_CANCELED"}:
+                payment.fee_payment_status = (
+                    VirtualAccountPayment.FeePaymentStatus.CANCELLED
+                )
+                invoice.status = CommissionInvoice.Status.CANCELLED
+                invoice.paid_at = None
+            elif event_status == "EXPIRED":
+                payment.fee_payment_status = (
+                    VirtualAccountPayment.FeePaymentStatus.EXPIRED
+                )
+                invoice.status = CommissionInvoice.Status.FAILED
+                invoice.paid_at = None
+            elif event_status == "ABORTED":
+                payment.fee_payment_status = (
+                    VirtualAccountPayment.FeePaymentStatus.FAILED
+                )
+                invoice.status = CommissionInvoice.Status.FAILED
+                invoice.paid_at = None
+            payment.toss_response = payload
+            payment.save(
+                update_fields=["fee_payment_status", "toss_response", "updated_at"]
+            )
+            invoice.save(update_fields=["status", "paid_at", "updated_at"])
+
+        return Response({"processed": True, "duplicate": False})
 
 # ──────────────────────────────────────────────
 # 상품 매핑 (Store product_id → 캐시 / 원화)

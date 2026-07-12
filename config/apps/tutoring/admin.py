@@ -8,6 +8,12 @@ from config.apps.tutoring.models import (
     InstructorReview,
     StudentReview,
     TutoringResource,
+    CommissionInvoice,
+    StudentPaybackAccount,
+    TossWebhookEvent,
+    TutoringRegistration,
+    TutoringSubmission,
+    VirtualAccountPayment,
 )
 
 
@@ -153,3 +159,11 @@ class TutoringResourceAdmin(admin.ModelAdmin):
     def get_student(self, obj):
         return obj.student.user.username
     get_student.short_description = '학생'
+
+
+admin.site.register(TutoringRegistration)
+admin.site.register(TutoringSubmission)
+admin.site.register(StudentPaybackAccount)
+admin.site.register(CommissionInvoice)
+admin.site.register(VirtualAccountPayment)
+admin.site.register(TossWebhookEvent)

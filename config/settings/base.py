@@ -20,6 +20,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # .env 파일에서 환경변수 로드 (프로젝트 루트의 .env)
 load_dotenv(BASE_DIR.parent / '.env')
 
+# Toss Payments server-side virtual account settings
+TOSS_PAYMENTS_SECRET_KEY = os.environ.get("TOSS_PAYMENTS_SECRET_KEY", "")
+TOSS_VIRTUAL_ACCOUNT_BANK = os.environ.get("TOSS_VIRTUAL_ACCOUNT_BANK", "20")
+TOSS_VIRTUAL_ACCOUNT_VALID_HOURS = int(
+    os.environ.get("TOSS_VIRTUAL_ACCOUNT_VALID_HOURS", "168")
+)
+TUTORING_ACCOUNT_ENCRYPTION_KEY = os.environ.get(
+    "TUTORING_ACCOUNT_ENCRYPTION_KEY", ""
+)
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/

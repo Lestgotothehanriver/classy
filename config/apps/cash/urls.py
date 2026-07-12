@@ -9,11 +9,13 @@ from .views import (
     GooglePlayWebhookView,
     PurchaseHistoryListView,
     RentalHistoryListView,
+    TossVirtualAccountWebhookView,
 )
 
 app_name = 'cash'
 
 urlpatterns = [
+    path('webhook/toss/', TossVirtualAccountWebhookView.as_view(), name='toss-webhook'),
     path('account/', InstructorAccountView.as_view(), name='instructor-account'),
     path('purchase/', PurchaseCashView.as_view(), name='purchase'),
     path('coupons/redeem/', RedeemCouponView.as_view(), name='coupon-redeem'),
