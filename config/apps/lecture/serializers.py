@@ -1,10 +1,32 @@
 from rest_framework import serializers
 from django.db.models import Count
 
-from config.apps.accounts.models import Subject
+from config.apps.accounts.models import Subject, Instructor
 from .models import Lecture, Comment, SearchHistory
 from .utils import extract_video_duration_seconds, transcode_video_for_mobile_playback
 from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
+
+
+# ────────────────────────────────────────────────────────────────────
+# Instructor (업로더) 요약 Serializer
+# ────────────────────────────────────────────────────────────────────
+
+class LectureInstructorSerializer(serializers.ModelSerializer):
+    """강의 응답에 포함되는 강사(업로더) 요약 정보.
+
+    앱의 강의 상세/목록에서 업로더 프로필(닉네임·프로필이미지·대학·학과·학번)을
+    표시하기 위해 사용합니다.
+    """
+    user_name = serializers.CharField(source="user.user_name", read_only=True)
+    profile_image = AbsoluteImageField(source="user.profile_image", read_only=True)
+
+    class Meta:
+        model = Instructor
+        fields = [
+            "id", "user", "user_name",
+            "university", "department", "student_number",
+            "instruction", "profile_image",
+        ]
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -25,6 +47,7 @@ class LectureListSerializer(serializers.ModelSerializer):
     like_count = serializers.IntegerField(read_only=True, default=0)
     is_liked = serializers.BooleanField(read_only=True, default=False)
     instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
+    instructor = LectureInstructorSerializer(read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
     thumbnail = AbsoluteImageField(read_only=True)
 
@@ -55,6 +78,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     is_liked = serializers.BooleanField(read_only=True, default=False)
+    instructor = LectureInstructorSerializer(read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
     thumbnail = AbsoluteImageField(read_only=True)
 
@@ -74,6 +98,7 @@ class LecturePreviewSerializer(serializers.ModelSerializer):
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
     video = AbsoluteFileField(read_only=True)
     thumbnail = AbsoluteImageField(read_only=True)
+    instructor = LectureInstructorSerializer(read_only=True)
 
     class Meta:
         model = Lecture
@@ -88,6 +113,7 @@ class LecturePreviewSerializer(serializers.ModelSerializer):
 class LectureRecommendSerializer(serializers.ModelSerializer):
     """추천 강의 — video 필드 제외, 좋아요 수 포함."""
     like_count = serializers.IntegerField(read_only=True, default=0)
+    instructor = LectureInstructorSerializer(read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
     thumbnail = AbsoluteImageField(read_only=True)
 
@@ -172,15 +198,35 @@ class LectureWriteSerializer(serializers.ModelSerializer):
 # Comment Serializers
 # ────────────────────────────────────────────────────────────────────
 
-class CommentReplySerializer(serializers.ModelSerializer):
-    """대댓글(reply) 반환용 — 중첩 없이 1단 표시."""
+class _CommentAuthorMixin(serializers.Serializer):
+    """댓글 작성자 공통 필드.
+
+    앱에서 작성자 프로필 이미지, '내 댓글' 여부, 강사 작성 여부를 표시하기 위해
+    사용합니다.
+    """
     author_name = serializers.CharField(source="author.user_name", read_only=True)
+    author_profile_image = AbsoluteImageField(source="author.profile_image", read_only=True)
+    is_mine = serializers.SerializerMethodField()
+
+    def get_is_mine(self, obj):
+        request = self.context.get("request")
+        return bool(
+            request
+            and request.user
+            and request.user.is_authenticated
+            and obj.author_id == request.user.id
+        )
+
+
+class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
+    """대댓글(reply) 반환용 — 중첩 없이 1단 표시."""
     referenced_person_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
         fields = [
-            "id", "author", "author_name", "content",
+            "id", "author", "author_name", "author_profile_image",
+            "is_mine", "content",
             "referenced_person", "referenced_person_name",
             "created_at",
         ]
@@ -191,17 +237,16 @@ class CommentReplySerializer(serializers.ModelSerializer):
         return None
 
 
-class CommentSerializer(serializers.ModelSerializer):
+class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
     """댓글 목록 — 최상위 댓글 + replies 중첩."""
     replies = CommentReplySerializer(many=True, read_only=True)
-    author_name = serializers.CharField(source="author.user_name", read_only=True)
 
     class Meta:
         model = Comment
         fields = [
-            "id", "lecture", "author", "author_name",
-            "content", "parent", "referenced_person",
-            "created_at", "replies",
+            "id", "lecture", "author", "author_name", "author_profile_image",
+            "is_mine", "content", "parent",
+            "referenced_person", "created_at", "replies",
         ]
 
 

@@ -526,7 +526,10 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         # 저장된 객체를 읽기 Serializer로 반환
-        output = CommentSerializer(serializer.instance).data
+        # context(request)를 전달해야 is_mine 판별과 프로필 이미지 절대경로가 정상 동작함
+        output = CommentSerializer(
+            serializer.instance, context=self.get_serializer_context()
+        ).data
         return Response(output, status=status.HTTP_201_CREATED)
 
 
