@@ -43,6 +43,7 @@ class TutoringPostListAPIView(generics.ListAPIView):
         qs = TutoringPost.objects.filter(is_active=True).select_related("student").prefetch_related("subjects")
 
         if self.request.user.is_authenticated:
+            qs = qs.exclude(student__user=self.request.user)
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
                 qs = qs.exclude(student__user_id__in=blocked_user_ids)

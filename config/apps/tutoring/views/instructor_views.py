@@ -48,6 +48,7 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
         qs = Instructor.objects.all().select_related("tutoring_profile")
 
         if self.request.user.is_authenticated:
+            qs = qs.exclude(user=self.request.user)
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
                 qs = qs.exclude(user_id__in=blocked_user_ids)

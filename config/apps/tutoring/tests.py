@@ -145,6 +145,9 @@ class TutoringPostLikeSortingTest(LikeSortingTestBase):
 
     def setUp(self):
         super().setUp()
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         # 공고 3개 생성
         self.post1 = TutoringPost.objects.create(student=self.student1, is_active=True)
         self.post2 = TutoringPost.objects.create(student=self.student1, is_active=True)
@@ -697,3 +700,46 @@ class StudentProposalRoomTest(LikeSortingTestBase):
         
         expected_text = f"{self.student_user1.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
         self.assertEqual(first_msg.text, expected_text)
+
+
+class SelfLookupPreventionTest(LikeSortingTestBase):
+    """학생 과외 공고 및 선생님 프로필 조회에서 본인 조회 방지 테스트"""
+
+    def setUp(self):
+        super().setUp()
+        self.post1 = TutoringPost.objects.create(student=self.student1, is_active=True)
+        self.post2 = TutoringPost.objects.create(student=self.student2, is_active=True)
+
+    def test_student_cannot_see_own_tutoring_posts(self):
+        """학생이 /tutoring/posts/ 조회 시 자신의 공고는 제외되어야 함"""
+        # student_user1 (student1)로 로그인된 상태
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.student_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+        resp = self.client.get("/tutoring/posts/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["results"]
+        
+        # student1이 작성한 post1은 제외되고 student2가 작성한 post2만 보여야 함
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], self.post2.id)
+
+    def test_instructor_cannot_see_own_profile(self):
+        """강사가 /tutoring/instructors/ 조회 시 자신의 프로필은 제외되어야 함"""
+        # instructor_user1 (inst1)로 로그인
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+        resp = self.client.get("/tutoring/instructors/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["results"]
+
+        # inst1 (자기 자신)은 제외되고 inst2, inst3만 보여야 함
+        self.assertEqual(len(data), 2)
+        inst_ids = {item["id"] for item in data}
+        self.assertNotIn(self.inst1.id, inst_ids)
+        self.assertIn(self.inst2.id, inst_ids)
+        self.assertIn(self.inst3.id, inst_ids)
+
