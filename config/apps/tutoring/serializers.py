@@ -326,6 +326,12 @@ class InstructorInfoWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     def validate_cost(self, value):
         return validate_cost_unit(value)
 
+    def to_representation(self, instance):
+        # POST/PATCH 응답도 GET /mine/과 같은 완전한 형태로 반환한다.
+        # write_only인 subjects/regions가 응답에서 사라지면 클라이언트가
+        # 저장 직후 수정 폼을 다시 구성할 수 없다.
+        return InstructorInfoSerializer(instance, context=self.context).data
+
 
 class InstructorReviewWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     """강사 리뷰 생성/수정용. subjects: Subject.number 리스트"""
@@ -374,6 +380,10 @@ class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
 
     def validate_cost(self, value):
         return validate_cost_unit(value)
+
+    def to_representation(self, instance):
+        # 공고 수정 응답에도 과목/지역 레이블과 기존 상세 필드를 모두 포함한다.
+        return TutoringPostDetailSerializer(instance, context=self.context).data
 
 
 class StudentReviewWriteSerializer(serializers.ModelSerializer):

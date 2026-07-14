@@ -650,16 +650,39 @@ class UserProfileAPIView(APIView):
         logger.info(f"*** [UserProfile] Fetch profile for: {user.email} ***")
         region_parts = user.region.split(' ') if user.region else ['', '']
 
-        return Response({
+        data = {
+            "id": user.id,
+            "email": user.email,
             "nickname": user.user_name,
             "last_name": user.last_name,
             "first_name": user.first_name,
+            "role": "instructor" if hasattr(user, "instructor_profile") else "student",
             "cash": user.cash,
             "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
+            "region": user.region,
             "district": region_parts[1] if len(region_parts) > 1 else "",
             "province": region_parts[0] if len(region_parts) > 0 else "",
+            "sex": user.sex,
+            "birth_date": str(user.birth_date) if user.birth_date else None,
+            "field": user.field,
             "phonenumber": user.phone,
-        })
+        }
+
+        if hasattr(user, "instructor_profile"):
+            instructor = user.instructor_profile
+            data.update({
+                "university": instructor.university,
+                "department": instructor.department,
+                "student_number": instructor.student_number,
+                "instruction": instructor.instruction,
+                "subjects": [str(subject) for subject in instructor.subjects.all()],
+            })
+        elif hasattr(user, "student_profile"):
+            data["subjects"] = [
+                str(subject) for subject in user.student_profile.subjects.all()
+            ]
+
+        return Response(data)
 
     def patch(self, request):
         user = request.user
@@ -1264,4 +1287,3 @@ class RoleAddAPIView(APIView):
             "email": user.email,
             "available_roles": available_roles,
         }, status=status.HTTP_201_CREATED)
-

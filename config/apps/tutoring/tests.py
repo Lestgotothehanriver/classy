@@ -326,6 +326,17 @@ class InstructorUnverifiedStatusTest(TestCase):
         self.assertEqual(verified_data["verification_status"], "VERIFIED")
         self.assertEqual(suspended_data["verification_status"], "SUSPENDED")
 
+    def test_list_instructors_filters_by_max_cost(self):
+        """cost 상한 이하의 과외비를 등록한 강사만 반환한다."""
+        resp = self.client.get("/tutoring/instructors/", {"cost": "25000"})
+
+        self.assertEqual(resp.status_code, 200)
+        instructor_ids = {item["id"] for item in resp.json()["results"]}
+        self.assertEqual(
+            instructor_ids,
+            {self.inst_no_pending.id, self.inst_pending.id},
+        )
+
     def test_retrieve_instructor_detail_returns_is_unverified_correctly(self):
         """특정 강사 상세 조회 시 미인증 여부가 정확히 반환되는지 확인"""
         # 1. pending_info 없음
@@ -419,6 +430,88 @@ class InstructorInfoRegistrationTest(TestCase):
 
         self.instructor.refresh_from_db()
         self.assertTrue(self.instructor.is_tutoring)
+
+    def test_patch_response_contains_existing_subjects_and_regions(self):
+        """PATCH 응답은 수정 폼을 다시 채울 수 있는 전체 데이터를 반환한다."""
+        from config.apps.accounts.models import Subject
+        from config.apps.tutoring.models import InstructorInfo, Region
+        from rest_framework.authtoken.models import Token
+
+        subject = Subject.objects.create(number=1)
+        region = Region.objects.create(number=1)
+        info = InstructorInfo.objects.create(
+            instructor=self.instructor,
+            cost=30000,
+            schedule="Monday",
+            method="대면",
+            location=str(region),
+        )
+        info.subjects.add(subject)
+        info.regions.add(region)
+
+        token, _ = Token.objects.get_or_create(user=self.inst_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = self.client.patch(
+            f"/tutoring/instructor-info/{info.id}/",
+            {"schedule": "Tuesday"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["schedule"], "Tuesday")
+        self.assertEqual(response.json()["subjects"][0]["number"], subject.number)
+        self.assertEqual(response.json()["regions"][0]["id"], region.id)
+
+
+class TutoringPostPatchRepresentationTest(TestCase):
+    """공고 PATCH 응답이 다음 수정 화면을 채울 수 있는지 검증한다."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="post_owner",
+            user_name="post_owner",
+            password="pass1234",
+        )
+        self.student = Student.objects.create(user=self.user)
+        from config.apps.accounts.models import Subject
+        from config.apps.tutoring.models import Region
+        from rest_framework.authtoken.models import Token
+
+        self.subject = Subject.objects.create(number=1)
+        self.region = Region.objects.create(number=1)
+        self.post = TutoringPost.objects.create(
+            student=self.student,
+            title="기존 제목",
+            sex="남성",
+            age=17,
+            grade="고1",
+            field="이과",
+            method="대면",
+            cost=300000,
+            schedule="주말",
+            situation="내신 대비",
+            etc="친절한 설명",
+        )
+        self.post.subjects.add(self.subject)
+        self.post.regions.add(self.region)
+        token, _ = Token.objects.get_or_create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+    def test_patch_response_contains_full_detail(self):
+        response = self.client.patch(
+            f"/tutoring/posts/write/{self.post.id}/",
+            {"schedule": "평일 저녁"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "기존 제목")
+        self.assertEqual(data["schedule"], "평일 저녁")
+        self.assertEqual(data["situation"], "내신 대비")
+        self.assertEqual(data["subjects"][0]["number"], self.subject.number)
+        self.assertEqual(data["regions"][0]["id"], self.region.id)
 
 
 class TutoringPostSearchAPITest(LikeSortingTestBase):
@@ -577,5 +670,3 @@ class StudentProposalRoomTest(LikeSortingTestBase):
         
         expected_text = f"{self.student_user1.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
         self.assertEqual(first_msg.text, expected_text)
-
-

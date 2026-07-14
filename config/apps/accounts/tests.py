@@ -3,6 +3,43 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 User = get_user_model()
 
+
+class UserProfileEditPrefillTests(APITestCase):
+    """강사 프로필 수정 폼에 필요한 GET /accounts/me/ 응답을 검증한다."""
+
+    def test_instructor_profile_get_contains_editable_fields(self):
+        from config.apps.accounts.models import Instructor, Subject
+
+        user = User.objects.create_user(
+            username="teacher@example.com",
+            email="teacher@example.com",
+            user_name="teacher",
+            password="pass1234",
+            sex="여성",
+            birth_date="1998-03-02",
+            region="서울 강남구",
+        )
+        instructor = Instructor.objects.create(
+            user=user,
+            university="테스트대학교",
+            department="수학과",
+            instruction="꼼꼼하게 지도합니다.",
+            student_number="2018",
+        )
+        subject = Subject.objects.create(number=1)
+        instructor.subjects.add(subject)
+        self.client.force_authenticate(user=user)
+
+        response = self.client.get(reverse("accounts:user-profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["role"], "instructor")
+        self.assertEqual(response.data["sex"], "여성")
+        self.assertEqual(response.data["birth_date"], "1998-03-02")
+        self.assertEqual(response.data["region"], "서울 강남구")
+        self.assertEqual(response.data["instruction"], "꼼꼼하게 지도합니다.")
+        self.assertEqual(response.data["subjects"], [str(subject)])
+
 class CheckEmailAPIViewTests(APITestCase):
     def setUp(self):
         self.url = reverse("accounts:check-email")
@@ -333,4 +370,3 @@ class RoleAddAPIViewTests(APITestCase):
         self.assertTrue(PendingInstructor.objects.filter(instructor_profile=instructor_profile).exists())
         pending = PendingInstructor.objects.get(instructor_profile=instructor_profile)
         self.assertEqual(pending.status, PendingInstructor.Status.PENDING)
-

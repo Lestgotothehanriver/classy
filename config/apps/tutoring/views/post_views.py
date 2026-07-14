@@ -120,7 +120,9 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = TutoringPostDetailSerializer
-    queryset = TutoringPost.objects.select_related("student")
+    queryset = TutoringPost.objects.select_related("student").prefetch_related(
+        "subjects", "regions"
+    )
 
     def retrieve(self, request, *args, **kwargs):
         TutoringPost.objects.filter(pk=kwargs["pk"]).update(view_count=F("view_count") + 1)
@@ -203,4 +205,6 @@ class StudentMyPostAPIView(generics.ListAPIView):
             student = Student.objects.get(user=self.request.user)
         except Student.DoesNotExist:
             raise PermissionDenied("학생 계정만 사용할 수 있습니다.")
-        return TutoringPost.objects.filter(student=student).prefetch_related("subjects").order_by("-id")
+        return TutoringPost.objects.filter(student=student).prefetch_related(
+            "subjects", "regions"
+        ).order_by("-id")
