@@ -514,6 +514,33 @@ class TutoringPostPatchRepresentationTest(TestCase):
         self.assertEqual(data["regions"][0]["id"], self.region.id)
 
 
+class TutoringPostViewCountTest(LikeSortingTestBase):
+    """강사가 공고 상세를 조회할 때 조회수 증가값을 반환하는지 검증한다."""
+
+    def setUp(self):
+        super().setUp()
+        from rest_framework.authtoken.models import Token
+
+        self.post = TutoringPost.objects.create(
+            student=self.student1,
+            title="수학 과외를 구합니다",
+            view_count=0,
+        )
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+    def test_instructor_detail_view_increments_and_returns_view_count(self):
+        first_response = self.client.get(f"/tutoring/posts/{self.post.id}/")
+        second_response = self.client.get(f"/tutoring/posts/{self.post.id}/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.json()["view_count"], 1)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(second_response.json()["view_count"], 2)
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.view_count, 2)
+
+
 class TutoringPostSearchAPITest(LikeSortingTestBase):
     """과외 구인 공고 통합 검색(search) API 테스트"""
 
