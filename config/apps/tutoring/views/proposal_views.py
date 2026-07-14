@@ -12,6 +12,7 @@ from config.apps.chat_app.models import ChatRoom
 from ..models import TutoringPost, TutoringProposal
 from ..serializers import TutoringProposalSerializer
 from ..services import (
+    DuplicateProposalError,
     create_student_proposal_room,
     delete_student_proposal_room,
     create_instructor_proposal,
@@ -61,7 +62,12 @@ class StudentProposeToInstructorAPIView(APIView):
             return Response({
                 "post_id": post.id,
                 "room_id": room.id,
-            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+            }, status=status.HTTP_201_CREATED)
+        except DuplicateProposalError as e:
+            return Response(
+                {"detail": str(e), "code": "duplicate_proposal"},
+                status=status.HTTP_409_CONFLICT,
+            )
         except PermissionDenied as e:
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except Http404:
@@ -123,6 +129,11 @@ class InstructorProposeToStudentAPIView(APIView):
                 "instructor_id": instructor.id,
                 "room_id": room.id,
             }, status=status.HTTP_201_CREATED)
+        except DuplicateProposalError as e:
+            return Response(
+                {"detail": str(e), "code": "duplicate_proposal"},
+                status=status.HTTP_409_CONFLICT,
+            )
         except PermissionDenied as e:
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except Http404:

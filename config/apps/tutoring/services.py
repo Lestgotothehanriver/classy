@@ -1,11 +1,21 @@
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 
 from config.apps.accounts.models import Student, Instructor
 from config.apps.chat_app.models import ChatRoom, ChatMessage
 from .models import TutoringPost, TutoringProposal
 from config.apps.notification.helpers import notify_tutoring_request, notify_tutoring_proposal
 
+STUDENT_DUPLICATE_PROPOSAL_MESSAGE = "동일한 강사분에게 동일한 과외 공고가 이미 전송됐어요"
+INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE = "동일한 과외 공고에 대해서 제안서가 이미 존재해요"
+
+
+class DuplicateProposalError(Exception):
+    """동일한 상대와 공고 조합으로 이미 요청 또는 제안이 존재한다."""
+
+
+@transaction.atomic
 def create_student_proposal_room(user, instructor_id, post_id):
     """
     학생이 강사에게 과외를 제안하고 채팅방을 생성합니다.
@@ -28,16 +38,18 @@ def create_student_proposal_room(user, instructor_id, post_id):
         }
     )
 
-    if created:
-        notify_tutoring_request(room)
-        
-        # 첫 번째 안내 메시지 전송 (학생)
-        initial_text = f"{student.user.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
-        ChatMessage.objects.create(
-            room=room,
-            sender=user,
-            text=initial_text
-        )
+    if not created:
+        raise DuplicateProposalError(STUDENT_DUPLICATE_PROPOSAL_MESSAGE)
+
+    notify_tutoring_request(room)
+
+    # 첫 번째 안내 메시지 전송 (학생)
+    initial_text = f"{student.user.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
+    ChatMessage.objects.create(
+        room=room,
+        sender=user,
+        text=initial_text
+    )
 
     return room, created, post
 
@@ -62,6 +74,7 @@ def delete_student_proposal_room(user, instructor_id, post_id):
     room.delete()
 
 
+@transaction.atomic
 def create_instructor_proposal(user, post_id, message):
     """
     강사가 학생의 공고에 과외를 제안하고 채팅방을 생성합니다.
@@ -73,11 +86,11 @@ def create_instructor_proposal(user, post_id, message):
 
     post = get_object_or_404(TutoringPost, id=post_id)
 
-    proposal = TutoringProposal.objects.create(
+    if TutoringProposal.objects.filter(
         tutoring_post=post,
         instructor=instructor,
-        message=message
-    )
+    ).exists():
+        raise DuplicateProposalError(INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE)
 
     room, created = ChatRoom.objects.get_or_create(
         student=post.student,
@@ -89,15 +102,23 @@ def create_instructor_proposal(user, post_id, message):
         }
     )
 
-    if created:
-        notify_tutoring_proposal(room)
-        
-        # 첫 번째 안내 메시지 전송 (선생님 제안서 원문)
-        ChatMessage.objects.create(
-            room=room,
-            sender=user,
-            text=message
-        )
+    if not created:
+        raise DuplicateProposalError(INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE)
+
+    proposal = TutoringProposal.objects.create(
+        tutoring_post=post,
+        instructor=instructor,
+        message=message
+    )
+
+    notify_tutoring_proposal(room)
+
+    # 첫 번째 안내 메시지 전송 (선생님 제안서 원문)
+    ChatMessage.objects.create(
+        room=room,
+        sender=user,
+        text=message
+    )
 
     return instructor, proposal, room, created
 

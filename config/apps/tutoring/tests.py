@@ -702,6 +702,95 @@ class StudentProposalRoomTest(LikeSortingTestBase):
         self.assertEqual(first_msg.text, expected_text)
 
 
+class DuplicateProposalPreventionTest(LikeSortingTestBase):
+    """동일한 강사와 공고 조합의 요청 및 역제안 중복 생성을 차단한다."""
+
+    def setUp(self):
+        super().setUp()
+        self.post = TutoringPost.objects.create(
+            student=self.student1,
+            title="수학 과외를 구합니다",
+            is_active=True,
+        )
+
+    def test_duplicate_student_request_returns_conflict_without_new_room(self):
+        from config.apps.chat_app.models import ChatMessage, ChatRoom
+
+        payload = {
+            "instructor_id": self.inst1.id,
+            "post_id": self.post.id,
+        }
+
+        first_response = self.client.post(
+            "/tutoring/propose-to-instructor/",
+            data=payload,
+            format="json",
+        )
+        duplicate_response = self.client.post(
+            "/tutoring/propose-to-instructor/",
+            data=payload,
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(duplicate_response.status_code, 409)
+        self.assertEqual(
+            duplicate_response.json()["detail"],
+            "동일한 강사분에게 동일한 과외 공고가 이미 전송됐어요",
+        )
+        rooms = ChatRoom.objects.filter(
+            student=self.student1,
+            instructor=self.inst1,
+            post=self.post,
+        )
+        self.assertEqual(rooms.count(), 1)
+        self.assertEqual(ChatMessage.objects.filter(room=rooms.get()).count(), 1)
+
+    def test_duplicate_instructor_proposal_returns_conflict_without_new_data(self):
+        from config.apps.chat_app.models import ChatMessage, ChatRoom
+        from config.apps.tutoring.models import TutoringProposal
+        from rest_framework.authtoken.models import Token
+
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        payload = {
+            "post_id": self.post.id,
+            "message": "학생 맞춤형 수업을 제안합니다.",
+        }
+
+        first_response = self.client.post(
+            "/tutoring/propose-to-student/",
+            data=payload,
+            format="json",
+        )
+        duplicate_response = self.client.post(
+            "/tutoring/propose-to-student/",
+            data=payload,
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(duplicate_response.status_code, 409)
+        self.assertEqual(
+            duplicate_response.json()["detail"],
+            "동일한 과외 공고에 대해서 제안서가 이미 존재해요",
+        )
+        rooms = ChatRoom.objects.filter(
+            student=self.student1,
+            instructor=self.inst1,
+            post=self.post,
+        )
+        self.assertEqual(rooms.count(), 1)
+        self.assertEqual(
+            TutoringProposal.objects.filter(
+                tutoring_post=self.post,
+                instructor=self.inst1,
+            ).count(),
+            1,
+        )
+        self.assertEqual(ChatMessage.objects.filter(room=rooms.get()).count(), 1)
+
+
 class SelfLookupPreventionTest(LikeSortingTestBase):
     """학생 과외 공고 및 선생님 프로필 조회에서 본인 조회 방지 테스트"""
 
@@ -742,4 +831,3 @@ class SelfLookupPreventionTest(LikeSortingTestBase):
         self.assertNotIn(self.inst1.id, inst_ids)
         self.assertIn(self.inst2.id, inst_ids)
         self.assertIn(self.inst3.id, inst_ids)
-
