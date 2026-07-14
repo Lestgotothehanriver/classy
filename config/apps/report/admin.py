@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Report, ReportChoice
+from .models import Report, ReportChoice, Inquiry
 
 
 class ReportChoiceInline(admin.TabularInline):
@@ -8,6 +8,13 @@ class ReportChoiceInline(admin.TabularInline):
     extra = 0
     readonly_fields = ("content",)
 
+@admin.register(Inquiry)
+class InquiryAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "title", "is_resolved", "created_at")
+    list_filter = ("is_resolved", "created_at")
+    search_fields = ("user__email", "title", "content")
+    readonly_fields = ("created_at",)
+    list_editable = ("is_resolved",)
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
