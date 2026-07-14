@@ -4,6 +4,7 @@ from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 
 from config.apps.common.serializers import AbsoluteImageField
+from config.apps.common.utils import get_absolute_media_url
 
 class ImageSerializer(serializers.ModelSerializer):
     """
@@ -146,6 +147,10 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
                 'university': obj.instructor.university,
                 'student_number': obj.instructor.student_number,
                 'department': obj.instructor.department,
+                'profile_image': get_absolute_media_url(
+                    user.profile_image,
+                    request,
+                ) if user.profile_image else None,
             }
         elif role == 'instructor':
             user = obj.student.user
@@ -154,6 +159,10 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
+                'profile_image': get_absolute_media_url(
+                    user.profile_image,
+                    request,
+                ) if user.profile_image else None,
             }
         return None
 
@@ -256,6 +265,10 @@ class ChatRoomSerializer(serializers.ModelSerializer):
                 'university': obj.instructor.university,
                 'student_number': obj.instructor.student_number,
                 'department': obj.instructor.department,
+                'profile_image': get_absolute_media_url(
+                    user.profile_image,
+                    request,
+                ) if user.profile_image else None,
             }
         elif role == 'instructor':
             user = obj.student.user
@@ -264,6 +277,10 @@ class ChatRoomSerializer(serializers.ModelSerializer):
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
                 'user_name': getattr(user, 'user_name', user.username),
+                'profile_image': get_absolute_media_url(
+                    user.profile_image,
+                    request,
+                ) if user.profile_image else None,
             }
         return None
 
@@ -295,5 +312,4 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if not request: return False
         return obj.muted_by.filter(pk=request.user.pk).exists()
-
 
