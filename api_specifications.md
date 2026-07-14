@@ -29,6 +29,8 @@
 | SMS 인증번호 확인 | `POST` | `/accounts/verify-auth-sms/` | **[Body (JSON)]**<br>- `phone_number` (str, 필수)<br>- `code` (str, 필수) | 발송된 인증번호를 검증하여 전화번호 인증을 완료합니다. |
 | 유저 공개 프로필 조회 | `GET` | `/accounts/user/<int:pk>/` | **[Path]**<br>- `pk` (int, 필수) | 특정 사용자의 공개 프로필 및 학적, 활동 과목 정보를 조회합니다. |
 | 전체 과목 조회 | `GET` | `/accounts/subjects/` | 없음 | 시스템 내 전체 교과 과목 리스트를 순서대로 조회합니다. |
+| 프로필 확인 | `GET` | `/accounts/profile-check/` | 없음 | 로그인한 사용자의 학생/강사 프로필 보유 여부(사용 가능한 역할군 목록 및 상태, 최근 로그인 일시)와 토큰 정보를 확인합니다. |
+| 역할 추가 | `POST` | `/accounts/role-add/` | **[Query]**<br>- `role` ('student'/'instructor', 필수)<br>**[Body (JSON)]**<br>- `studentsubject` (list[int], 학생 추가 시 선택)<br>- `university` (str, 강사 추가 시 필수)<br>- `department` (str, 강사 추가 시 선택)<br>- `instruction` (str, 강사 추가 시 선택)<br>- `student_number` (str, 강사 추가 시 선택)<br>- `instructorsubject` (str/list, 강사 추가 시 선택) | 로그인한 유저를 기준으로 학생 또는 강사 역할을 새로 추가하고, 업데이트된 역할 목록과 토큰 정보를 반환합니다. |
 
 ---
 
@@ -47,10 +49,10 @@
 | :--- | :---: | :--- | :--- | :--- |
 | 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (콤마 구분 ID, 선택)<br>- `cost` (최대 수업료, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `age` (나이 범위, 선택)<br>- `university` (출신 대학교, 선택)<br>- `department` (학과명, 선택)<br>- `student_id` (학번/사번 필터, 선택)<br>- `search` (통합 검색어, 선택) | 승인 완료된 강사 목록을 다양한 조건에 맞추어 필터링 조회합니다. (차단 유저 제외) |
 | 강사 상세 프로필 | `GET` | `/tutoring/instructors/<int:pk>/` | **[Path]**<br>- `pk` (int, 강사 ID) | 특정 강사의 상세 프로필 정보를 조회합니다. |
-| 강사 과외 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 과외 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. |
+| 강사 과외 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 과외 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. (로그인한 학생 유저 기준 해당 강사와의 채팅방 생성 여부 `has_chat_room`: bool 포함) |
 | 강사 리뷰 목록 | `GET` | `/tutoring/instructors/<int:instructor_id>/reviews/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 특정 강사가 학생들에게서 받은 모든 리뷰 목록을 최신순으로 조회합니다. |
 | 과외 구인 공고 목록 | `GET` | `/tutoring/posts/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (지역 ID, 선택)<br>- `cost` (최대 요금, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `grade` (학년 코드, 선택)<br>- `min_rating` (최소 평점, 선택)<br>- `search` (통합 검색어, 선택) | 학생들이 등록한 활성화된 과외 구인 공고 목록을 필터 조건에 맞춰 조회합니다. (차단 유저 제외) |
-| 과외 구인 공고 상세 | `GET` | `/tutoring/posts/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID) | 특정 과외 구인 공고의 상세 내역을 조회합니다. (조회수 1 증가 처리 포함) |
+| 과외 구인 공고 상세 | `GET` | `/tutoring/posts/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID) | 특정 과외 구인 공고의 상세 내역을 조회합니다. (조회수 1 증가 처리 포함, 로그인한 강사 유저 기준 공고 작성 학생과의 채팅방 생성 여부 `has_chat_room`: bool 포함) |
 | 과외 구인 공고 작성 | `POST` | `/tutoring/posts/write/` | **[Body (JSON)]**<br>- `title` (str, 필수)<br>- `cost` (int, 필수)<br>- `method` ('ONLINE'/'OFFLINE', 필수)<br>- `subject_ids` (list[int], 선택)<br>- `region_id` (int, 선택)<br>- `grade` (str, 선택)<br>- `sex` (str, 선택)<br>- `situation` (str, 선택)<br>- `etc` (str, 선택) | 학생 회원이 새로운 과외 구인 공고를 작성합니다. |
 | 과외 구인 공고 수정/삭제 | `PUT`<br>`PATCH`<br>`DELETE` | `/tutoring/posts/write/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID)<br>**[Body (JSON)]** (수정 시)<br>- 수정 대상 정보 | 자신이 작성한 과외 구인 공고의 내용을 변경하거나 삭제합니다. |
 | 내 작성 공고 목록 | `GET` | `/tutoring/my-posts/` | 없음 | 학생 본인이 작성한 전체 과외 구인 공고 목록(비활성 포함)을 최신순으로 가져옵니다. |
@@ -73,6 +75,10 @@
 | 과외 계약 리소스 생성 | `POST` | `/tutoring/resources/` | **[Body (Multipart)]**<br>- `student` (int, 필수)<br>- `instructor` (int, 필수)<br>- `fee_amount` (int, 필수)<br>- `fee_confirmation_file` (file, 선택, 다중 가능) | 학생과 강사 간의 과외 계약을 맺고 지불 정보 및 입금 확인증 파일을 제출합니다. |
 | 과외 계약 리소스 상세 | `GET` | `/tutoring/resources/<int:pk>/` | **[Path]**<br>- `pk` (int, 리소스 ID) | 특정 과외 계약 리소스의 상세 입금 상태 및 첨부파일들을 조회합니다. |
 | 강사 입금 확인 요청 | `POST` | `/tutoring/resources/<int:pk>/confirm-payment/` | **[Path]**<br>- `pk` (int, 리소스 ID) | 강사가 수업료가 입금되었음을 확인해줄 것을 학생에게 요청하도록 상태(`AWAITING_CONFIRMATION`)를 변경합니다. |
+| 과외 등록 정보 조회 | `GET` | `/tutoring/resources/chatrooms/<int:chat_room_id>/` | **[Path]**<br>- `chat_room_id` (int, 필수) | 특정 채팅방에 매핑된 과외 등록(TutoringRegistration) 정보를 조회하거나 생성 전 기본 상태를 조회합니다. |
+| 과외 등록 및 수정 | `PUT` | `/tutoring/resources/chatrooms/<int:chat_room_id>/my-registration/` | **[Path]**<br>- `chat_room_id` (int, 필수)<br>**[Body (JSON)]**<br>- `subject` (str, 필수)<br>- `startDate` (str(YYYY-MM-DD), 필수)<br>- `classType` ('ONLINE'/'OFFLINE', 필수)<br>- `firstMonthFee` (int, 필수)<br>- `paybackAccount` (dict, 학생 필수/강사 입력금지)<br>&nbsp;&nbsp;- `bankCode` (str, 필수)<br>&nbsp;&nbsp;- `accountNumber` (str, 필수)<br>&nbsp;&nbsp;- `accountHolder` (str, 필수) | 과외 매칭 완료를 위해 본인의 과외 등록 정보(상호 협의 내용)를 제출하거나 수정합니다. |
+| 수수료 결제 정보 조회 | `GET` | `/tutoring/resources/<int:registration_id>/commission-payment/` | **[Path]**<br>- `registration_id` (int, 필수) | 과외 성사 후 청구된 수수료 결제 정보(가상계좌)를 조회합니다. |
+| 수수료 가상계좌 재발급 | `POST` | `/tutoring/resources/<int:registration_id>/commission-payment/reissue/` | **[Path]**<br>- `registration_id` (int, 필수) | (강사 전용) 수수료 결제용 실패/만료된 가상계좌를 재발급 요청합니다. |
 | 강사 찜하기 토글 | `POST` | `/tutoring/instructors/<int:instructor_id>/like/` | **[Path]**<br>- `instructor_id` (int, 필수) | 학생 회원이 강사를 찜(좋아요) 목록에 추가하거나 제외합니다. |
 | 과외 공고 찜하기 토글 | `POST` | `/tutoring/posts/<int:post_id>/like/` | **[Path]**<br>- `post_id` (int, 필수) | 강사 회원이 학생 구인 공고를 찜 목록에 추가하거나 제외합니다. |
 

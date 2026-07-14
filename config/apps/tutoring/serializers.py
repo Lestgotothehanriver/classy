@@ -73,6 +73,14 @@ def extract_subject_numbers(owner_obj):
     return []
 
 
+def get_instructor_verification_status(instructor):
+    """Return the public verification state without collapsing PENDING."""
+    pending_info = getattr(instructor, "pending_info", None)
+    if pending_info is None:
+        return "NOT_SUBMITTED"
+    return pending_info.status
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # 강사 관련 Serializer
 # ════════════════════════════════════════════════════════════════════════════════
@@ -92,6 +100,8 @@ class InstructorListSerializer(SafeModelSerializer):
     user_name = serializers.CharField(source='user.user_name', read_only=True)
     birth_date = serializers.DateField(source='user.birth_date', read_only=True)
     profile_image = AbsoluteImageField(source='user.profile_image', read_only=True)
+    verification_status = serializers.SerializerMethodField()
+    is_certified = serializers.SerializerMethodField()
     is_unverified = serializers.SerializerMethodField()
 
     class Meta:
@@ -101,15 +111,21 @@ class InstructorListSerializer(SafeModelSerializer):
             'instruction', 'student_number', 'is_tutoring', 'last_login', 
             'subjects', 'like_count', 'is_liked', 'average_rate', 
             'review_count', 'current_rank', 'sex', 'region', 
-            'user_name', 'birth_date', 'profile_image', 'is_unverified'
+            'user_name', 'birth_date', 'profile_image',
+            'verification_status', 'is_certified', 'is_unverified'
         ]
 
     def get_subjects(self, obj):
         return extract_subject_numbers(obj)
 
+    def get_verification_status(self, obj):
+        return get_instructor_verification_status(obj)
+
+    def get_is_certified(self, obj):
+        return self.get_verification_status(obj) == PendingInstructor.Status.VERIFIED
+
     def get_is_unverified(self, obj):
-        pending_info = getattr(obj, 'pending_info', None)
-        return pending_info is None or pending_info.status == PendingInstructor.Status.PENDING
+        return not self.get_is_certified(obj)
 
 
 class InstructorInfoSerializer(serializers.ModelSerializer):
@@ -119,6 +135,8 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
     subjects = serializers.SerializerMethodField()
     regions = serializers.SerializerMethodField()
     instruction = serializers.CharField(source='instructor.instruction', read_only=True)
+    verification_status = serializers.SerializerMethodField()
+    is_certified = serializers.SerializerMethodField()
     is_unverified = serializers.SerializerMethodField()
 
     class Meta:
@@ -126,7 +144,7 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'instructor', 'cost', 'schedule', 'method', 
             'location', 'etc', 'subjects', 'regions', 'instruction',
-            'is_unverified'
+            'verification_status', 'is_certified', 'is_unverified'
         ]
 
     def get_subjects(self, obj):
@@ -135,10 +153,14 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
     def get_regions(self, obj):
         return RegionSimpleSerializer(obj.regions.all(), many=True).data
 
+    def get_verification_status(self, obj):
+        return get_instructor_verification_status(obj.instructor)
+
+    def get_is_certified(self, obj):
+        return self.get_verification_status(obj) == PendingInstructor.Status.VERIFIED
+
     def get_is_unverified(self, obj):
-        instructor = obj.instructor
-        pending_info = getattr(instructor, 'pending_info', None)
-        return pending_info is None or pending_info.status == PendingInstructor.Status.PENDING
+        return not self.get_is_certified(obj)
 
 
 class InstructorReviewSerializer(serializers.ModelSerializer):

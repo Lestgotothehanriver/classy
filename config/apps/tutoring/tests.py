@@ -274,27 +274,31 @@ class InstructorUnverifiedStatusTest(TestCase):
     def setUp(self):
         self.client = APIClient()
 
-        # 사용자 생성 (학생 1명 + 강사 3명)
+        # 사용자 생성 (학생 1명 + 강사 4명)
         self.student_user = User.objects.create_user(username="student", user_name="student", password="pass1234")
         self.inst_user_no_pending = User.objects.create_user(username="inst_no_pending", user_name="inst_no_pending", password="pass1234")
         self.inst_user_pending = User.objects.create_user(username="inst_pending", user_name="inst_pending", password="pass1234")
         self.inst_user_verified = User.objects.create_user(username="inst_verified", user_name="inst_verified", password="pass1234")
+        self.inst_user_suspended = User.objects.create_user(username="inst_suspended", user_name="inst_suspended", password="pass1234")
 
         # 프로필 생성
         self.student = Student.objects.create(user=self.student_user)
         self.inst_no_pending = Instructor.objects.create(user=self.inst_user_no_pending, university="No Pending Univ")
         self.inst_pending = Instructor.objects.create(user=self.inst_user_pending, university="Pending Univ")
         self.inst_verified = Instructor.objects.create(user=self.inst_user_verified, university="Verified Univ")
+        self.inst_suspended = Instructor.objects.create(user=self.inst_user_suspended, university="Suspended Univ")
 
         # InstructorInfo 생성 (info-read API 조회를 위해)
         from config.apps.tutoring.models import InstructorInfo
         self.info_no_pending = InstructorInfo.objects.create(instructor=self.inst_no_pending, cost=10000)
         self.info_pending = InstructorInfo.objects.create(instructor=self.inst_pending, cost=20000)
         self.info_verified = InstructorInfo.objects.create(instructor=self.inst_verified, cost=30000)
+        self.info_suspended = InstructorInfo.objects.create(instructor=self.inst_suspended, cost=40000)
 
         # pending_info 생성 및 상태 설정
         PendingInstructor.objects.create(instructor_profile=self.inst_pending, status=PendingInstructor.Status.PENDING)
         PendingInstructor.objects.create(instructor_profile=self.inst_verified, status=PendingInstructor.Status.VERIFIED)
+        PendingInstructor.objects.create(instructor_profile=self.inst_suspended, status=PendingInstructor.Status.SUSPENDED)
 
         # 학생으로 인증
         from rest_framework.authtoken.models import Token
@@ -311,10 +315,16 @@ class InstructorUnverifiedStatusTest(TestCase):
         no_pending_data = next(x for x in results if x["id"] == self.inst_no_pending.id)
         pending_data = next(x for x in results if x["id"] == self.inst_pending.id)
         verified_data = next(x for x in results if x["id"] == self.inst_verified.id)
+        suspended_data = next(x for x in results if x["id"] == self.inst_suspended.id)
 
         self.assertTrue(no_pending_data["is_unverified"])  # pending_info가 없으므로 True
         self.assertTrue(pending_data["is_unverified"])    # pending_info 상태가 PENDING이므로 True
         self.assertFalse(verified_data["is_unverified"])  # pending_info 상태가 VERIFIED이므로 False
+        self.assertTrue(suspended_data["is_unverified"])
+        self.assertEqual(no_pending_data["verification_status"], "NOT_SUBMITTED")
+        self.assertEqual(pending_data["verification_status"], "PENDING")
+        self.assertEqual(verified_data["verification_status"], "VERIFIED")
+        self.assertEqual(suspended_data["verification_status"], "SUSPENDED")
 
     def test_retrieve_instructor_detail_returns_is_unverified_correctly(self):
         """특정 강사 상세 조회 시 미인증 여부가 정확히 반환되는지 확인"""
@@ -332,6 +342,15 @@ class InstructorUnverifiedStatusTest(TestCase):
         resp = self.client.get(f"/tutoring/instructors/{self.inst_verified.id}/")
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.json()["is_unverified"])
+        self.assertTrue(resp.json()["is_certified"])
+        self.assertEqual(resp.json()["verification_status"], "VERIFIED")
+
+        # 4. pending_info가 SUSPENDED 상태
+        resp = self.client.get(f"/tutoring/instructors/{self.inst_suspended.id}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["is_unverified"])
+        self.assertFalse(resp.json()["is_certified"])
+        self.assertEqual(resp.json()["verification_status"], "SUSPENDED")
 
     def test_retrieve_instructor_info_returns_is_unverified_correctly(self):
         """특정 강사 과외 소개 상세 조회 시 미인증 여부가 정확히 반환되는지 확인"""
@@ -349,6 +368,14 @@ class InstructorUnverifiedStatusTest(TestCase):
         resp = self.client.get(f"/tutoring/instructors/{self.inst_verified.id}/info/")
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.json()["is_unverified"])
+        self.assertEqual(resp.json()["verification_status"], "VERIFIED")
+
+        # 4. pending_info가 SUSPENDED 상태
+        resp = self.client.get(f"/tutoring/instructors/{self.inst_suspended.id}/info/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["is_unverified"])
+        self.assertFalse(resp.json()["is_certified"])
+        self.assertEqual(resp.json()["verification_status"], "SUSPENDED")
 
 
 class InstructorInfoRegistrationTest(TestCase):
@@ -550,6 +577,5 @@ class StudentProposalRoomTest(LikeSortingTestBase):
         
         expected_text = f"{self.student_user1.user_name} 님이 선생님에게 과외 상담 요청을 보냈습니다."
         self.assertEqual(first_msg.text, expected_text)
-
 
 
