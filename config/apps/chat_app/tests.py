@@ -2,7 +2,7 @@ from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from config.apps.accounts.models import Instructor, Student, User
+from config.apps.accounts.models import Instructor, InstructorLike, Student, User
 from config.apps.chat_app.models import ChatRoom
 from config.apps.tutoring.models import TutoringPost
 
@@ -59,6 +59,22 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         image_url = response.json()[0]["opponent_info"]["profile_image"]
         self.assertTrue(image_url.endswith("/media/profile_images/student.jpg"))
         self.assertNotIn("instructor.jpg", image_url)
+
+    def test_student_chat_like_uses_instructor_profile_like(self):
+        self._authenticate(self.student_user)
+
+        before = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(before.status_code, 200)
+        self.assertFalse(before.json()[0]["is_liked"])
+
+        InstructorLike.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+        )
+
+        after = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(after.status_code, 200)
+        self.assertTrue(after.json()[0]["is_liked"])
 
 
 # Create your tests here.

@@ -8,7 +8,11 @@ from rest_framework.test import APITestCase, APIClient
 from config.apps.accounts.models import Instructor, Student, Subject, User
 from config.apps.notification.models import Notification
 from config.apps.tutoring.admin import confirm_fee_payment
-from config.apps.tutoring.models import TutoringResource
+from config.apps.tutoring.models import (
+    InstructorReview,
+    StudentReview,
+    TutoringResource,
+)
 
 
 class ManualTutoringPaymentFlowTest(APITestCase):
@@ -99,6 +103,80 @@ class ManualTutoringPaymentFlowTest(APITestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(TutoringResource.objects.count(), 0)
+
+    def test_resource_list_returns_current_users_existing_review(self):
+        resource = TutoringResource.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+        )
+        instructor_review = InstructorReview.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            professionalism=4,
+            teaching_skill=5,
+            punctuality=3,
+            comment="좋은 수업",
+        )
+        student_review = StudentReview.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            rating=4,
+            comment="성실한 학생",
+        )
+
+        student_response = self.student_client.get("/tutoring/resources/")
+        self.assertEqual(student_response.status_code, 200)
+        student_item = student_response.json()["results"][0]
+        self.assertEqual(student_item["id"], resource.pk)
+        self.assertEqual(student_item["my_review"]["id"], instructor_review.pk)
+        self.assertEqual(student_item["my_review"]["teaching_skill"], 5)
+
+        instructor_response = self.instructor_client.get("/tutoring/resources/")
+        self.assertEqual(instructor_response.status_code, 200)
+        instructor_item = instructor_response.json()["results"][0]
+        self.assertEqual(instructor_item["my_review"]["id"], student_review.pk)
+        self.assertEqual(instructor_item["my_review"]["rating"], 4)
+
+    def test_review_authors_can_patch_their_existing_reviews(self):
+        instructor_review = InstructorReview.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            professionalism=3,
+            teaching_skill=3,
+            punctuality=3,
+            comment="수정 전",
+        )
+        student_review = StudentReview.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            rating=3,
+            comment="수정 전",
+        )
+
+        student_response = self.student_client.patch(
+            f"/tutoring/reviews/instructor/{instructor_review.pk}/",
+            {
+                "professionalism": 5,
+                "teaching_skill": 4,
+                "punctuality": 5,
+                "comment": "수정 후",
+            },
+            format="json",
+        )
+        self.assertEqual(student_response.status_code, 200)
+        instructor_review.refresh_from_db()
+        self.assertEqual(instructor_review.professionalism, 5)
+        self.assertEqual(instructor_review.comment, "수정 후")
+
+        instructor_response = self.instructor_client.patch(
+            f"/tutoring/reviews/student/{student_review.pk}/",
+            {"rating": 5, "comment": "수정 후"},
+            format="json",
+        )
+        self.assertEqual(instructor_response.status_code, 200)
+        student_review.refresh_from_db()
+        self.assertEqual(student_review.rating, 5)
+        self.assertEqual(student_review.comment, "수정 후")
 
     def test_resource_lookup_is_scoped_to_active_role(self):
         dual_role_student = Student.objects.create(user=self.instructor_user)

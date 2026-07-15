@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import ChatRoom, ChatMessage, Image
+from config.apps.accounts.models import InstructorLike
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 
@@ -186,10 +187,15 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         return None
 
     def get_is_liked(self, obj):
-        """현재 요청 유저가 이 채팅방을 찜했는지 여부"""
+        """학생은 상대 강사 프로필의 실제 좋아요 여부를 사용한다."""
         request = self.context.get('request')
         if not request:
             return False
+        if request.query_params.get('role') == 'student':
+            return InstructorLike.objects.filter(
+                student__user=request.user,
+                instructor=obj.instructor,
+            ).exists()
         return obj.liked_by.filter(pk=request.user.pk).exists()
 
     def get_is_muted(self, obj):
@@ -306,10 +312,14 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if not request: return False
+        if request.query_params.get('role') == 'student':
+            return InstructorLike.objects.filter(
+                student__user=request.user,
+                instructor=obj.instructor,
+            ).exists()
         return obj.liked_by.filter(pk=request.user.pk).exists()
 
     def get_is_muted(self, obj):
         request = self.context.get('request')
         if not request: return False
         return obj.muted_by.filter(pk=request.user.pk).exists()
-

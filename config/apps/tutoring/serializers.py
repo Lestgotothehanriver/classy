@@ -509,6 +509,7 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
     payment_bank = serializers.SerializerMethodField()
     payment_account_number = serializers.SerializerMethodField()
     expected_commission_amount = serializers.IntegerField(read_only=True)
+    my_review = serializers.SerializerMethodField()
 
     class Meta:
         from .models import TutoringResource
@@ -563,6 +564,42 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
 
     def get_payment_account_number(self, obj):
         return settings.TUTORING_PAYMENT_ACCOUNT_NUMBER
+
+    def get_my_review(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+
+        if obj.student.user_id == request.user.id:
+            review = InstructorReview.objects.filter(
+                student=obj.student,
+                instructor=obj.instructor,
+            ).order_by('-id').first()
+            if review is None:
+                return None
+            return {
+                'id': review.pk,
+                'professionalism': review.professionalism,
+                'teaching_skill': review.teaching_skill,
+                'punctuality': review.punctuality,
+                'comment': review.comment,
+            }
+
+        if obj.instructor.user_id == request.user.id:
+            review = StudentReview.objects.filter(
+                student=obj.student,
+                instructor=obj.instructor,
+            ).order_by('-id').first()
+            if review is None:
+                return None
+            return {
+                'id': review.pk,
+                'rating': review.rating,
+                'comment': review.comment,
+            }
+
+        return None
+
 
 class StudentMyPostSerializer(serializers.ModelSerializer):
     """
