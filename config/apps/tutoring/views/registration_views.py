@@ -1,21 +1,15 @@
-from django.db import transaction
 from django.db.models import Q
 from rest_framework import permissions, status
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import CommissionInvoice, TutoringRegistration, VirtualAccountPayment
+from ..models import CommissionInvoice, TutoringRegistration, TutoringSubmission
 from ..registration_serializers import MyRegistrationInputSerializer
 from ..registration_services import (
     RegistrationPermissionError,
-    VirtualAccountIssueError,
-    create_reissue_payment,
     get_chat_room_for_user,
-    issue_virtual_account,
-    latest_commission_payment,
-    latest_initial_payment,
-    mark_issue_failed,
-    refresh_expiration,
     save_my_registration,
     serialize_payment,
     serialize_registration,
@@ -36,13 +30,19 @@ class ChatRoomTutoringRegistrationView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        registration = TutoringRegistration.objects.select_related(
-            "student", "instructor"
-        ).prefetch_related("submissions").filter(chat_room=room).first()
+        registration = (
+            TutoringRegistration.objects.select_related(
+                "student", "instructor", "resource"
+            )
+            .prefetch_related("submissions", "commission_invoices")
+            .filter(chat_room=room)
+            .first()
+        )
         if registration is None:
             return Response(
                 {
                     "registrationId": None,
+                    "resourceId": None,
                     "chatRoomId": room.pk,
                     "subject": None,
                     "startDate": None,
@@ -55,17 +55,26 @@ class ChatRoomTutoringRegistrationView(APIView):
                         "userName": room.instructor.user.user_name,
                     },
                     "attributeValidationStatus": "UNCHECKED",
+                    "contractStatus": "COLLECTING",
                     "studentSubmitted": False,
                     "instructorSubmitted": False,
                     "mySubmission": None,
                     "counterpartySubmission": {"submitted": False},
+                    "payment": None,
                 }
             )
-        return Response(serialize_registration(registration, request.user, role))
+
+        invoice = registration.commission_invoices.filter(
+            invoice_type=CommissionInvoice.InvoiceType.INITIAL
+        ).first()
+        data = serialize_registration(registration, request.user, role)
+        data["payment"] = serialize_payment(invoice)
+        return Response(data)
 
 
 class MyTutoringRegistrationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def put(self, request, chat_room_id):
         try:
@@ -78,12 +87,28 @@ class MyTutoringRegistrationView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        proof_files = request.FILES.getlist("feeConfirmationFiles")
+        if not proof_files:
+            proof_files = request.FILES.getlist("fee_confirmation_file")
+        if role == TutoringSubmission.Role.INSTRUCTOR and not proof_files:
+            raise ValidationError(
+                {"feeConfirmationFiles": "입금 증빙 파일을 한 개 이상 첨부해 주세요."}
+            )
+        if role == TutoringSubmission.Role.STUDENT and proof_files:
+            raise ValidationError(
+                {"feeConfirmationFiles": "학생 등록에는 입금 증빙을 첨부하지 않습니다."}
+            )
+
         serializer = MyRegistrationInputSerializer(
-            data=request.data, context={"role": role}
+            data=request.data,
+            context={"role": role},
         )
         serializer.is_valid(raise_exception=True)
         result = save_my_registration(
-            chat_room_id, request.user, serializer.validated_data
+            chat_room_id,
+            request.user,
+            serializer.validated_data,
+            proof_files=proof_files,
         )
         if result is None:
             return Response(
@@ -91,95 +116,39 @@ class MyTutoringRegistrationView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        payment_error = None
-        payment = result["payment_to_issue"]
-        if payment is not None:
-            try:
-                payment = issue_virtual_account(payment, request.user.user_name)
-            except VirtualAccountIssueError as exc:
-                mark_issue_failed(payment, exc)
-                payment_error = str(exc)
-        else:
-            payment = latest_initial_payment(result["registration"])
-
-        response_data = {
-            "registration": serialize_registration(
-                result["registration"],
-                request.user,
-                result["role"],
-                result["mismatched_fields"],
-            ),
-            "payment": serialize_payment(payment, due_key="dueDate"),
-        }
-        if payment_error:
-            response_data["paymentError"] = payment_error
-        return Response(response_data)
+        return Response(
+            {
+                "registration": serialize_registration(
+                    result["registration"],
+                    request.user,
+                    result["role"],
+                    result["mismatched_fields"],
+                ),
+                "payment": serialize_payment(result["invoice"]),
+            }
+        )
 
 
 class CommissionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def _registration(self, registration_id, user):
-        return TutoringRegistration.objects.filter(pk=registration_id).filter(
-            Q(student=user) | Q(instructor=user)
-        ).first()
-
     def get(self, request, registration_id):
-        registration = self._registration(registration_id, request.user)
+        registration = (
+            TutoringRegistration.objects.filter(pk=registration_id)
+            .filter(Q(student=request.user) | Q(instructor=request.user))
+            .first()
+        )
         if registration is None:
             return Response(
                 {"detail": "과외 등록을 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        payment = latest_commission_payment(registration)
-        if payment is None:
+        invoice = registration.commission_invoices.order_by(
+            "-created_at", "-pk"
+        ).first()
+        if invoice is None:
             return Response(
-                {"detail": "수수료 결제 정보가 없습니다."},
+                {"detail": "수수료 입금 정보가 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(serialize_payment(payment))
-
-
-class CommissionPaymentReissueView(CommissionPaymentView):
-    def post(self, request, registration_id):
-        with transaction.atomic():
-            registration = TutoringRegistration.objects.select_for_update().filter(
-                pk=registration_id, instructor=request.user
-            ).first()
-            if registration is None:
-                return Response(
-                    {"detail": "강사 본인만 가상계좌를 재발급할 수 있습니다."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            invoice = CommissionInvoice.objects.select_for_update().filter(
-                registration=registration
-            ).order_by("-created_at", "-pk").first()
-            if invoice is None:
-                return Response(
-                    {"detail": "수수료 청구서가 없습니다."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            latest = invoice.virtual_account_payments.order_by("-created_at", "-pk").first()
-            refresh_expiration(latest)
-            if latest and latest.fee_payment_status not in {
-                VirtualAccountPayment.FeePaymentStatus.FAILED,
-                VirtualAccountPayment.FeePaymentStatus.EXPIRED,
-                VirtualAccountPayment.FeePaymentStatus.CANCELLED,
-            }:
-                return Response(
-                    {"detail": "실패하거나 만료된 가상계좌만 재발급할 수 있습니다."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            payment = create_reissue_payment(invoice)
-            invoice.status = CommissionInvoice.Status.READY
-            invoice.save(update_fields=["status", "updated_at"])
-
-        try:
-            payment = issue_virtual_account(payment, request.user.user_name)
-        except VirtualAccountIssueError as exc:
-            mark_issue_failed(payment, exc)
-            return Response(
-                {"payment": serialize_payment(payment), "paymentError": str(exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-        return Response(serialize_payment(payment), status=status.HTTP_201_CREATED)
+        return Response(serialize_payment(invoice))

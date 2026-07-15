@@ -1,6 +1,8 @@
+import tempfile
 from unittest.mock import Mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework.test import APITestCase, APIClient
 
 from config.apps.accounts.models import Instructor, Student, Subject, User
@@ -11,6 +13,14 @@ from config.apps.tutoring.models import TutoringResource
 
 class ManualTutoringPaymentFlowTest(APITestCase):
     def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
+        self.addCleanup(self.media_directory.cleanup)
+
         self.student_user = User.objects.create_user(
             username="manual_student", user_name="수동학생", password="password"
         )
@@ -63,6 +73,14 @@ class ManualTutoringPaymentFlowTest(APITestCase):
             response.json()["payment_account_number"], "124411-0045778"
         )
         self.assertEqual(response.json()["expected_commission_amount"], 75000)
+
+    @override_settings(FILE_UPLOAD_MAX_MEMORY_SIZE=0)
+    def test_temporary_upload_is_not_saved_twice(self):
+        response, resource = self._create_resource()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(bool(resource.fee_confirmation_file))
+        self.assertEqual(resource.files.count(), 2)
 
     def test_student_cannot_create_contract(self):
         response = self.student_client.post(

@@ -465,6 +465,32 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         ret['subject'] = SubjectSimpleSerializer(instance.subject.all(), many=True).data
+        request = self.context.get('request')
+        registration = getattr(instance, 'registration', None)
+        if request and request.user.is_authenticated and registration:
+            mine = next(
+                (
+                    submission
+                    for submission in registration.submissions.all()
+                    if submission.submitted_by_id == request.user.id
+                ),
+                None,
+            )
+            ret['class_type'] = (
+                '단기 수업' if mine and mine.class_type == 'SHORT_TERM'
+                else '장기 수업' if mine else None
+            )
+            ret['first_month_fee'] = mine.first_month_fee if mine else None
+            ret['attribute_validation_status'] = (
+                registration.attribute_validation_status
+            )
+            ret['contract_status'] = registration.contract_status
+            if instance.instructor.user == request.user:
+                ret.pop('payback_bank', None)
+                ret.pop('payback_account_number', None)
+                ret.pop('payback_account_holder', None)
+            else:
+                ret['files'] = []
         return ret
 
     def get_payment_bank(self, obj):
@@ -515,6 +541,28 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
                 ret.pop('student_user_name', None)
                 ret.pop('student_first_name', None)
                 ret.pop('student_last_name', None)
+
+            registration = getattr(instance, 'registration', None)
+            if registration:
+                mine = next(
+                    (
+                        submission
+                        for submission in registration.submissions.all()
+                        if submission.submitted_by_id == request.user.id
+                    ),
+                    None,
+                )
+                ret['class_type'] = (
+                    '단기 수업' if mine and mine.class_type == 'SHORT_TERM'
+                    else '장기 수업' if mine else None
+                )
+                ret['first_month_fee'] = mine.first_month_fee if mine else None
+                ret['attribute_validation_status'] = (
+                    registration.attribute_validation_status
+                )
+                ret['contract_status'] = registration.contract_status
+                if instance.student.user == request.user:
+                    ret['files'] = []
                 
         return ret
 

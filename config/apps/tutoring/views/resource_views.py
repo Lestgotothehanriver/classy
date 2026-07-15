@@ -71,8 +71,10 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         return TutoringResource.objects.filter(
             Q(student__user=user) | Q(instructor__user=user)
         ).select_related(
-            'student__user', 'instructor__user'
-        ).prefetch_related('subject', 'files').order_by('-id')
+            'student__user', 'instructor__user', 'registration'
+        ).prefetch_related(
+            'subject', 'files', 'registration__submissions'
+        ).order_by('-id')
 
     def perform_create(self, serializer):
         """
@@ -113,6 +115,12 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
             raise ValidationError({
                 'fee_confirmation_file': '입금 증빙 파일을 한 개 이상 첨부해 주세요.'
             })
+
+        # 같은 multipart 파일을 레거시 단일 FileField와 다중 파일 모델에서
+        # 연달아 저장하면 FileSystemStorage가 첫 저장에서 임시 파일을 이동시켜
+        # 두 번째 저장 시 /tmp/*.upload.* 를 찾지 못할 수 있습니다. 다중 파일
+        # 모델만 저장하도록 validated_data에서 레거시 필드를 제거합니다.
+        serializer.validated_data.pop('fee_confirmation_file', None)
 
         resource = serializer.save(
             is_student_confirmed=False,

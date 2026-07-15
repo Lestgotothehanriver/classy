@@ -259,6 +259,13 @@ class TutoringResource(models.Model):
     """
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="tutoring_resources")
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name="tutoring_resources")
+    registration = models.OneToOneField(
+        "TutoringRegistration",
+        on_delete=models.PROTECT,
+        related_name="resource",
+        null=True,
+        blank=True,
+    )
     
     start_date = models.DateField(blank=True, null=True) # 수업 시작일
     class_type_choices = [
@@ -299,7 +306,14 @@ class TutoringResource(models.Model):
         """개인 계좌로 납부할 성사 수수료 금액."""
         from django.conf import settings
 
-        rate_bps = getattr(settings, "TUTORING_COMMISSION_RATE_BPS", 1500)
+        if self.class_type == "단기 수업":
+            rate_bps = getattr(
+                settings, "TUTORING_SHORT_TERM_COMMISSION_RATE_BPS", 700
+            )
+        else:
+            rate_bps = getattr(
+                settings, "TUTORING_REGULAR_COMMISSION_RATE_BPS", 1500
+            )
         return (self.first_month_fee or 0) * rate_bps // 10000
 
 class TutoringResourceFile(models.Model):
@@ -399,7 +413,6 @@ class TutoringSubmission(models.Model):
             ),
         ]
 
-
 class StudentPaybackAccount(models.Model):
     class VerificationStatus(models.TextChoices):
         UNVERIFIED = "UNVERIFIED", "미인증"
@@ -462,43 +475,3 @@ class CommissionInvoice(models.Model):
                 name="unique_initial_commission_invoice",
             ),
         ]
-
-
-class VirtualAccountPayment(models.Model):
-    class FeePaymentStatus(models.TextChoices):
-        ISSUING = "ISSUING", "가상계좌 발급 중"
-        WAITING_FOR_DEPOSIT = "WAITING_FOR_DEPOSIT", "입금 대기"
-        DONE = "DONE", "납부 완료"
-        FAILED = "FAILED", "결제 처리 실패"
-        EXPIRED = "EXPIRED", "입금 기한 만료"
-        CANCELLED = "CANCELLED", "결제 취소"
-
-    invoice = models.ForeignKey(
-        CommissionInvoice,
-        on_delete=models.PROTECT,
-        related_name="virtual_account_payments",
-    )
-    order_id = models.CharField(max_length=64, unique=True)
-    payment_key = models.CharField(max_length=200, null=True, blank=True, unique=True)
-    expected_amount = models.PositiveBigIntegerField()
-    bank_code = models.CharField(max_length=20, blank=True)
-    account_number = models.CharField(max_length=50, blank=True)
-    account_holder = models.CharField(max_length=100, blank=True)
-    toss_secret = models.TextField(null=True, blank=True)
-    due_at = models.DateTimeField(null=True, blank=True)
-    fee_payment_status = models.CharField(
-        max_length=30,
-        choices=FeePaymentStatus.choices,
-        default=FeePaymentStatus.ISSUING,
-    )
-    toss_response = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-
-class TossWebhookEvent(models.Model):
-    transaction_key = models.CharField(max_length=200, unique=True)
-    order_id = models.CharField(max_length=64)
-    event_status = models.CharField(max_length=30)
-    payload = models.JSONField()
-    processed_at = models.DateTimeField(auto_now_add=True)

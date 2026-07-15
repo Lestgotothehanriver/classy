@@ -27,6 +27,9 @@ from .views import (
     TutoringResourceViewSet,
     StudentMyPostAPIView,
     InstructorDetailAPIView,
+    ChatRoomTutoringRegistrationView,
+    CommissionPaymentView,
+    MyTutoringRegistrationView,
 )
 
 router = SimpleRouter()
@@ -59,6 +62,22 @@ router.register(r"resources", TutoringResourceViewSet, basename="tutoring-resour
 
 
 urlpatterns = [
+    path(
+        "resources/chatrooms/<int:chat_room_id>/",
+        ChatRoomTutoringRegistrationView.as_view(),
+        name="chatroom-tutoring-registration",
+    ),
+    path(
+        "resources/chatrooms/<int:chat_room_id>/my-registration/",
+        MyTutoringRegistrationView.as_view(),
+        name="my-tutoring-registration",
+    ),
+    path(
+        "resources/<int:registration_id>/commission-payment/",
+        CommissionPaymentView.as_view(),
+        name="commission-payment",
+    ),
+
     # ____________________________________________________________________________________
     # 학생 페이지: 강사 탐색 (읽기)
     # ____________________________________________________________________________________
