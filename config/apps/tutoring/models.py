@@ -294,6 +294,14 @@ class TutoringResource(models.Model):
         default='PENDING',
     )
 
+    @property
+    def expected_commission_amount(self):
+        """개인 계좌로 납부할 성사 수수료 금액."""
+        from django.conf import settings
+
+        rate_bps = getattr(settings, "TUTORING_COMMISSION_RATE_BPS", 1500)
+        return (self.first_month_fee or 0) * rate_bps // 10000
+
 class TutoringResourceFile(models.Model):
     """
     과외 계약(TutoringResource)과 관련된 다수의 첨부 파일을 관리하는 모델입니다.

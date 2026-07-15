@@ -8,12 +8,11 @@ from config.apps.tutoring.models import (
     InstructorReview,
     StudentReview,
     TutoringResource,
+    TutoringResourceFile,
     CommissionInvoice,
     StudentPaybackAccount,
-    TossWebhookEvent,
     TutoringRegistration,
     TutoringSubmission,
-    VirtualAccountPayment,
 )
 
 
@@ -142,7 +141,8 @@ def reject_fee_payment(modeladmin, request, queryset):
 class TutoringResourceAdmin(admin.ModelAdmin):
     list_display  = (
         'id', 'get_instructor', 'get_student',
-        'class_type', 'first_month_fee', 'fee_payment_status', 'start_date',
+        'class_type', 'first_month_fee', 'get_expected_commission_amount',
+        'fee_payment_status', 'start_date',
     )
     list_filter   = ('fee_payment_status', 'class_type')
     search_fields = (
@@ -151,6 +151,21 @@ class TutoringResourceAdmin(admin.ModelAdmin):
     )
     ordering      = ('-id',)
     actions       = [confirm_fee_payment, reject_fee_payment]
+    readonly_fields = (
+        'fee_payment_status', 'fee_confirmation_file',
+        'get_expected_commission_amount',
+    )
+
+    class TutoringResourceFileInline(admin.TabularInline):
+        model = TutoringResourceFile
+        extra = 0
+        can_delete = False
+        readonly_fields = ('file', 'uploaded_at')
+
+        def has_add_permission(self, request, obj=None):
+            return False
+
+    inlines = [TutoringResourceFileInline]
 
     def get_instructor(self, obj):
         return obj.instructor.user.username
@@ -160,10 +175,12 @@ class TutoringResourceAdmin(admin.ModelAdmin):
         return obj.student.user.username
     get_student.short_description = '학생'
 
+    @admin.display(description='납부 예정 금액')
+    def get_expected_commission_amount(self, obj):
+        return f'{obj.expected_commission_amount:,}원'
+
 
 admin.site.register(TutoringRegistration)
 admin.site.register(TutoringSubmission)
 admin.site.register(StudentPaybackAccount)
 admin.site.register(CommissionInvoice)
-admin.site.register(VirtualAccountPayment)
-admin.site.register(TossWebhookEvent)

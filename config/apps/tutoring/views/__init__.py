@@ -29,9 +29,3 @@ from .like_views import (
     InstructorLikeAPIView,
     TutoringPostLikeAPIView,
 )
-from .registration_views import (
-    ChatRoomTutoringRegistrationView,
-    CommissionPaymentReissueView,
-    CommissionPaymentView,
-    MyTutoringRegistrationView,
-)

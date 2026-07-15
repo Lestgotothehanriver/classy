@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 import logging
-from config.apps.block.utils import get_blocked_user_ids
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from ..models import TutoringResource, TutoringResourceFile
 from ..serializers import TutoringResourceSerializer, TutoringResourceListSerializer
@@ -53,6 +53,7 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         }
     """
     permission_classes = [permissions.IsAuthenticated, IsResourceParticipant]
+    http_method_names = ['get', 'post', 'head', 'options']
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -67,19 +68,11 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
             QuerySet: 학생 본인 혹은 강사 본인으로 등록된 TutoringResource 쿼리셋.
         """
         user = self.request.user
-        qs = TutoringResource.objects.all()
-
-        if self.action == 'list':
-            qs = qs.filter(Q(student__user=user) | Q(instructor__user=user))
-            blocked_user_ids = get_blocked_user_ids(user)
-            if blocked_user_ids:
-                qs = qs.exclude(
-                    Q(student__user_id__in=blocked_user_ids) |
-                    Q(instructor__user_id__in=blocked_user_ids)
-                )
-            return qs
-
-        return qs
+        return TutoringResource.objects.filter(
+            Q(student__user=user) | Q(instructor__user=user)
+        ).select_related(
+            'student__user', 'instructor__user'
+        ).prefetch_related('subject', 'files').order_by('-id')
 
     def perform_create(self, serializer):
         """
@@ -101,15 +94,31 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         instructor = serializer.validated_data.get('instructor')
         
         user = self.request.user
-        is_student_match = (student and student.user == user)
         is_instructor_match = (instructor and instructor.user == user)
-        
-        if not (is_student_match or is_instructor_match):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("본인이 포함된 과외 계약만 생성할 수 있습니다.")
 
-        resource = serializer.save()
+        if not is_instructor_match:
+            raise PermissionDenied("강사 본인만 과외 계약을 등록할 수 있습니다.")
+
+        if TutoringResource.objects.filter(
+            student=student,
+            instructor=instructor,
+            fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION'],
+        ).exists():
+            raise ValidationError({
+                'detail': '이미 입금 확인이 진행 중인 과외 계약이 있습니다.'
+            })
+
         files = self.request.FILES.getlist('fee_confirmation_file')
+        if not files:
+            raise ValidationError({
+                'fee_confirmation_file': '입금 증빙 파일을 한 개 이상 첨부해 주세요.'
+            })
+
+        resource = serializer.save(
+            is_student_confirmed=False,
+            is_instructor_confirmed=True,
+            fee_payment_status='PENDING',
+        )
         for f in files:
             TutoringResourceFile.objects.create(tutoring_resource=resource, file=f)
 
@@ -135,12 +144,26 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         from django.db import transaction
         with transaction.atomic():
             try:
-                resource = TutoringResource.objects.select_for_update().get(pk=pk)
+                resource = TutoringResource.objects.select_for_update().filter(
+                    Q(student__user=request.user) | Q(instructor__user=request.user)
+                ).get(pk=pk)
             except TutoringResource.DoesNotExist:
                 return Response({"error": "리소스를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
             if resource.instructor.user != request.user:
                 return Response({"error": "강사 본인만 입금 확인을 요청할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+            if resource.fee_payment_status == 'PAID':
+                return Response(
+                    {'fee_payment_status': resource.fee_payment_status},
+                    status=status.HTTP_200_OK,
+                )
+
+            if not resource.fee_confirmation_file and not resource.files.exists():
+                return Response(
+                    {"error": "입금 증빙 파일을 먼저 첨부해 주세요."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             resource.fee_payment_status = 'AWAITING_CONFIRMATION'
             resource.save(update_fields=['fee_payment_status'])

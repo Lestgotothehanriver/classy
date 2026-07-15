@@ -72,13 +72,9 @@
 | 과외 제안서 목록 조회 | `GET` | `/tutoring/proposals/` | 없음 | 로그인한 사용자 본인과 관련된 모든 과외 제안서 내역을 조회합니다. |
 | 과외 제안서 상세 조회 | `GET` | `/tutoring/proposals/<int:pk>/` | **[Path]**<br>- `pk` (int, 제안서 ID) | 특정 과외 제안서의 상세 내역을 가져옵니다. |
 | 과외 계약 리소스 목록 | `GET` | `/tutoring/resources/` | 없음 | 본인이 참여한 모든 과외 수업 계약/지불 리소스 목록을 조회합니다. |
-| 과외 계약 리소스 생성 | `POST` | `/tutoring/resources/` | **[Body (Multipart)]**<br>- `student` (int, 필수)<br>- `instructor` (int, 필수)<br>- `fee_amount` (int, 필수)<br>- `fee_confirmation_file` (file, 선택, 다중 가능) | 학생과 강사 간의 과외 계약을 맺고 지불 정보 및 입금 확인증 파일을 제출합니다. |
+| 과외 계약 리소스 생성 | `POST` | `/tutoring/resources/` | **[Body (Multipart), 강사 전용]**<br>- `student` (int, 필수)<br>- `instructor` (int, 필수)<br>- `start_date` (date)<br>- `class_type` (`단기 수업`/`장기 수업`)<br>- `subject` (int, 최대 3개)<br>- `first_month_fee` (int, 필수)<br>- `fee_confirmation_file` (file, 필수, 다중 가능) | 강사가 과외 계약과 개인 계좌 입금 증빙을 제출합니다. 최초 상태는 `PENDING`입니다. 응답에는 우리은행 수동 입금 계좌와 납부 예정 금액이 포함됩니다. |
 | 과외 계약 리소스 상세 | `GET` | `/tutoring/resources/<int:pk>/` | **[Path]**<br>- `pk` (int, 리소스 ID) | 특정 과외 계약 리소스의 상세 입금 상태 및 첨부파일들을 조회합니다. |
-| 강사 입금 확인 요청 | `POST` | `/tutoring/resources/<int:pk>/confirm-payment/` | **[Path]**<br>- `pk` (int, 리소스 ID) | 강사가 수업료가 입금되었음을 확인해줄 것을 학생에게 요청하도록 상태(`AWAITING_CONFIRMATION`)를 변경합니다. |
-| 과외 등록 정보 조회 | `GET` | `/tutoring/resources/chatrooms/<int:chat_room_id>/` | **[Path]**<br>- `chat_room_id` (int, 필수) | 특정 채팅방에 매핑된 과외 등록(TutoringRegistration) 정보를 조회하거나 생성 전 기본 상태를 조회합니다. |
-| 과외 등록 및 수정 | `PUT` | `/tutoring/resources/chatrooms/<int:chat_room_id>/my-registration/` | **[Path]**<br>- `chat_room_id` (int, 필수)<br>**[Body (JSON)]**<br>- `subject` (str, 필수)<br>- `startDate` (str(YYYY-MM-DD), 필수)<br>- `classType` ('ONLINE'/'OFFLINE', 필수)<br>- `firstMonthFee` (int, 필수)<br>- `paybackAccount` (dict, 학생 필수/강사 입력금지)<br>&nbsp;&nbsp;- `bankCode` (str, 필수)<br>&nbsp;&nbsp;- `accountNumber` (str, 필수)<br>&nbsp;&nbsp;- `accountHolder` (str, 필수) | 과외 매칭 완료를 위해 본인의 과외 등록 정보(상호 협의 내용)를 제출하거나 수정합니다. |
-| 수수료 결제 정보 조회 | `GET` | `/tutoring/resources/<int:registration_id>/commission-payment/` | **[Path]**<br>- `registration_id` (int, 필수) | 과외 성사 후 청구된 수수료 결제 정보(가상계좌)를 조회합니다. |
-| 수수료 가상계좌 재발급 | `POST` | `/tutoring/resources/<int:registration_id>/commission-payment/reissue/` | **[Path]**<br>- `registration_id` (int, 필수) | (강사 전용) 수수료 결제용 실패/만료된 가상계좌를 재발급 요청합니다. |
+| 강사 입금 완료 접수 | `POST` | `/tutoring/resources/<int:pk>/confirm-payment/` | **[Path]**<br>- `pk` (int, 리소스 ID) | 증빙이 첨부된 계약을 `AWAITING_CONFIRMATION`으로 변경합니다. 이후 운영팀이 Django admin에서 `PAID` 또는 `FAILED`로 수동 처리합니다. |
 | 강사 찜하기 토글 | `POST` | `/tutoring/instructors/<int:instructor_id>/like/` | **[Path]**<br>- `instructor_id` (int, 필수) | 학생 회원이 강사를 찜(좋아요) 목록에 추가하거나 제외합니다. |
 | 과외 공고 찜하기 토글 | `POST` | `/tutoring/posts/<int:post_id>/like/` | **[Path]**<br>- `post_id` (int, 필수) | 강사 회원이 학생 구인 공고를 찜 목록에 추가하거나 제외합니다. |
 

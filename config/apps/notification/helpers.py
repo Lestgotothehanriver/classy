@@ -74,14 +74,24 @@ def notify_tutoring_proposal(room):
 def notify_fee_payment_confirmed(resource):
     """
     관리자가 수수료 입금을 확인하고 PAID 처리했을 때.
-    → 강사에게 'instructor_status' 알림.
+    → 계약 당사자인 강사와 학생 모두에게 성사 완료 알림.
     """
     _create(
         user=resource.instructor.user,
-        ntype='instructor_status',
+        ntype='tutoring_contract_confirmed',
         role='instructor',
         title='수수료 납부가 확인되었습니다.',
-        body='수업 성사가 완료되었습니다. 수업 관리에서 확인해 보세요.',
+        body='수업 성사가 완료되었습니다. 과외 내역에서 확인해 보세요.',
+        data={
+            'resource_id': str(resource.id),
+        },
+    )
+    _create(
+        user=resource.student.user,
+        ntype='tutoring_contract_confirmed',
+        role='student',
+        title='과외 성사 등록이 완료되었습니다.',
+        body='수업 관리에서 계약 세부 정보와 리뷰 작성을 확인해 보세요.',
         data={
             'resource_id': str(resource.id),
         },

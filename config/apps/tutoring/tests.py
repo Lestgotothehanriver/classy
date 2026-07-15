@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
 from config.apps.tutoring.models import TutoringPost, TutoringPostLike
@@ -632,6 +633,7 @@ class TutoringResourceAPITest(LikeSortingTestBase):
 
     def setUp(self):
         super().setUp()
+        self.client.force_authenticate(self.instructor_user1)
         from config.apps.accounts.models import Subject
         # Subject들 생성
         self.subject1 = Subject.objects.create(number=1)
@@ -647,8 +649,11 @@ class TutoringResourceAPITest(LikeSortingTestBase):
             "subject": [self.subject1.number, self.subject2.number],
             "class_type": "단기 수업",
             "first_month_fee": 300000,
+            "fee_confirmation_file": SimpleUploadedFile(
+                "proof.png", b"proof-image", content_type="image/png"
+            ),
         }
-        resp = self.client.post("/tutoring/resources/", data=payload, format="json")
+        resp = self.client.post("/tutoring/resources/", data=payload, format="multipart")
         self.assertEqual(resp.status_code, 201)
         
         # 상세 데이터 응답 검증

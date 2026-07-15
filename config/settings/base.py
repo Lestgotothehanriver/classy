@@ -20,11 +20,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # .env 파일에서 환경변수 로드 (프로젝트 루트의 .env)
 load_dotenv(BASE_DIR.parent / '.env')
 
-# Toss Payments server-side virtual account settings
-TOSS_PAYMENTS_SECRET_KEY = os.environ.get("TOSS_PAYMENTS_SECRET_KEY", "")
-TOSS_VIRTUAL_ACCOUNT_BANK = os.environ.get("TOSS_VIRTUAL_ACCOUNT_BANK", "20")
-TOSS_VIRTUAL_ACCOUNT_VALID_HOURS = int(
-    os.environ.get("TOSS_VIRTUAL_ACCOUNT_VALID_HOURS", "168")
+# 과외 성사 수수료 수동 입금 계좌. Toss 가상계좌는 더 이상 사용하지 않습니다.
+TUTORING_PAYMENT_BANK = os.environ.get("TUTORING_PAYMENT_BANK", "우리은행")
+TUTORING_PAYMENT_ACCOUNT_NUMBER = os.environ.get(
+    "TUTORING_PAYMENT_ACCOUNT_NUMBER", "124411-0045778"
+)
+TUTORING_COMMISSION_RATE_BPS = int(
+    os.environ.get("TUTORING_COMMISSION_RATE_BPS", "1500")
 )
 TUTORING_ACCOUNT_ENCRYPTION_KEY = os.environ.get(
     "TUTORING_ACCOUNT_ENCRYPTION_KEY", ""

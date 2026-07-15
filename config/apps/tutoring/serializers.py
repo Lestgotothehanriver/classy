@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db.models import Avg, Count
 from django.utils import timezone
+from django.conf import settings
 
 from config.apps.accounts.models import Instructor, Student, Subject
 from config.apps.pending.models import PendingInstructor
@@ -418,6 +419,10 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
     files = TutoringResourceFileSerializer(many=True, read_only=True)
     fee_confirmation_file = AbsoluteFileField(required=False, allow_null=True)
     subject = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+    subjects = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+    payment_bank = serializers.SerializerMethodField()
+    payment_account_number = serializers.SerializerMethodField()
+    expected_commission_amount = serializers.IntegerField(read_only=True)
 
     m2m_fields = {'subject': Subject}
 
@@ -429,8 +434,28 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
             'subject', 'first_month_fee', 'payback_bank', 
             'payback_account_number', 'payback_account_holder', 
             'fee_confirmation_file', 'is_student_confirmed', 
-            'is_instructor_confirmed', 'fee_payment_status', 'files'
+            'is_instructor_confirmed', 'fee_payment_status', 'files',
+            'subjects', 'payment_bank', 'payment_account_number',
+            'expected_commission_amount'
         ]
+        read_only_fields = [
+            'is_student_confirmed', 'is_instructor_confirmed',
+            'fee_payment_status',
+        ]
+
+    def validate(self, attrs):
+        subjects = attrs.pop('subjects', None)
+        if subjects is not None:
+            if 'subject' in attrs:
+                raise serializers.ValidationError(
+                    {'subjects': 'subject와 subjects는 동시에 보낼 수 없습니다.'}
+                )
+            attrs['subject'] = subjects
+        if len(attrs.get('subject', [])) > 3:
+            raise serializers.ValidationError(
+                {'subject': '과외 성사당 과목은 최대 3개까지만 등록할 수 있습니다.'}
+            )
+        return super().validate(attrs)
 
     def validate_subject(self, value):
         if value and len(value) > 3:
@@ -441,6 +466,12 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
         ret = super().to_representation(instance)
         ret['subject'] = SubjectSimpleSerializer(instance.subject.all(), many=True).data
         return ret
+
+    def get_payment_bank(self, obj):
+        return settings.TUTORING_PAYMENT_BANK
+
+    def get_payment_account_number(self, obj):
+        return settings.TUTORING_PAYMENT_ACCOUNT_NUMBER
 
 
 class TutoringResourceListSerializer(serializers.ModelSerializer):
@@ -454,6 +485,9 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
     instructor_last_name = serializers.CharField(source='instructor.user.last_name', read_only=True)
     
     files = TutoringResourceFileSerializer(many=True, read_only=True)
+    payment_bank = serializers.SerializerMethodField()
+    payment_account_number = serializers.SerializerMethodField()
+    expected_commission_amount = serializers.IntegerField(read_only=True)
 
     class Meta:
         from .models import TutoringResource
@@ -483,6 +517,12 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
                 ret.pop('student_last_name', None)
                 
         return ret
+
+    def get_payment_bank(self, obj):
+        return settings.TUTORING_PAYMENT_BANK
+
+    def get_payment_account_number(self, obj):
+        return settings.TUTORING_PAYMENT_ACCOUNT_NUMBER
 
 class StudentMyPostSerializer(serializers.ModelSerializer):
     """
