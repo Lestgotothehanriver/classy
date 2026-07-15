@@ -1,6 +1,7 @@
 import tempfile
 from unittest.mock import Mock
 
+from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from rest_framework.test import APIClient, APITestCase
@@ -8,7 +9,11 @@ from rest_framework.test import APIClient, APITestCase
 from config.apps.accounts.models import Instructor, Student, Subject, User
 from config.apps.chat_app.models import ChatRoom
 from config.apps.notification.models import Notification
-from config.apps.tutoring.admin import confirm_fee_payment
+from config.apps.tutoring.admin import (
+    TutoringRegistrationAdmin,
+    TutoringResourceAdmin,
+    confirm_fee_payment,
+)
 from config.apps.tutoring.registration_services import decrypt_account_number
 
 from .models import (
@@ -205,6 +210,48 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(CommissionInvoice.objects.get().status, "PAID")
         self.assertEqual(registration.contract_status, "ACTIVE")
         self.assertEqual(Notification.objects.count(), 2)
+
+    def test_admin_exposes_submissions_payback_and_direct_payment_edit(self):
+        self.student_client.put(self.url, self.student_payload(), format="json")
+        self.instructor_client.put(
+            self.url,
+            self.instructor_payload(),
+            format="multipart",
+        )
+        registration = TutoringRegistration.objects.get()
+        resource = TutoringResource.objects.get()
+
+        registration_admin = TutoringRegistrationAdmin(
+            TutoringRegistration,
+            admin.site,
+        )
+        self.assertEqual(
+            registration_admin.get_student_class_type(registration),
+            "정규 수업",
+        )
+        self.assertEqual(registration_admin.get_student_fee(registration), "500,000원")
+        self.assertEqual(
+            registration_admin.get_instructor_class_type(registration),
+            "정규 수업",
+        )
+        self.assertEqual(
+            registration_admin.get_instructor_fee(registration),
+            "500,000원",
+        )
+
+        resource_admin = TutoringResourceAdmin(TutoringResource, admin.site)
+        self.assertEqual(resource_admin.get_payback_bank(resource), "우리은행")
+        self.assertEqual(
+            resource_admin.get_payback_account_number(resource),
+            "123456789012",
+        )
+        self.assertEqual(resource_admin.get_payback_account_holder(resource), "홍길동")
+
+        resource.fee_payment_status = "PAID"
+        resource_admin.save_model(Mock(), resource, Mock(), change=True)
+        registration.refresh_from_db()
+        self.assertEqual(CommissionInvoice.objects.get().status, "PAID")
+        self.assertEqual(registration.contract_status, "ACTIVE")
 
     def test_paid_mismatch_activates_after_corrected_submission(self):
         self.instructor_client.put(

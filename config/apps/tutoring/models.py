@@ -249,9 +249,6 @@ class TutoringResource(models.Model):
         class_type (str): 수업의 유형 (단기 수업, 장기 수업 등).
         subject (ForeignKey): 최종 확정된 수업 과목.
         first_month_fee (int): 책정된 첫 달 수업료.
-        payback_bank (str): [학생] 페이백을 받을 은행명.
-        payback_account_number (str): [학생] 페이백을 받을 계좌번호.
-        payback_account_holder (str): [학생] 페이백 계좌 예금주.
         fee_confirmation_file (FileField): 수업료 입금 확인증 등의 증빙 파일 (단일 파일 필드 - 하위 호환).
         is_student_confirmed (bool): 학생의 계약 정보 최종 확인 여부.
         is_instructor_confirmed (bool): 강사의 계약 정보 최종 확인 여부.
@@ -275,11 +272,6 @@ class TutoringResource(models.Model):
     class_type = models.CharField(max_length=20, choices=class_type_choices, blank=True) # 수업 유형
     subject = models.ManyToManyField(Subject, blank=True, related_name='tutoring_resources') # 수업 과목
     first_month_fee = models.IntegerField(blank=True, null=True) # 첫 달 수업료 (총 수업료)
-    
-    # 페이백 계좌 관련 필드 (학생)
-    payback_bank = models.CharField(max_length=50, blank=True)
-    payback_account_number = models.CharField(max_length=50, blank=True)
-    payback_account_holder = models.CharField(max_length=50, blank=True)
     
     # 수업료 확인 자료
     fee_confirmation_file = models.FileField(upload_to='fee_confirmations/', blank=True, null=True)

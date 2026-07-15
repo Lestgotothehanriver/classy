@@ -118,29 +118,48 @@ class StudentReviewAdmin(admin.ModelAdmin):
 
 # ── TutoringResource ──────────────────────────────────────────────────────────
 
-@admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
-def confirm_fee_payment(modeladmin, request, queryset):
+def sync_linked_payment_state(resource, notify=True):
     from config.apps.notification.helpers import notify_fee_payment_confirmed
     from config.apps.tutoring.registration_services import refresh_contract_status
 
+    registration = getattr(resource, 'registration', None)
+    if registration is None:
+        if notify and resource.fee_payment_status == 'PAID':
+            notify_fee_payment_confirmed(resource)
+        return
+
+    previous_contract_status = registration.contract_status
+    invoice = registration.commission_invoices.filter(
+        invoice_type=CommissionInvoice.InvoiceType.INITIAL
+    ).first()
+    if invoice:
+        if resource.fee_payment_status == 'PAID':
+            invoice.status = CommissionInvoice.Status.PAID
+            invoice.paid_at = invoice.paid_at or timezone.now()
+        elif resource.fee_payment_status == 'FAILED':
+            invoice.status = CommissionInvoice.Status.FAILED
+            invoice.paid_at = None
+        else:
+            invoice.status = CommissionInvoice.Status.PAYMENT_PENDING
+            invoice.paid_at = None
+        invoice.save(update_fields=['status', 'paid_at', 'updated_at'])
+
+    contract_status = refresh_contract_status(registration)
+    if (
+        notify
+        and contract_status == TutoringRegistration.ContractStatus.ACTIVE
+        and previous_contract_status != TutoringRegistration.ContractStatus.ACTIVE
+    ):
+        notify_fee_payment_confirmed(resource)
+
+
+@admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
+def confirm_fee_payment(modeladmin, request, queryset):
     updated = 0
     for resource in queryset.filter(fee_payment_status='AWAITING_CONFIRMATION'):
         resource.fee_payment_status = 'PAID'
         resource.save(update_fields=['fee_payment_status'])
-        registration = getattr(resource, 'registration', None)
-        if registration:
-            invoice = registration.commission_invoices.filter(
-                invoice_type=CommissionInvoice.InvoiceType.INITIAL
-            ).first()
-            if invoice:
-                invoice.status = CommissionInvoice.Status.PAID
-                invoice.paid_at = timezone.now()
-                invoice.save(update_fields=['status', 'paid_at', 'updated_at'])
-            contract_status = refresh_contract_status(registration)
-            if contract_status == TutoringRegistration.ContractStatus.ACTIVE:
-                notify_fee_payment_confirmed(resource)
-        else:
-            notify_fee_payment_confirmed(resource)
+        sync_linked_payment_state(resource)
         updated += 1
     modeladmin.message_user(
         request,
@@ -153,14 +172,12 @@ def reject_fee_payment(modeladmin, request, queryset):
     resources = queryset.filter(
         fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION']
     )
-    updated = resources.update(fee_payment_status='FAILED')
-    CommissionInvoice.objects.filter(
-        registration__resource__in=resources,
-        status__in=[
-            CommissionInvoice.Status.READY,
-            CommissionInvoice.Status.PAYMENT_PENDING,
-        ],
-    ).update(status=CommissionInvoice.Status.FAILED)
+    updated = 0
+    for resource in resources:
+        resource.fee_payment_status = 'FAILED'
+        resource.save(update_fields=['fee_payment_status'])
+        sync_linked_payment_state(resource, notify=False)
+        updated += 1
     modeladmin.message_user(request, f'{updated}건 FAILED 처리 완료.')
 
 
@@ -169,8 +186,10 @@ class TutoringResourceAdmin(admin.ModelAdmin):
     list_display  = (
         'id', 'get_instructor', 'get_student',
         'class_type', 'first_month_fee', 'get_expected_commission_amount',
-        'fee_payment_status', 'start_date',
+        'fee_payment_status', 'get_payback_bank', 'get_masked_payback_account',
+        'get_payback_account_holder', 'start_date',
     )
+    list_editable = ('fee_payment_status',)
     list_filter   = ('fee_payment_status', 'class_type')
     search_fields = (
         'instructor__user__username', 'instructor__user__email',
@@ -179,8 +198,10 @@ class TutoringResourceAdmin(admin.ModelAdmin):
     ordering      = ('-id',)
     actions       = [confirm_fee_payment, reject_fee_payment]
     readonly_fields = (
-        'fee_payment_status', 'fee_confirmation_file',
+        'fee_confirmation_file',
         'get_expected_commission_amount',
+        'get_payback_bank', 'get_payback_account_number',
+        'get_payback_account_holder',
     )
 
     class TutoringResourceFileInline(admin.TabularInline):
@@ -194,6 +215,25 @@ class TutoringResourceAdmin(admin.ModelAdmin):
 
     inlines = [TutoringResourceFileInline]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'student__user',
+            'instructor__user',
+            'registration__student_payback_account',
+        )
+
+    def save_model(self, request, obj, form, change):
+        previous_status = None
+        if change and obj.pk:
+            previous_status = (
+                TutoringResource.objects.filter(pk=obj.pk)
+                .values_list('fee_payment_status', flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        if change and previous_status != obj.fee_payment_status:
+            sync_linked_payment_state(obj)
+
     def get_instructor(self, obj):
         return obj.instructor.user.username
     get_instructor.short_description = '강사'
@@ -202,12 +242,123 @@ class TutoringResourceAdmin(admin.ModelAdmin):
         return obj.student.user.username
     get_student.short_description = '학생'
 
+    def _payback_account(self, obj):
+        if obj.registration_id is None:
+            return None
+        try:
+            return obj.registration.student_payback_account
+        except StudentPaybackAccount.DoesNotExist:
+            return None
+
+    @admin.display(description='페이백 은행')
+    def get_payback_bank(self, obj):
+        account = self._payback_account(obj)
+        return account.bank_code if account else '-'
+
+    def _decrypted_payback_account_number(self, obj):
+        from config.apps.tutoring.registration_services import (
+            decrypt_account_number,
+        )
+
+        account = self._payback_account(obj)
+        if account is None:
+            return '-'
+        try:
+            return decrypt_account_number(account.encrypted_account_number)
+        except Exception:
+            return '복호화 실패'
+
+    @admin.display(description='페이백 계좌번호')
+    def get_payback_account_number(self, obj):
+        return self._decrypted_payback_account_number(obj)
+
+    @admin.display(description='페이백 계좌번호')
+    def get_masked_payback_account(self, obj):
+        account_number = self._decrypted_payback_account_number(obj)
+        if account_number in ('-', '복호화 실패') or len(account_number) <= 4:
+            return account_number
+        return f'****{account_number[-4:]}'
+
+    @admin.display(description='페이백 예금주')
+    def get_payback_account_holder(self, obj):
+        account = self._payback_account(obj)
+        return account.account_holder if account else '-'
+
     @admin.display(description='납부 예정 금액')
     def get_expected_commission_amount(self, obj):
         return f'{obj.expected_commission_amount:,}원'
 
 
-admin.site.register(TutoringRegistration)
+class TutoringSubmissionInline(admin.TabularInline):
+    model = TutoringSubmission
+    extra = 0
+    can_delete = False
+    fields = ('role', 'submitted_by', 'class_type', 'first_month_fee', 'updated_at')
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TutoringRegistration)
+class TutoringRegistrationAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'chat_room', 'get_student', 'get_instructor',
+        'get_student_class_type', 'get_student_fee',
+        'get_instructor_class_type', 'get_instructor_fee',
+        'attribute_validation_status', 'contract_status',
+    )
+    list_filter = ('attribute_validation_status', 'contract_status')
+    search_fields = (
+        'student__username', 'student__user_name',
+        'instructor__username', 'instructor__user_name',
+    )
+    list_select_related = ('chat_room', 'student', 'instructor')
+    ordering = ('-id',)
+    inlines = [TutoringSubmissionInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('submissions')
+
+    def _submission(self, obj, role):
+        return next(
+            (
+                submission
+                for submission in obj.submissions.all()
+                if submission.role == role
+            ),
+            None,
+        )
+
+    @admin.display(description='학생')
+    def get_student(self, obj):
+        return obj.student.user_name or obj.student.username
+
+    @admin.display(description='강사')
+    def get_instructor(self, obj):
+        return obj.instructor.user_name or obj.instructor.username
+
+    @admin.display(description='학생 수업 유형')
+    def get_student_class_type(self, obj):
+        submission = self._submission(obj, TutoringSubmission.Role.STUDENT)
+        return submission.get_class_type_display() if submission else '-'
+
+    @admin.display(description='학생 수업료')
+    def get_student_fee(self, obj):
+        submission = self._submission(obj, TutoringSubmission.Role.STUDENT)
+        return f'{submission.first_month_fee:,}원' if submission else '-'
+
+    @admin.display(description='강사 수업 유형')
+    def get_instructor_class_type(self, obj):
+        submission = self._submission(obj, TutoringSubmission.Role.INSTRUCTOR)
+        return submission.get_class_type_display() if submission else '-'
+
+    @admin.display(description='강사 수업료')
+    def get_instructor_fee(self, obj):
+        submission = self._submission(obj, TutoringSubmission.Role.INSTRUCTOR)
+        return f'{submission.first_month_fee:,}원' if submission else '-'
+
+
 admin.site.register(TutoringSubmission)
 admin.site.register(CommissionInvoice)
 

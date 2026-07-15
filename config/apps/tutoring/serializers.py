@@ -431,8 +431,7 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
         model = TutoringResource
         fields = [
             'id', 'student', 'instructor', 'start_date', 'class_type', 
-            'subject', 'first_month_fee', 'payback_bank', 
-            'payback_account_number', 'payback_account_holder', 
+            'subject', 'first_month_fee',
             'fee_confirmation_file', 'is_student_confirmed', 
             'is_instructor_confirmed', 'fee_payment_status', 'files',
             'subjects', 'payment_bank', 'payment_account_number',
@@ -485,11 +484,7 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
                 registration.attribute_validation_status
             )
             ret['contract_status'] = registration.contract_status
-            if instance.instructor.user == request.user:
-                ret.pop('payback_bank', None)
-                ret.pop('payback_account_number', None)
-                ret.pop('payback_account_holder', None)
-            else:
+            if instance.student.user == request.user:
                 ret['files'] = []
         return ret
 
@@ -519,9 +514,6 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
         from .models import TutoringResource
         model = TutoringResource
         exclude = [
-            'payback_bank',
-            'payback_account_number',
-            'payback_account_holder',
             'fee_confirmation_file'
         ]
 
