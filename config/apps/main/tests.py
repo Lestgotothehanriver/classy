@@ -6,6 +6,7 @@ from django.utils import timezone
 from config.apps.accounts.models import User, Student, Instructor, Subject
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.lecture.models import Lecture
+from config.apps.tutoring.models import InstructorInfo, TutoringPost
 
 class MainAPIViewSetTests(APITestCase):
 
@@ -25,6 +26,13 @@ class MainAPIViewSetTests(APITestCase):
             username="instructor_busan_login", password="password", region="부산 해운대구", user_name="instructor_busan"
         )
         self.other_instructor = Instructor.objects.create(user=self.other_instructor_user, university="부산대")
+
+        # Create InstructorInfo for active instructors
+        InstructorInfo.objects.create(instructor=self.instructor)
+        # We do NOT create TutoringProfile for other_instructor to make sure only ones with profile show up
+
+        # Create active TutoringPost for active students
+        TutoringPost.objects.create(student=self.student, title="Seoul student post", is_active=True)
 
         # Create subjects 
         subj = Subject.objects.create(number=1)
@@ -69,6 +77,7 @@ class MainAPIViewSetTests(APITestCase):
         history.save()
 
     def test_student_main_api(self):
+        # 1. First test regular retrieval
         url = reverse('student-main')
         self.client.force_authenticate(user=self.student_user)
         response = self.client.get(url)
@@ -78,7 +87,19 @@ class MainAPIViewSetTests(APITestCase):
         self.assertEqual(response.data[0]['user_name'], "instructor_seoul")
         self.assertEqual(response.data[0]['average_rate'], 0.0)
 
+        # 2. Add an Instructor profile to the logged-in student user to test self-lookup exclusion
+        student_instructor = Instructor.objects.create(user=self.student_user, university="연세대")
+        InstructorInfo.objects.create(instructor=student_instructor)
+        
+        # When requesting now, student_user should NOT see themselves in the recommended list
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should still be 1 (only instructor_seoul), and NOT containing student_seoul
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['user_name'], "instructor_seoul")
+
     def test_instructor_main_api(self):
+        # 1. First test regular retrieval
         url = reverse('instructor-main')
         self.client.force_authenticate(user=self.instructor_user)
         response = self.client.get(url)
@@ -90,5 +111,16 @@ class MainAPIViewSetTests(APITestCase):
 
         self.assertEqual(response.data.get('this_month_total_cash'), 1000)
 
+        self.assertEqual(len(response.data.get('recommended_students')), 1)
+        self.assertEqual(response.data.get('recommended_students')[0]['user_name'], "student_seoul")
+
+        # 2. Add a Student profile and active TutoringPost to the logged-in instructor user to test self-lookup exclusion
+        instructor_student = Student.objects.create(user=self.instructor_user)
+        TutoringPost.objects.create(student=instructor_student, title="Instructor as student post", is_active=True)
+
+        # When requesting now, instructor_user should NOT see themselves in the recommended list
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should still be 1 (only student_seoul), and NOT containing instructor_seoul
         self.assertEqual(len(response.data.get('recommended_students')), 1)
         self.assertEqual(response.data.get('recommended_students')[0]['user_name'], "student_seoul")

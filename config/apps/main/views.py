@@ -36,7 +36,7 @@ class StudentMainAPIView(APIView):
 
         broad_region = user.region
 
-        queryset = Instructor.objects.filter(tutoring_profile__isnull=False)
+        queryset = Instructor.objects.filter(tutoring_profile__isnull=False).exclude(user=user)
 
         # 해당 대규모 지역으로 필터링 예: 서울 강남구 -> 서울로 시작하는 지역들만 필터링
         if broad_region:
@@ -135,13 +135,11 @@ class InstructorMainAPIView(APIView):
         
         # 지역 맞춤 학생 3명 조회
         broad_region = user.region
-        queryset = Student.objects.filter(tutoring_posts__is_active=True)
+        queryset = Student.objects.filter(tutoring_posts__is_active=True).exclude(user=user)
         if broad_region:
             broad_region = broad_region.split(' ')[0]
             queryset = queryset.filter(user__region__startswith=broad_region)
         recommended_students = queryset.distinct().order_by('?')[:3]
-            
-        recommended_students = queryset.order_by('?')[:3]
         student_serializer = InstructorMainStudentSerializer(recommended_students, many=True)
         logger.debug("[BACKEND_DEBUG_MAIN] InstructorMain SUCCESS - students count: %d", len(student_serializer.data))
 
