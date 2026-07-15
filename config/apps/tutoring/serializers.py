@@ -212,7 +212,7 @@ class TutoringPostListSerializer(serializers.ModelSerializer):
     student_profile_image = AbsoluteImageField(source='student.user.profile_image', read_only=True)
     student_age = serializers.SerializerMethodField()
     student_sex = serializers.CharField(source='student.user.sex', read_only=True)
-    student_field = serializers.CharField(source='student.user.field', read_only=True)
+    student_field = serializers.CharField(source='field', read_only=True)
     like_count = serializers.IntegerField(read_only=True, default=0)
     subjects = serializers.SerializerMethodField()
     regions = serializers.SerializerMethodField()
