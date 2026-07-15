@@ -100,6 +100,52 @@ class ManualTutoringPaymentFlowTest(APITestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(TutoringResource.objects.count(), 0)
 
+    def test_resource_lookup_is_scoped_to_active_role(self):
+        dual_role_student = Student.objects.create(user=self.instructor_user)
+        other_user = User.objects.create_user(
+            username="other_instructor",
+            user_name="다른강사",
+            password="password",
+        )
+        other_instructor = Instructor.objects.create(
+            user=other_user,
+            university="Other University",
+        )
+        instructor_resource = TutoringResource.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+        )
+        student_resource = TutoringResource.objects.create(
+            student=dual_role_student,
+            instructor=other_instructor,
+        )
+
+        instructor_response = self.instructor_client.get(
+            "/tutoring/resources/",
+            HTTP_X_CLASSY_ROLE="instructor",
+        )
+        self.assertEqual(instructor_response.status_code, 200)
+        instructor_ids = {
+            item["id"] for item in instructor_response.json()["results"]
+        }
+        self.assertEqual(instructor_ids, {instructor_resource.pk})
+
+        student_response = self.instructor_client.get(
+            "/tutoring/resources/",
+            HTTP_X_CLASSY_ROLE="student",
+        )
+        self.assertEqual(student_response.status_code, 200)
+        student_ids = {
+            item["id"] for item in student_response.json()["results"]
+        }
+        self.assertEqual(student_ids, {student_resource.pk})
+
+        hidden_detail = self.instructor_client.get(
+            f"/tutoring/resources/{student_resource.pk}/",
+            HTTP_X_CLASSY_ROLE="instructor",
+        )
+        self.assertEqual(hidden_detail.status_code, 404)
+
     def test_toss_and_virtual_account_routes_are_disabled(self):
         self.assertEqual(
             self.instructor_client.post('/cash/webhook/toss/', {}).status_code,

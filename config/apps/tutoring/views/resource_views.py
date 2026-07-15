@@ -12,6 +12,12 @@ from ..serializers import TutoringResourceSerializer, TutoringResourceListSerial
 
 logger = logging.getLogger(__name__)
 
+
+def requested_resource_role(request):
+    """앱에서 선택한 현재 활성 역할을 반환합니다."""
+    role = request.headers.get('X-Classy-Role') or request.query_params.get('role')
+    return role if role in ('student', 'instructor') else None
+
 class IsResourceParticipant(permissions.BasePermission):
     """
     과외 계약(TutoringResource) 리소스에 대한 접근 권한을 확인하는 클래스입니다.
@@ -68,9 +74,18 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
             QuerySet: 학생 본인 혹은 강사 본인으로 등록된 TutoringResource 쿼리셋.
         """
         user = self.request.user
-        return TutoringResource.objects.filter(
-            Q(student__user=user) | Q(instructor__user=user)
-        ).select_related(
+        role = requested_resource_role(self.request)
+        queryset = TutoringResource.objects.all()
+        if role == 'student':
+            queryset = queryset.filter(student__user=user)
+        elif role == 'instructor':
+            queryset = queryset.filter(instructor__user=user)
+        else:
+            queryset = queryset.filter(
+                Q(student__user=user) | Q(instructor__user=user)
+            )
+
+        return queryset.select_related(
             'student__user', 'instructor__user', 'registration'
         ).prefetch_related(
             'subject', 'files', 'registration__submissions'
