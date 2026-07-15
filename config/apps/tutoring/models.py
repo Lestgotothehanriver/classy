@@ -143,10 +143,12 @@ class TutoringProposal(models.Model):
         tutoring_post (ForeignKey): 제안이 연결된 학생의 구인 공고.
         instructor (ForeignKey): 제안을 보냈거나 받은 강사.
         message (str): 제안을 보낼 때 함께 작성한 첫 메시지.
+        created_at (datetime): 제안서가 생성된 시각.
     """
     tutoring_post = models.ForeignKey(TutoringPost, on_delete=models.CASCADE, related_name="proposal")
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name="proposals")
     message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class InstructorInfo(models.Model):
     """

@@ -401,9 +401,9 @@ class TutoringProposalSerializer(serializers.ModelSerializer):
     class Meta:
         model = TutoringProposal
         fields = [
-            'id', 'tutoring_post', 'instructor', 'message'
+            'id', 'tutoring_post', 'instructor', 'message', 'created_at'
         ]
-        read_only_fields = ["instructor"]
+        read_only_fields = ["instructor", "created_at"]
 
 class TutoringResourceFileSerializer(serializers.ModelSerializer):
     file = AbsoluteFileField(read_only=True)
