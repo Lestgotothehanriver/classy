@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from config.apps.block.utils import get_blocked_user_ids
 
 from ..models import CommissionInvoice, TutoringRegistration, TutoringSubmission
 from ..registration_serializers import MyRegistrationInputSerializer
@@ -133,8 +134,12 @@ class CommissionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, registration_id):
+        blocked_user_ids = get_blocked_user_ids(request.user)
         registration = (
-            TutoringRegistration.objects.filter(pk=registration_id)
+            TutoringRegistration.objects.exclude(
+                Q(student_id__in=blocked_user_ids)
+                | Q(instructor_id__in=blocked_user_ids)
+            ).filter(pk=registration_id)
             .filter(Q(student=request.user) | Q(instructor=request.user))
             .first()
         )

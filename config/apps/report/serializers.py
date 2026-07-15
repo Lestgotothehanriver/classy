@@ -4,6 +4,27 @@ from rest_framework import serializers
 from .models import Report, ReportChoice, ReportReasonChoices
 
 
+class ReportReasonField(serializers.ChoiceField):
+    """현재 코드와 이전 앱에서 사용한 신고 사유 코드를 모두 허용한다."""
+
+    aliases = {
+        "INAPPROPRIATE_CONTENT": ReportReasonChoices.INAPPROPRIATE_CONTENT,
+        "FALSE_INFORMATION": ReportReasonChoices.FALSE_INFORMATION,
+        "PROFANITY": ReportReasonChoices.ABUSIVE_LANGUAGE,
+        "ABUSIVE_LANGUAGE": ReportReasonChoices.ABUSIVE_LANGUAGE,
+        "UNREASONABLE_DEMAND": ReportReasonChoices.EXCESSIVE_REQUEST,
+        "EXCESSIVE_REQUEST": ReportReasonChoices.EXCESSIVE_REQUEST,
+        "UNREPORTED_CLASS": ReportReasonChoices.UNREPORTED_CLASS_COMPLETION,
+        "UNREPORTED_CLASS_COMPLETION": ReportReasonChoices.UNREPORTED_CLASS_COMPLETION,
+        "OTHER": ReportReasonChoices.OTHER,
+    }
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            data = self.aliases.get(data, data.lower())
+        return super().to_internal_value(data)
+
+
 class ReportCreateSerializer(serializers.Serializer):
     """
     신고 생성 Serializer.
@@ -18,7 +39,7 @@ class ReportCreateSerializer(serializers.Serializer):
     reported_user = serializers.IntegerField(help_text="신고할 대상 사용자 ID")
     evidence_image = serializers.ImageField(required=False, allow_null=True)
     choices = serializers.ListField(
-        child=serializers.ChoiceField(choices=ReportReasonChoices.choices),
+        child=ReportReasonField(choices=ReportReasonChoices.choices),
         min_length=1,
         help_text="신고 사유 목록 (최소 1개)",
     )

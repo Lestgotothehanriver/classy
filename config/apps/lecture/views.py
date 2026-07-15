@@ -1,13 +1,14 @@
 import logging
 from rest_framework import generics, mixins, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
 from django.db import transaction
 from django.db.models import Count, F, Q, Exists, OuterRef, Value, BooleanField
 from django.shortcuts import get_object_or_404
-from config.apps.block.utils import get_blocked_user_ids
+from config.apps.block.utils import get_blocked_user_ids, users_have_block_relation
 
 from config.apps.accounts.models import Instructor, Student
 from config.apps.common.permissions import IsInstructorUser
@@ -309,6 +310,13 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
     serializer_class = LectureStreamSerializer
     queryset = Lecture.objects.filter(is_delete=False)
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        blocked_user_ids = get_blocked_user_ids(self.request.user)
+        if blocked_user_ids:
+            qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
+        return qs
+
     def retrieve(self, request, *args, **kwargs):
         """
         강의 영상 스트리밍 URL을 반환합니다.
@@ -395,6 +403,9 @@ class LectureDetailAPIView(APIView):
         qs = Lecture.objects.filter(is_delete=False).select_related(
             "instructor", "instructor__user"
         ).prefetch_related("subjects")
+        blocked_user_ids = get_blocked_user_ids(request.user)
+        if blocked_user_ids:
+            qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
 
         # 학생인 경우 해당 강의에 좋아요를 눌렀는지 여부를 서브쿼리로 한 번에 계산
         if student:
@@ -441,6 +452,7 @@ class LectureDetailAPIView(APIView):
         recommended_qs = (
             Lecture.objects.filter(subjects__id__in=subject_ids)
             .exclude(pk=pk)
+            .exclude(instructor__user_id__in=blocked_user_ids)
             .distinct()
             .annotate(like_count=Count("likes", distinct=True))
             .order_by("-like_count", "-view_count", "-created_at")[:10]
@@ -516,6 +528,8 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"])
+        if users_have_block_relation(self.request.user, lecture.instructor.user):
+            raise PermissionDenied("차단 관계인 사용자의 강의에는 댓글을 작성할 수 없습니다.")
         serializer.save(author=self.request.user, lecture=lecture)
 
     def create(self, request, *args, **kwargs):

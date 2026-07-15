@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db.models import Q
 import logging
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from config.apps.block.utils import get_blocked_user_ids
 
 from ..models import TutoringResource, TutoringResourceFile
 from ..serializers import TutoringResourceSerializer, TutoringResourceListSerializer
@@ -83,6 +84,13 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
         else:
             queryset = queryset.filter(
                 Q(student__user=user) | Q(instructor__user=user)
+            )
+
+        blocked_user_ids = get_blocked_user_ids(user)
+        if blocked_user_ids:
+            queryset = queryset.exclude(
+                Q(student__user_id__in=blocked_user_ids)
+                | Q(instructor__user_id__in=blocked_user_ids)
             )
 
         return queryset.select_related(

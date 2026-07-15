@@ -162,6 +162,9 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
 
     def get_queryset(self):
         qs = Instructor.objects.all().select_related("tutoring_profile")
+        blocked_user_ids = get_blocked_user_ids(self.request.user)
+        if blocked_user_ids:
+            qs = qs.exclude(user_id__in=blocked_user_ids)
         return self.annotate_instructor_stats(qs, self.request.user)
 
 class InstructorInfoAPIView(generics.RetrieveAPIView):
@@ -182,7 +185,11 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
     serializer_class = InstructorInfoSerializer
 
     def retrieve(self, request, *args, **kwargs):
-        instance = get_object_or_404(InstructorInfo, instructor_id=kwargs["instructor_id"])
+        blocked_user_ids = get_blocked_user_ids(request.user)
+        instance = get_object_or_404(
+            InstructorInfo.objects.exclude(instructor__user_id__in=blocked_user_ids),
+            instructor_id=kwargs["instructor_id"],
+        )
         serializer = self.get_serializer(instance)
         data = serializer.data
 
@@ -243,6 +250,8 @@ class InstructorReviewListAPIView(generics.ListAPIView):
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
-                qs = qs.exclude(student__user_id__in=blocked_user_ids)
+                qs = qs.exclude(
+                    student__user_id__in=blocked_user_ids
+                ).exclude(instructor__user_id__in=blocked_user_ids)
                 
         return qs.prefetch_related("subjects").order_by("-id")

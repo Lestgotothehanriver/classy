@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 import logging
 
 from config.apps.accounts.models import Student, Instructor, InstructorLike
+from config.apps.block.utils import users_have_block_relation
 from ..models import TutoringPost, TutoringPostLike
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,11 @@ class InstructorLikeAPIView(APIView):
             return Response({"error": "학생 계정만 좋아요를 누를 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
 
         instructor = get_object_or_404(Instructor, id=instructor_id)
+        if users_have_block_relation(request.user, instructor.user):
+            return Response(
+                {"detail": "차단 관계인 사용자입니다."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         like, created = InstructorLike.objects.get_or_create(student=student, instructor=instructor)
 
         if not created:
@@ -67,6 +73,11 @@ class TutoringPostLikeAPIView(APIView):
             return Response({"error": "강사 계정만 좋아요를 누를 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
 
         post = get_object_or_404(TutoringPost, id=post_id)
+        if users_have_block_relation(request.user, post.student.user):
+            return Response(
+                {"detail": "차단 관계인 사용자입니다."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         like, created = TutoringPostLike.objects.get_or_create(instructor=instructor, tutoring_post=post)
 
         if not created:

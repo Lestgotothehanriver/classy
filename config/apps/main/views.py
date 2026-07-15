@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.main.serializers import StudentMainTutorSerializer, InstructorMainStudentSerializer
+from config.apps.block.utils import get_blocked_user_ids
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 메인 화면 관련 View
@@ -37,6 +38,9 @@ class StudentMainAPIView(APIView):
         broad_region = user.region
 
         queryset = Instructor.objects.filter(tutoring_profile__isnull=False).exclude(user=user)
+        blocked_user_ids = get_blocked_user_ids(user)
+        if blocked_user_ids:
+            queryset = queryset.exclude(user_id__in=blocked_user_ids)
 
         # 해당 대규모 지역으로 필터링 예: 서울 강남구 -> 서울로 시작하는 지역들만 필터링
         if broad_region:
@@ -136,6 +140,9 @@ class InstructorMainAPIView(APIView):
         # 지역 맞춤 학생 3명 조회
         broad_region = user.region
         queryset = Student.objects.filter(tutoring_posts__is_active=True).exclude(user=user)
+        blocked_user_ids = get_blocked_user_ids(user)
+        if blocked_user_ids:
+            queryset = queryset.exclude(user_id__in=blocked_user_ids)
         if broad_region:
             broad_region = broad_region.split(' ')[0]
             queryset = queryset.filter(user__region__startswith=broad_region)
@@ -148,4 +155,3 @@ class InstructorMainAPIView(APIView):
             "this_month_total_cash": this_month_cash,
             "recommended_students": student_serializer.data
         })
-

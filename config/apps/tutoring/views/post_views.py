@@ -125,6 +125,13 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
         "subjects", "regions"
     )
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        blocked_user_ids = get_blocked_user_ids(self.request.user)
+        if blocked_user_ids:
+            qs = qs.exclude(student__user_id__in=blocked_user_ids)
+        return qs
+
     def retrieve(self, request, *args, **kwargs):
         TutoringPost.objects.filter(pk=kwargs["pk"]).update(view_count=F("view_count") + 1)
         instance = self.get_object()

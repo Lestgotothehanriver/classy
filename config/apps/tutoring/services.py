@@ -6,6 +6,7 @@ from config.apps.accounts.models import Student, Instructor
 from config.apps.chat_app.models import ChatRoom, ChatMessage
 from .models import TutoringPost, TutoringProposal
 from config.apps.notification.helpers import notify_tutoring_request, notify_tutoring_proposal
+from config.apps.block.utils import users_have_block_relation
 
 STUDENT_DUPLICATE_PROPOSAL_MESSAGE = "동일한 강사분에게 동일한 과외 공고가 이미 전송됐어요"
 INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE = "동일한 과외 공고에 대해서 제안서가 이미 존재해요"
@@ -27,6 +28,8 @@ def create_student_proposal_room(user, instructor_id, post_id):
 
     instructor = get_object_or_404(Instructor, id=instructor_id)
     post = get_object_or_404(TutoringPost, id=post_id, student=student)
+    if users_have_block_relation(user, instructor.user):
+        raise PermissionDenied("차단 관계인 사용자에게는 제안할 수 없습니다.")
 
     room, created = ChatRoom.objects.get_or_create(
         student=student,
@@ -85,6 +88,8 @@ def create_instructor_proposal(user, post_id, message):
         raise PermissionDenied("선생님 계정만 사용할 수 있습니다.")
 
     post = get_object_or_404(TutoringPost, id=post_id)
+    if users_have_block_relation(user, post.student.user):
+        raise PermissionDenied("차단 관계인 사용자에게는 제안할 수 없습니다.")
 
     if TutoringProposal.objects.filter(
         tutoring_post=post,

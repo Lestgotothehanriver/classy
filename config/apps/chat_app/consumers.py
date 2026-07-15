@@ -68,6 +68,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
+        if await self.has_block_relation_in_room():
+            logger.warning(
+                "[BACKEND_DEBUG_CHAT] Connection rejected by user block. room_id=%s, user_id=%s",
+                self.room_id,
+                self.user.id,
+            )
+            await self.close()
+            return
+
         # 그룹 등록 후 연결 수락
         # channel_layer.group_add 함수는, 그룹 이름을 첫 번째 인자로 받고,
         # 해당 이름의 그룹이 존재하지 않는다면 새로 생성, 이미 존재한다면 그룹에 추가합니다.
@@ -96,6 +105,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data or "{}")
 
         if data.get("type") == "message":
+            if await self.has_block_relation_in_room():
+                await self.send(json.dumps({"event": "error", "message": "차단 관계인 사용자와는 메시지를 주고받을 수 없습니다."}))
+                return
+
             # 수락 전이면 상대방(커운터파티)만 메시지 가능
             is_blocked = await self.check_blocked_before_accept()
             if is_blocked:
@@ -167,6 +180,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return ChatRoom.objects.filter(
             Q(pk=self.room_id) & (Q(student__user=self.user) | Q(instructor__user=self.user))
         ).exists()
+
+    @database_sync_to_async
+    def has_block_relation_in_room(self) -> bool:
+        from config.apps.block.utils import users_have_block_relation
+
+        room = ChatRoom.objects.select_related(
+            "student__user", "instructor__user"
+        ).filter(pk=self.room_id).first()
+        if room is None:
+            return True
+        counterpart = (
+            room.instructor.user
+            if room.student.user_id == self.user.id
+            else room.student.user
+        )
+        return users_have_block_relation(self.user, counterpart)
 
     @database_sync_to_async
     def save_message(self, text: str,):

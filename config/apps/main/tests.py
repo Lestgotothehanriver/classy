@@ -7,6 +7,7 @@ from config.apps.accounts.models import User, Student, Instructor, Subject
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.lecture.models import Lecture
 from config.apps.tutoring.models import InstructorInfo, TutoringPost
+from config.apps.block.models import Block
 
 class MainAPIViewSetTests(APITestCase):
 
@@ -97,6 +98,22 @@ class MainAPIViewSetTests(APITestCase):
         # Should still be 1 (only instructor_seoul), and NOT containing student_seoul
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['user_name'], "instructor_seoul")
+
+    def test_main_recommendations_hide_bidirectionally_blocked_users(self):
+        Block.objects.create(
+            user=self.instructor_user,
+            blocked_user=self.student_user,
+        )
+
+        self.client.force_authenticate(user=self.student_user)
+        student_response = self.client.get(reverse('student-main'))
+        self.assertEqual(student_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(student_response.data, [])
+
+        self.client.force_authenticate(user=self.instructor_user)
+        instructor_response = self.client.get(reverse('instructor-main'))
+        self.assertEqual(instructor_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(instructor_response.data['recommended_students'], [])
 
     def test_instructor_main_api(self):
         # 1. First test regular retrieval

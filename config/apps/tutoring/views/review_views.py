@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 import logging
-from config.apps.block.utils import get_blocked_user_ids
+from config.apps.block.utils import get_blocked_user_ids, users_have_block_relation
 
 from config.apps.accounts.models import Student, Instructor
 from ..models import InstructorReview, StudentReview, InstructorInfo
@@ -75,6 +75,9 @@ class InstructorReviewViewSet(
             )
             raise PermissionDenied("학생 계정만 강사 리뷰를 작성할 수 있습니다.")
 
+        instructor = serializer.validated_data["instructor"]
+        if users_have_block_relation(self.request.user, instructor.user):
+            raise PermissionDenied("차단 관계인 사용자에게는 리뷰를 작성할 수 없습니다.")
         serializer.save(student=student)
         logger.info(
             "[REVIEW] 강사 리뷰 작성 완료. student_id=%s, review_id=%s",
@@ -136,6 +139,9 @@ class StudentReviewViewSet(
             )
             raise PermissionDenied("강사 계정만 학생 리뷰를 작성할 수 있습니다.")
 
+        student = serializer.validated_data["student"]
+        if users_have_block_relation(self.request.user, student.user):
+            raise PermissionDenied("차단 관계인 사용자에게는 리뷰를 작성할 수 없습니다.")
         serializer.save(instructor=instructor)
         logger.info(
             "[REVIEW] 학생 리뷰 작성 완료. instructor_id=%s, review_id=%s",
@@ -172,7 +178,9 @@ class StudentReviewListAPIView(generics.ListAPIView):
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
-                qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
+                qs = qs.exclude(
+                    instructor__user_id__in=blocked_user_ids
+                ).exclude(student__user_id__in=blocked_user_ids)
                 
         return qs.select_related(
             "instructor", "instructor__user"

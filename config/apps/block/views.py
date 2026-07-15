@@ -26,6 +26,7 @@ class BlockViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = BlockSerializer
+    pagination_class = None
 
     def get_queryset(self):
         return Block.objects.filter(user=self.request.user).select_related("blocked_user")

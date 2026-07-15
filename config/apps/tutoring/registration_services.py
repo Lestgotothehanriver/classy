@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from config.apps.accounts.models import Subject
 from config.apps.chat_app.models import ChatRoom
+from config.apps.block.utils import users_have_block_relation
 
 from .models import (
     CommissionInvoice,
@@ -40,7 +41,15 @@ def get_chat_room_for_user(chat_room_id, user, lock=False):
     room = queryset.filter(pk=chat_room_id).first()
     if room is None:
         return None, None
-    return room, participant_role(room, user)
+    role = participant_role(room, user)
+    counterpart = (
+        room.instructor.user
+        if role == TutoringSubmission.Role.STUDENT
+        else room.student.user
+    )
+    if users_have_block_relation(user, counterpart):
+        raise RegistrationPermissionError("차단 관계인 사용자의 과외 등록에 접근할 수 없습니다.")
+    return room, role
 
 
 def _fernet():
