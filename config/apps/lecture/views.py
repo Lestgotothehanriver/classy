@@ -149,18 +149,76 @@ class LectureViewSet(
     def stop_sales(self, request, pk=None):
         """
         강의 판매를 중지합니다. (is_active=False로 변경)
-        판매 중지된 강의는 목록에서 노출되지 않습니다.
+        판매 중지된 강의는 탐색 목록에서 노출되지 않고 신규 대여도 차단됩니다.
+        전환 시점(suspended_at)을 기록하여 삭제 grace 기간 계산에 사용합니다.
 
         URL: POST /lectures/write/<pk>/stop-sales/
         """
+        from django.utils import timezone
         lecture = self.get_object()
         lecture.is_active = False
-        lecture.save(update_fields=['is_active'])
+        lecture.suspended_at = timezone.now()
+        lecture.save(update_fields=['is_active', 'suspended_at'])
         logger.info(
             "[LECTURE] 강의 판매 중지. instructor_id=%s, lecture_id=%s",
             request.user.pk, pk
         )
         return Response({"detail": "강의 판매가 중지되었습니다.", "is_active": False}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='resume-sales')
+    def resume_sales(self, request, pk=None):
+        """
+        판매 중지된 강의의 판매를 재개합니다. (is_active=True로 변경, suspended_at 초기화)
+        영상 파일을 다시 올리는 것이 아니라, 동일 강의를 판매대에 다시 올리는 동작입니다.
+
+        URL: POST /lectures/write/<pk>/resume-sales/
+        """
+        lecture = self.get_object()
+        lecture.is_active = True
+        lecture.suspended_at = None
+        lecture.save(update_fields=['is_active', 'suspended_at'])
+        logger.info(
+            "[LECTURE] 강의 판매 재개. instructor_id=%s, lecture_id=%s",
+            request.user.pk, pk
+        )
+        return Response({"detail": "강의 판매가 재개되었습니다.", "is_active": True}, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        강의를 소프트 삭제합니다. (하드 삭제 대신 is_delete=True/deleted_at 세팅)
+
+        삭제 자격은 services.get_lecture_delete_eligibility로 판정하며, 아직 삭제할 수 없는
+        경우 409로 사유(code)를 반환한다.
+          - grace_period: 판매 중지 후 30일 미경과 → {"code","deletable_in_days"}
+          - active_renter: 현재 대여중 학생 존재 → {"code"}
+        소프트 삭제 시 대여/정산 이력(LectureRentalHistory)은 CASCADE로 삭제되지 않고 보존된다.
+        """
+        from django.utils import timezone
+        from .services import get_lecture_delete_eligibility
+
+        lecture = self.get_object()
+        eligibility, days_remaining = get_lecture_delete_eligibility(lecture)
+
+        if eligibility == "grace_period":
+            return Response(
+                {"code": "grace_period", "deletable_in_days": days_remaining},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if eligibility == "active_renter":
+            return Response(
+                {"code": "active_renter"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        lecture.is_delete = True
+        lecture.is_active = False
+        lecture.deleted_at = timezone.now()
+        lecture.save(update_fields=['is_delete', 'is_active', 'deleted_at'])
+        logger.info(
+            "[LECTURE] 강의 소프트 삭제. instructor_id=%s, lecture_id=%s",
+            request.user.pk, lecture.pk
+        )
+        return Response({"code": "deleted"}, status=status.HTTP_200_OK)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -196,7 +254,15 @@ class LectureListAPIView(generics.ListAPIView):
     serializer_class = LectureListSerializer
 
     def get_queryset(self):
-        qs = Lecture.objects.filter(is_active=True, is_delete=False).select_related(
+        # 강사가 본인 강의를 조회(instructor=me)하는 경우에만 판매 중지(is_active=False) 강의를 포함한다.
+        # 그 외(학생 브라우즈, 타 강사 프로필)는 판매중(is_active=True)만 노출. 소프트삭제는 항상 숨김.
+        instructor_param = self.request.query_params.get("instructor")
+        is_own = instructor_param == "me" and self.request.user.is_authenticated
+
+        qs = Lecture.objects.filter(is_delete=False)
+        if not is_own:
+            qs = qs.filter(is_active=True)
+        qs = qs.select_related(
             "instructor", "instructor__user"
         ).prefetch_related("subjects").annotate(
             like_count=Count("likes", distinct=True),
@@ -441,16 +507,16 @@ class LectureDetailAPIView(APIView):
         # context에 request를 전달해야 video 등 FileField URL이 절대경로로 반환됨
         lecture_data = LectureDetailSerializer(lecture, context={"request": request}).data
 
-        # (2) 프리뷰 강의 — 같은 강사의 is_preview=True 영상 (현재 강의 제외)
+        # (2) 프리뷰 강의 — 같은 강사의 is_preview=True 영상 (현재 강의 제외, 판매중지/삭제 제외)
         preview = Lecture.objects.filter(
-            instructor=lecture.instructor, is_preview=True
+            instructor=lecture.instructor, is_preview=True, is_active=True, is_delete=False
         ).exclude(pk=pk).first()
         preview_data = LecturePreviewSerializer(preview).data if preview else None
 
-        # (3) 추천 강의 — 동일 과목을 가진 강의 중 좋아요+조회수 기준 상위 10개
+        # (3) 추천 강의 — 동일 과목을 가진 강의 중 좋아요+조회수 기준 상위 10개 (판매중지/삭제 제외)
         subject_ids = list(lecture.subjects.values_list("id", flat=True))
         recommended_qs = (
-            Lecture.objects.filter(subjects__id__in=subject_ids)
+            Lecture.objects.filter(subjects__id__in=subject_ids, is_active=True, is_delete=False)
             .exclude(pk=pk)
             .exclude(instructor__user_id__in=blocked_user_ids)
             .distinct()
@@ -527,7 +593,8 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
         return qs.order_by("-created_at")
 
     def perform_create(self, serializer):
-        lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"])
+        # 소프트 삭제된 강의에는 댓글 작성 불가 (is_delete=False).
+        lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"], is_delete=False)
         if users_have_block_relation(self.request.user, lecture.instructor.user):
             raise PermissionDenied("차단 관계인 사용자의 강의에는 댓글을 작성할 수 없습니다.")
         serializer.save(author=self.request.user, lecture=lecture)
@@ -699,7 +766,8 @@ class LectureLikeAPIView(APIView):
         """
         from config.apps.accounts.models import Student
 
-        lecture = get_object_or_404(Lecture, pk=pk)
+        # 소프트 삭제된 강의는 찜(좋아요) 토글 불가 (is_delete=False).
+        lecture = get_object_or_404(Lecture, pk=pk, is_delete=False)
         student = get_object_or_404(Student, user=request.user)
 
         if lecture.likes.filter(pk=student.pk).exists():

@@ -1,6 +1,10 @@
+import math
 from datetime import timedelta
 from django.utils import timezone
 from config.apps.cash.models import LectureRentalHistory
+
+# 판매 중지 후 삭제까지의 최소 대기 기간(일).
+DELETE_GRACE_DAYS = 30
 
 def get_lecture_rental_status(user, lecture):
     """
@@ -37,3 +41,44 @@ def has_valid_rental(user, lecture):
     현재 유효한 강의 대여를 보유하고 있는지 여부를 반환합니다.
     """
     return get_lecture_rental_status(user, lecture) == "valid"
+
+
+def get_lecture_delete_eligibility(lecture):
+    """
+    판매 중지된 강의의 '하드(소프트) 삭제' 가능 여부를 판정합니다.
+
+    정책 (이중 체크):
+      1. 대여 이력이 아예 없으면 즉시 삭제 가능.
+      2. 판매 중지 전환 시점(suspended_at) + DELETE_GRACE_DAYS(30일)이 지나지 않았으면 대기.
+      3. 현재 대여중(만료되지 않은) 학생이 한 명이라도 있으면 삭제 불가.
+      4. 위 조건을 모두 통과하면 삭제 가능.
+
+    대여 만료일은 저장되지 않고 `rental.created_at + lecture.rental_period(일)`로 계산되므로,
+    '대여중' 여부는 `created_at > now - rental_period`로 판별한다.
+
+    Returns:
+        tuple[str, int]: (status, days_remaining)
+            status: 'deletable' | 'grace_period' | 'active_renter'
+            days_remaining: grace_period일 때 남은 일수(올림), 그 외 0.
+    """
+    now = timezone.now()
+    rentals = LectureRentalHistory.objects.filter(lecture=lecture, is_canceled=False)
+
+    # 1) 대여 이력이 전혀 없으면 즉시 삭제 가능
+    if not rentals.exists():
+        return ("deletable", 0)
+
+    # 2) 판매 중지 후 30일 grace (suspended_at이 없는 레거시 레코드는 grace 통과)
+    if lecture.suspended_at:
+        grace_end = lecture.suspended_at + timedelta(days=DELETE_GRACE_DAYS)
+        if now < grace_end:
+            days_remaining = max(1, math.ceil((grace_end - now).total_seconds() / 86400))
+            return ("grace_period", days_remaining)
+
+    # 3) 현재 대여중(만료 전) 학생 존재 여부
+    active_cutoff = now - timedelta(days=lecture.rental_period)
+    if rentals.filter(created_at__gt=active_cutoff).exists():
+        return ("active_renter", 0)
+
+    # 4) 모두 통과 → 삭제 가능
+    return ("deletable", 0)

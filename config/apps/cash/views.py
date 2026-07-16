@@ -575,6 +575,14 @@ class RentLectureView(APIView):
                 except Lecture.DoesNotExist:
                     return Response({"error": "Lecture not found."}, status=status.HTTP_404_NOT_FOUND)
 
+                # 판매 중지(is_active=False)/삭제(is_delete=True) 강의는 신규 대여 불가.
+                # (탐색 목록에서 걸러지지만 stale 목록/딥링크로 도달할 수 있으므로 서버에서 최종 차단)
+                if not lecture.is_active or lecture.is_delete:
+                    return Response(
+                        {"error": "판매 중지된 강의입니다."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
                 # Check if user already has an active rental
                 from config.apps.lecture.services import has_valid_rental
                 if has_valid_rental(user, lecture):

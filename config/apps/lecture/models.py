@@ -25,7 +25,8 @@ class Lecture(models.Model):
         likes (ManyToManyField): 강의를 '좋아요(찜)'한 학생 목록.
         rental_period (int): 결제 시 부여되는 대여 기간 (단위: 일).
         created_at (DateTimeField): 강의 업로드 일시.
-        is_active (bool): 강의 활성화(노출) 여부.
+        is_active (bool): 강의 활성화(노출) 여부. False면 '판매 중지' 상태.
+        suspended_at (DateTimeField): 판매 중지(is_active=False)로 전환된 일시. 판매 재개 시 None으로 초기화.
         is_delete (bool): 강사에 의해 삭제(Soft Delete) 처리되었는지 여부.
         deleted_at (DateTimeField): 삭제 처리된 일시.
     """
@@ -44,6 +45,7 @@ class Lecture(models.Model):
     rental_period = models.PositiveIntegerField(default=30, help_text="대여 기간 (일)")
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    suspended_at = models.DateTimeField(null=True, blank=True)
     is_delete = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
