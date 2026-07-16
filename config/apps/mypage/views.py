@@ -4,6 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
 from django.db.models import Exists, OuterRef, Value, BooleanField, Count, Sum
 from django.db.models.functions import Coalesce
+from django.utils import timezone
+from datetime import timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,14 @@ class StudentRentedLectureListView(generics.ListAPIView):
         """
         현재 로그인한 학생이 대여한 강의 쿼리셋을 반환합니다.
 
+        Query Parameters:
+            status (str, optional): 'active'(기본) → 현재 대여중(만료 전),
+                                    'expired' → 대여 기간이 만료된 강의.
+
+        대여 만료일은 저장되지 않고 `rental.created_at + lecture.rental_period(일)`로 계산되므로,
+        각 강의별로 유효 대여 존재 여부를 판정해 active/expired로 분리한다.
+        (같은 강의를 여러 번 대여한 경우, 하나라도 유효하면 active로 본다.)
+
         Returns:
             QuerySet: 대여한 강의 객체 쿼리셋
         """
@@ -36,11 +46,27 @@ class StudentRentedLectureListView(generics.ListAPIView):
         user = self.request.user
         student = getattr(user, 'student_profile', None)
 
-        rented_lecture_ids = LectureRentalHistory.objects.filter(
-            student=user, is_canceled=False
-        ).values_list('lecture_id', flat=True).distinct()
+        status = self.request.query_params.get('status', 'active')
+        now = timezone.now()
 
-        qs = Lecture.objects.filter(id__in=rented_lecture_ids, is_delete=False).select_related(
+        rentals = LectureRentalHistory.objects.filter(
+            student=user, is_canceled=False
+        ).select_related('lecture')
+
+        active_ids = set()
+        expired_ids = set()
+        for rental in rentals:
+            expiration = rental.created_at + timedelta(days=rental.lecture.rental_period)
+            if expiration >= now:
+                active_ids.add(rental.lecture_id)
+            else:
+                expired_ids.add(rental.lecture_id)
+        # 유효 대여가 하나라도 있으면 '대여 중'으로 간주 (만료 집합에서 제외)
+        expired_ids -= active_ids
+
+        target_ids = expired_ids if status == 'expired' else active_ids
+
+        qs = Lecture.objects.filter(id__in=target_ids, is_delete=False).select_related(
             "instructor", "instructor__user"
         ).prefetch_related("subjects").annotate(
             like_count=Count("likes", distinct=True),
