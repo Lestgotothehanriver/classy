@@ -2,6 +2,7 @@ import math
 from datetime import timedelta
 from django.utils import timezone
 from config.apps.cash.models import LectureRentalHistory
+from config.apps.cash.constants import LECTURE_RENTAL_DAYS
 
 # 판매 중지 후 삭제까지의 최소 대기 기간(일).
 DELETE_GRACE_DAYS = 30
@@ -26,9 +27,9 @@ def get_lecture_rental_status(user, lecture):
 
     for rental in rentals:
         if not rental.is_canceled:
-            # 대여 시점에 확정 저장된 만료일 사용 (레거시 null은 계산으로 보정).
+            # 대여 시점에 확정 저장된 만료일 사용 (레거시 null은 30일 정책으로 보정).
             expiration_date = rental.expiration_date or (
-                rental.created_at + timedelta(days=lecture.rental_period)
+                rental.created_at + timedelta(days=LECTURE_RENTAL_DAYS)
             )
             if expiration_date >= now:
                 return "valid"

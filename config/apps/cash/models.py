@@ -100,13 +100,13 @@ class LectureRentalHistory(models.Model):
     expiration_date = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        # 신규 생성 시, 대여 시점의 강의 rental_period로 만료일을 확정 저장한다.
-        # (이후 강사가 rental_period를 바꿔도 기존 대여의 만료일은 유지)
+        # 신규 생성 시, 30일 고정 정책(LECTURE_RENTAL_DAYS)으로 만료일을 확정 저장한다.
         from datetime import timedelta
+        from config.apps.cash.constants import LECTURE_RENTAL_DAYS
         is_new = self._state.adding
         super().save(*args, **kwargs)
         if is_new and self.expiration_date is None:
-            self.expiration_date = self.created_at + timedelta(days=self.lecture.rental_period)
+            self.expiration_date = self.created_at + timedelta(days=LECTURE_RENTAL_DAYS)
             super().save(update_fields=['expiration_date'])
 
     def __str__(self):

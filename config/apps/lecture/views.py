@@ -362,8 +362,8 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
 
     유효한 대여 권한이 있는지 검증한 후, '강의 영상(Streaming URL)'을 반환하는 API View입니다.
 
-    요청받은 강의가 프리뷰용 강의(is_preview=True)이거나, 강사 본인의 강의인 경우 권한을 패스합니다.
-    그 외의 경우, 로그인한 사용자의 LectureRentalHistory 대여 이력을 조회하여 현재 시점 기준 유효한 대여 상태("valid")인지 검증합니다.
+    요청받은 강의가 무료(price=0), 프리뷰용 강의(is_preview=True), 강사 본인의 강의인 경우 권한을 패스합니다.
+    그 외의 유료 강의는 로그인한 사용자의 LectureRentalHistory 대여 이력을 조회하여 현재 시점 기준 유효한 대여 상태("valid")인지 검증합니다.
     대여 내역이 없거나 만료된 경우에는 403 에러를 반환합니다.
 
     Path Parameters:
@@ -386,18 +386,18 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         """
         강의 영상 스트리밍 URL을 반환합니다.
-        - is_preview=True인 경우: 누구나 무료로 시청 가능합니다.
-        - is_preview=False인 경우: 유효한 대여 이력이 없으면 403 반환합니다.
+        - price=0 또는 is_preview=True인 경우: 누구나 무료로 시청 가능합니다.
+        - price>0 이고 is_preview=False인 경우: 유효한 대여 이력이 없으면 403 반환합니다.
           (대여 만료 여부는 Service Layer의 has_valid_rental에서 처리)
         """
         lecture = self.get_object()
         logger.debug(
-            "[STREAM] 스트리밍 요청. user_id=%s, lecture_id=%s, is_preview=%s",
-            request.user.pk, lecture.pk, lecture.is_preview
+            "[STREAM] 스트리밍 요청. user_id=%s, lecture_id=%s, price=%s, is_preview=%s",
+            request.user.pk, lecture.pk, lecture.price, lecture.is_preview
         )
 
-        # 1. 프리뷰 강의이거나, 2. 본인의 강의인 경우 무료 패스
-        if not lecture.is_preview and lecture.instructor.user != request.user:
+        # 무료 강의, 프리뷰 강의, 강사 본인 강의는 대여 없이 스트리밍을 허용한다.
+        if lecture.price > 0 and not lecture.is_preview and lecture.instructor.user != request.user:
             from .services import has_valid_rental
             if not has_valid_rental(request.user, lecture):
                 logger.warning(

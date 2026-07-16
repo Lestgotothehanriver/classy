@@ -583,6 +583,14 @@ class RentLectureView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
+                # 본인 강의는 대여할 수 없다. (강사 본인은 대여 없이 재생 가능하며,
+                # 자기 강의를 대여해 매출/정산 데이터를 만드는 것을 서버에서 차단한다.)
+                if lecture.instructor.user_id == user.pk:
+                    return Response(
+                        {"error": "본인 강의는 대여할 수 없습니다."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
                 # Check if user already has an active rental
                 from config.apps.lecture.services import has_valid_rental
                 if has_valid_rental(user, lecture):
@@ -652,53 +660,17 @@ class CancelLectureRentalView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-
-        try:
-            with transaction.atomic():
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-
-                user = User.objects.select_for_update().get(pk=request.user.pk)
-                
-                try:
-                    # Lock the rental record
-                    rental = LectureRentalHistory.objects.select_for_update().get(pk=pk, student=user)
-                except LectureRentalHistory.DoesNotExist:
-                    return Response({"error": "Rental record not found."}, status=status.HTTP_404_NOT_FOUND)
-
-                if rental.is_canceled:
-                    return Response({"error": "This rental is already canceled."}, status=status.HTTP_400_BAD_REQUEST)
-
-                # Check if it is within 7 days
-                now = timezone.now()
-                cancellation_deadline = rental.created_at + timedelta(days=7)
-                if now > cancellation_deadline:
-                    return Response(
-                        {"error": "Rental cannot be canceled after 7 days."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                # Refund cash
-                user.cash = F('cash') + rental.purchased_cash
-                user.save(update_fields=['cash'])
-                user.refresh_from_db()
-
-                # Mark as canceled
-                rental.is_canceled = True
-                rental.save(update_fields=['is_canceled'])
-
-                return Response({
-                    "message": "Rental canceled and cash refunded.",
-                    "refunded_cash": rental.purchased_cash,
-                    "remaining_cash": user.cash
-                }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.exception("Rental cancellation failed for user=%s rental=%s error=%s", request.user.pk, pk, e)
-            return Response(
-                {"error": "Internal server error while processing cancellation."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # 정책: 강의 대여는 완료 후 취소/캐시 환급이 불가능하다.
+        # (환불 로직은 제거하며, is_canceled 필드는 관리자/스토어 강제 환불 등
+        #  후속 파트의 예외 처리 호환을 위해 모델에는 유지한다.)
+        logger.info(
+            "[CASH] 대여 취소 시도 차단(정책상 불가). user_id=%s, rental_id=%s",
+            request.user.pk, pk
+        )
+        return Response(
+            {"error": "강의 대여는 취소할 수 없습니다."},
+            status=status.HTTP_410_GONE,
+        )
 
 
 # ──────────────────────────────────────────────
@@ -1051,20 +1023,14 @@ class RentalHistoryListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from datetime import timedelta
-        from django.utils import timezone
-
         rentals = LectureRentalHistory.objects.filter(
             student=request.user
         ).select_related('lecture').order_by('-created_at')
 
-        now = timezone.now()
         data = []
         for r in rentals:
-            cancelable = (
-                not r.is_canceled and
-                (now - r.created_at) <= timedelta(days=7)
-            )
+            # 정책상 대여 취소가 불가하므로 항상 False. (하위 호환을 위해 필드는 유지)
+            cancelable = False
             data.append({
                 "id": r.id,
                 "date": r.created_at.isoformat(),

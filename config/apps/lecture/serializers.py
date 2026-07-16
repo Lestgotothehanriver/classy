@@ -145,9 +145,9 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate_rental_period(self, value):
-        if value < 1:
-            raise serializers.ValidationError("대여 기간은 최소 1일 이상이어야 합니다.")
-        return value
+        # 정책: 모든 유료 강의 대여는 30일 고정. 외부 입력값은 무시하고 항상 30으로 강제한다.
+        from config.apps.cash.constants import LECTURE_RENTAL_DAYS
+        return LECTURE_RENTAL_DAYS
 
     def _populate_video_duration(self, validated_data):
         current_duration = validated_data.get("video_duration", 0) or 0
