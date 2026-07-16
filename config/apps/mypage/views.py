@@ -5,7 +5,6 @@ from rest_framework import generics
 from django.db.models import Exists, OuterRef, Value, BooleanField, Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from datetime import timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,8 +34,8 @@ class StudentRentedLectureListView(generics.ListAPIView):
             status (str, optional): 'active'(기본) → 현재 대여중(만료 전),
                                     'expired' → 대여 기간이 만료된 강의.
 
-        대여 만료일은 저장되지 않고 `rental.created_at + lecture.rental_period(일)`로 계산되므로,
-        각 강의별로 유효 대여 존재 여부를 판정해 active/expired로 분리한다.
+        대여 만료일(expiration_date)은 대여 시점에 확정 저장되므로, 이를 기준으로
+        각 강의를 active/expired로 분리한다.
         (같은 강의를 여러 번 대여한 경우, 하나라도 유효하면 active로 본다.)
 
         Returns:
@@ -49,22 +48,22 @@ class StudentRentedLectureListView(generics.ListAPIView):
         status = self.request.query_params.get('status', 'active')
         now = timezone.now()
 
-        rentals = LectureRentalHistory.objects.filter(
-            student=user, is_canceled=False
-        ).select_related('lecture')
+        rentals = LectureRentalHistory.objects.filter(student=user, is_canceled=False)
 
-        active_ids = set()
-        expired_ids = set()
-        for rental in rentals:
-            expiration = rental.created_at + timedelta(days=rental.lecture.rental_period)
-            if expiration >= now:
-                active_ids.add(rental.lecture_id)
-            else:
-                expired_ids.add(rental.lecture_id)
-        # 유효 대여가 하나라도 있으면 '대여 중'으로 간주 (만료 집합에서 제외)
-        expired_ids -= active_ids
-
-        target_ids = expired_ids if status == 'expired' else active_ids
+        # 유효 대여가 하나라도 있는 강의 = '대여 중'
+        active_ids = set(
+            rentals.filter(expiration_date__gt=now).values_list('lecture_id', flat=True)
+        )
+        if status == 'expired':
+            # 만료 대여가 있으나 유효 대여는 없는 강의 = '만료됨'
+            expired_ids = set(
+                rentals.filter(expiration_date__lte=now)
+                .exclude(lecture_id__in=active_ids)
+                .values_list('lecture_id', flat=True)
+            )
+            target_ids = expired_ids
+        else:
+            target_ids = active_ids
 
         qs = Lecture.objects.filter(id__in=target_ids, is_delete=False).select_related(
             "instructor", "instructor__user"
