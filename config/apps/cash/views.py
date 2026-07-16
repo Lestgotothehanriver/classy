@@ -616,7 +616,7 @@ class RentLectureView(APIView):
                     "message": "Lecture rented successfully.",
                     "rental_id": rental.id,
                     "remaining_cash": user.cash,
-                    "expiration_date": rental.created_at + timedelta(days=lecture.rental_period)
+                    "expiration_date": rental.expiration_date
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:

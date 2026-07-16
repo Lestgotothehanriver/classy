@@ -26,7 +26,10 @@ def get_lecture_rental_status(user, lecture):
 
     for rental in rentals:
         if not rental.is_canceled:
-            expiration_date = rental.created_at + timedelta(days=lecture.rental_period)
+            # 대여 시점에 확정 저장된 만료일 사용 (레거시 null은 계산으로 보정).
+            expiration_date = rental.expiration_date or (
+                rental.created_at + timedelta(days=lecture.rental_period)
+            )
             if expiration_date >= now:
                 return "valid"
             has_expired = True
@@ -53,8 +56,7 @@ def get_lecture_delete_eligibility(lecture):
       3. 현재 대여중(만료되지 않은) 학생이 한 명이라도 있으면 삭제 불가.
       4. 위 조건을 모두 통과하면 삭제 가능.
 
-    대여 만료일은 저장되지 않고 `rental.created_at + lecture.rental_period(일)`로 계산되므로,
-    '대여중' 여부는 `created_at > now - rental_period`로 판별한다.
+    '대여중' 여부는 저장된 `expiration_date > now`로 판별한다.
 
     Returns:
         tuple[str, int]: (status, days_remaining)
@@ -75,9 +77,8 @@ def get_lecture_delete_eligibility(lecture):
             days_remaining = max(1, math.ceil((grace_end - now).total_seconds() / 86400))
             return ("grace_period", days_remaining)
 
-    # 3) 현재 대여중(만료 전) 학생 존재 여부
-    active_cutoff = now - timedelta(days=lecture.rental_period)
-    if rentals.filter(created_at__gt=active_cutoff).exists():
+    # 3) 현재 대여중(만료 전) 학생 존재 여부 — 저장된 만료일로 단일 쿼리 판정
+    if rentals.filter(expiration_date__gt=now).exists():
         return ("active_renter", 0)
 
     # 4) 모두 통과 → 삭제 가능

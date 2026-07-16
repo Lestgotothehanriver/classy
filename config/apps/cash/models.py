@@ -88,6 +88,7 @@ class LectureRentalHistory(models.Model):
         is_canceled (bool): 환불 또는 취소되어 대여가 무효화되었는지 여부.
         is_settled (bool): 강사에게 해당 대여건에 대한 수익 정산이 완료되었는지 여부.
         created_at (DateTimeField): 강의 대여(결제) 일시.
+        expiration_date (DateTimeField): 대여 만료 일시. 대여 시점의 강의 rental_period로 확정 저장한다.
     """
     lecture = models.ForeignKey('lecture.Lecture', on_delete=models.CASCADE, related_name='rentals')
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='lecture_rentals')
@@ -96,6 +97,17 @@ class LectureRentalHistory(models.Model):
     is_canceled = models.BooleanField(default=False)
     is_settled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    expiration_date = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # 신규 생성 시, 대여 시점의 강의 rental_period로 만료일을 확정 저장한다.
+        # (이후 강사가 rental_period를 바꿔도 기존 대여의 만료일은 유지)
+        from datetime import timedelta
+        is_new = self._state.adding
+        super().save(*args, **kwargs)
+        if is_new and self.expiration_date is None:
+            self.expiration_date = self.created_at + timedelta(days=self.lecture.rental_period)
+            super().save(update_fields=['expiration_date'])
 
     def __str__(self):
         return f"{self.student} rented {self.lecture} for {self.purchased_cash} cash"
