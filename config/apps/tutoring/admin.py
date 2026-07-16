@@ -119,19 +119,25 @@ class StudentReviewAdmin(admin.ModelAdmin):
 # ── TutoringResource ──────────────────────────────────────────────────────────
 
 def sync_linked_payment_state(resource, notify=True):
-    from config.apps.notification.helpers import notify_fee_payment_confirmed
+    from config.apps.notification.helpers import (
+        notify_fee_payment_confirmed,
+        notify_fee_payment_failed,
+    )
     from config.apps.tutoring.registration_services import refresh_contract_status
 
     registration = getattr(resource, 'registration', None)
     if registration is None:
         if notify and resource.fee_payment_status == 'PAID':
             notify_fee_payment_confirmed(resource)
+        elif notify and resource.fee_payment_status == 'FAILED':
+            notify_fee_payment_failed(resource)
         return
 
     previous_contract_status = registration.contract_status
     invoice = registration.commission_invoices.filter(
         invoice_type=CommissionInvoice.InvoiceType.INITIAL
     ).first()
+    previous_invoice_status = invoice.status if invoice else None
     if invoice:
         if resource.fee_payment_status == 'PAID':
             invoice.status = CommissionInvoice.Status.PAID
@@ -151,6 +157,13 @@ def sync_linked_payment_state(resource, notify=True):
         and previous_contract_status != TutoringRegistration.ContractStatus.ACTIVE
     ):
         notify_fee_payment_confirmed(resource)
+    elif (
+        notify
+        and resource.fee_payment_status == 'FAILED'
+        and previous_invoice_status != CommissionInvoice.Status.FAILED
+    ):
+        # FAILED 전환 시 1회만 발송 (invoice 상태 전환 edge-guard)
+        notify_fee_payment_failed(resource)
 
 
 @admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
@@ -167,7 +180,7 @@ def confirm_fee_payment(modeladmin, request, queryset):
     )
 
 
-@admin.action(description='수수료 납부 실패 처리 (FAILED)')
+@admin.action(description='수수료 납부 실패 처리 (FAILED + 양측 알림)')
 def reject_fee_payment(modeladmin, request, queryset):
     resources = queryset.filter(
         fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION']
@@ -176,9 +189,9 @@ def reject_fee_payment(modeladmin, request, queryset):
     for resource in resources:
         resource.fee_payment_status = 'FAILED'
         resource.save(update_fields=['fee_payment_status'])
-        sync_linked_payment_state(resource, notify=False)
+        sync_linked_payment_state(resource, notify=True)
         updated += 1
-    modeladmin.message_user(request, f'{updated}건 FAILED 처리 완료.')
+    modeladmin.message_user(request, f'{updated}건 FAILED 처리 완료. 양측에 성사 실패 알림을 발송했습니다.')
 
 
 @admin.register(TutoringResource)

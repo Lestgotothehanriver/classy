@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _create(user, ntype, role, title, body, data=None):
-    """Notification 생성 단일 진입점."""
+    """Notification 생성 단일 진입점 (WebSocket 브로드캐스트만)."""
     Notification.objects.create(
         user=user,
         type=ntype,
@@ -21,6 +21,27 @@ def _create(user, ntype, role, title, body, data=None):
         data=data or {},
     )
     logger.info(f"*** [Notify] type={ntype} → user={user.email} ***")
+
+
+def _notify_with_push(user, ntype, role, title, body, data=None):
+    """FCM 푸시 + 인앱 Notification 동시 발송 진입점.
+
+    `_create()`는 WS 브로드캐스트만 하므로 앱 종료/백그라운드에서는 도달하지 않는다.
+    앱 상태와 무관하게 반드시 전달돼야 하는 알림은 이 함수를 사용한다.
+    (패턴 출처: notification/signals.py notify_instructor_status_change)
+
+    FCM data에는 프론트 라우팅을 위해 `type`을 포함하지만, 인앱 Notification의
+    `type`은 별도 컬럼이므로 data에는 넣지 않는다.
+    """
+    data = data or {}
+    from config.apps.notification.fcm import send_push_to_user
+    send_push_to_user(
+        user=user,
+        title=title,
+        body=body,
+        data={'type': ntype, **data},
+    )
+    _create(user, ntype, role, title, body, data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,10 +94,10 @@ def notify_tutoring_proposal(room):
 
 def notify_fee_payment_confirmed(resource):
     """
-    관리자가 수수료 입금을 확인하고 PAID 처리했을 때.
-    → 계약 당사자인 강사와 학생 모두에게 성사 완료 알림.
+    관리자가 수수료 입금을 확인하고 PAID 처리해 계약이 ACTIVE로 전환됐을 때.
+    → 계약 당사자인 강사와 학생 모두에게 성사 완료 알림(FCM + 인앱).
     """
-    _create(
+    _notify_with_push(
         user=resource.instructor.user,
         ntype='tutoring_contract_confirmed',
         role='instructor',
@@ -86,7 +107,7 @@ def notify_fee_payment_confirmed(resource):
             'resource_id': str(resource.id),
         },
     )
-    _create(
+    _notify_with_push(
         user=resource.student.user,
         ntype='tutoring_contract_confirmed',
         role='student',
@@ -96,6 +117,51 @@ def notify_fee_payment_confirmed(resource):
             'resource_id': str(resource.id),
         },
     )
+
+
+def notify_fee_payment_failed(resource):
+    """
+    관리자가 수수료 납부를 실패(FAILED) 처리했을 때.
+    → 계약 당사자인 강사와 학생 모두에게 성사 실패 알림(FCM + 인앱).
+    """
+    for user, role in (
+        (resource.instructor.user, 'instructor'),
+        (resource.student.user, 'student'),
+    ):
+        _notify_with_push(
+            user=user,
+            ntype='tutoring_contract_failed',
+            role=role,
+            title='성사 등록이 실패했습니다.',
+            body='수수료 납부 확인에 실패했어요. 수업 관리에서 다시 확인해 주세요.',
+            data={
+                'resource_id': str(resource.id),
+            },
+        )
+
+
+def notify_registration_mismatched(registration):
+    """
+    양측이 입력한 수업 정보가 서로 달라 MISMATCHED로 전환됐을 때.
+    → 강사와 학생 모두에게 정보 확인 요청 알림(FCM + 인앱).
+
+    호출부에서 '이전 상태 ≠ MISMATCHED' edge-guard로 전환 시 1회만 호출한다.
+    """
+    resource = getattr(registration, 'resource', None)
+    data = {'resource_id': str(resource.id)} if resource is not None else {}
+    # TutoringRegistration.student / .instructor 는 프로필이 아니라 User FK.
+    for user, role in (
+        (registration.instructor, 'instructor'),
+        (registration.student, 'student'),
+    ):
+        _notify_with_push(
+            user=user,
+            ntype='tutoring_contract_mismatch',
+            role=role,
+            title='성사 정보가 일치하지 않습니다.',
+            body='상대방과 입력한 수업 정보가 달라요. 수업 관리에서 다시 확인해 주세요.',
+            data=data,
+        )
 
 
 def notify_tutoring_accept(room, acceptor):

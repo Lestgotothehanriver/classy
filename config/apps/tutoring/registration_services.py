@@ -270,10 +270,24 @@ def save_my_registration(
             )
 
         registration.refresh_from_db()
+        previous_validation_status = registration.attribute_validation_status
         student_submission, instructor_submission, mismatched_fields = (
             _compare_submissions(registration)
         )
         registration.save()
+
+        if (
+            registration.attribute_validation_status
+            == TutoringRegistration.AttributeValidationStatus.MISMATCHED
+            and previous_validation_status
+            != TutoringRegistration.AttributeValidationStatus.MISMATCHED
+        ):
+            # MISMATCHED 전환 시 1회만 양측에 알림 (반복 제출 시 중복 방지)
+            from config.apps.notification.helpers import (
+                notify_registration_mismatched,
+            )
+
+            notify_registration_mismatched(registration)
 
         invoice = None
         if role == TutoringSubmission.Role.INSTRUCTOR:

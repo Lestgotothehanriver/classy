@@ -13,6 +13,8 @@ from config.apps.tutoring.admin import (
     TutoringRegistrationAdmin,
     TutoringResourceAdmin,
     confirm_fee_payment,
+    reject_fee_payment,
+    sync_linked_payment_state,
 )
 from config.apps.tutoring.registration_services import decrypt_account_number
 
@@ -274,7 +276,13 @@ class TutoringRegistrationFlowTest(APITestCase):
         registration = TutoringRegistration.objects.get()
         registration.refresh_from_db()
         self.assertEqual(registration.contract_status, "REGISTERED")
-        self.assertEqual(Notification.objects.count(), 0)
+        # 양측 입력값이 불일치(MISMATCHED)로 전환되면 강사·학생 모두에게 확인 알림.
+        self.assertEqual(
+            Notification.objects.filter(
+                type="tutoring_contract_mismatch"
+            ).count(),
+            2,
+        )
 
         corrected = self.student_client.put(
             self.url,
@@ -285,7 +293,46 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(
             corrected.json()["registration"]["contractStatus"], "ACTIVE"
         )
-        self.assertEqual(Notification.objects.count(), 2)
+        # 값 정정 후 ACTIVE 전환 시 양측에 성사 완료 알림 (불일치 2 + 완료 2).
+        self.assertEqual(
+            Notification.objects.filter(
+                type="tutoring_contract_confirmed"
+            ).count(),
+            2,
+        )
+        self.assertEqual(Notification.objects.count(), 4)
+
+    def test_reject_fee_payment_notifies_both_parties_once(self):
+        self.student_client.put(self.url, self.student_payload(), format="json")
+        self.instructor_client.put(
+            self.url,
+            self.instructor_payload(),
+            format="multipart",
+        )
+        resource = TutoringResource.objects.get()
+
+        reject_fee_payment(
+            Mock(),
+            Mock(),
+            TutoringResource.objects.filter(pk=resource.pk),
+        )
+        resource.refresh_from_db()
+        self.assertEqual(resource.fee_payment_status, "FAILED")
+        self.assertEqual(
+            Notification.objects.filter(
+                type="tutoring_contract_failed"
+            ).count(),
+            2,
+        )
+
+        # 이미 FAILED인 리소스를 다시 동기화해도 중복 발송 없음 (edge-guard).
+        sync_linked_payment_state(resource, notify=True)
+        self.assertEqual(
+            Notification.objects.filter(
+                type="tutoring_contract_failed"
+            ).count(),
+            2,
+        )
 
     def test_outsider_cannot_read_or_submit_registration(self):
         outsider_client = APIClient()
