@@ -96,6 +96,14 @@ class LectureRentalHistory(models.Model):
     remaining_cash = models.PositiveIntegerField()
     is_canceled = models.BooleanField(default=False)
     is_settled = models.BooleanField(default=False)
+    settlement = models.ForeignKey(
+        'cash.SettlementRecord',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='rentals',
+        help_text="이 대여가 귀속된 정산 신청 건. 과거 데이터는 null일 수 있다.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     expiration_date = models.DateTimeField(null=True, blank=True)
 
@@ -171,17 +179,22 @@ class SettlementRecord(models.Model):
     Attributes:
         instructor (ForeignKey): 정산(출금)을 요청한 강사.
         amount (int): 정산 요청한 금액(캐시). (실제 입금 시 플랫폼 수수료 정책이 적용됨)
-        status (str): 정산 처리 상태 (PENDING: 관리자 확인 대기, COMPLETED: 송금 완료).
+        status (str): 정산 처리 상태 (PENDING: 관리자 확인 대기, COMPLETED: 송금 완료, CANCELED: 관리자 취소).
         created_at (DateTimeField): 출금 요청 일시.
+        processed_at (DateTimeField): 관리자가 완료/취소 처리한 일시.
+        admin_note (str): 관리자 운영 메모.
     """
     STATUS_CHOICES = [
         ('PENDING', '대기'),
         ('COMPLETED', '정산완료'),
+        ('CANCELED', '정산취소'),
     ]
     instructor = models.ForeignKey('accounts.Instructor', on_delete=models.CASCADE, related_name='settlements')
     amount = models.PositiveIntegerField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    admin_note = models.TextField(blank=True, default='')
 
     def __str__(self):
         return f"Settlement: {self.instructor.user.user_name} - {self.amount} ({self.get_status_display()})"

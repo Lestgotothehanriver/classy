@@ -14,6 +14,7 @@ from config.apps.accounts.models import Instructor, Student
 from config.apps.common.permissions import IsInstructorUser
 from config.apps.cash.models import LectureRentalHistory
 from .models import Lecture, Comment, SearchHistory
+from .services import can_comment_on_lecture
 from .serializers import (
     LectureListSerializer,
     LectureDetailSerializer,
@@ -597,6 +598,8 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
         lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"], is_delete=False)
         if users_have_block_relation(self.request.user, lecture.instructor.user):
             raise PermissionDenied("차단 관계인 사용자의 강의에는 댓글을 작성할 수 없습니다.")
+        if not can_comment_on_lecture(self.request.user, lecture):
+            raise PermissionDenied("강의 소유자 또는 유효 대여자만 댓글을 작성할 수 있습니다.")
         serializer.save(author=self.request.user, lecture=lecture)
 
     def create(self, request, *args, **kwargs):
@@ -637,7 +640,17 @@ class CommentUpdateDeleteAPIView(generics.UpdateAPIView, generics.DestroyAPIView
     serializer_class = CommentWriteSerializer
 
     def get_queryset(self):
-        return Comment.objects.filter(author=self.request.user)
+        return Comment.objects.filter(author=self.request.user).select_related(
+            "lecture", "lecture__instructor", "lecture__instructor__user"
+        )
+
+    def get_object(self):
+        comment = super().get_object()
+        if users_have_block_relation(self.request.user, comment.lecture.instructor.user):
+            raise PermissionDenied("차단 관계인 사용자의 강의 댓글은 수정하거나 삭제할 수 없습니다.")
+        if not can_comment_on_lecture(self.request.user, comment.lecture):
+            raise PermissionDenied("강의 소유자 또는 유효 대여자만 댓글을 수정하거나 삭제할 수 있습니다.")
+        return comment
 
 
 # ════════════════════════════════════════════════════════════════════

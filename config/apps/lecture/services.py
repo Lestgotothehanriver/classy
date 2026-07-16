@@ -47,6 +47,26 @@ def has_valid_rental(user, lecture):
     return get_lecture_rental_status(user, lecture) == "valid"
 
 
+def can_comment_on_lecture(user, lecture):
+    """
+    강의 댓글 쓰기 권한 보유 여부를 반환합니다.
+
+    무료/프리뷰 강의는 재생 권한과 동일하게 로그인 사용자에게 댓글 작성을
+    허용합니다. 유료 강의는 강의 소유자 또는 유효 대여자만 댓글을 작성,
+    수정, 삭제할 수 있습니다.
+    """
+    if not user or not user.is_authenticated:
+        return False
+
+    if lecture.price == 0 or lecture.is_preview:
+        return True
+
+    if lecture.instructor.user_id == user.id:
+        return True
+
+    return has_valid_rental(user, lecture)
+
+
 def get_lecture_delete_eligibility(lecture):
     """
     판매 중지된 강의의 '하드(소프트) 삭제' 가능 여부를 판정합니다.

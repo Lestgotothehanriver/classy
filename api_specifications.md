@@ -112,8 +112,8 @@
 | 강의 스트리밍 URL | `GET` | `/lectures/<int:pk>/stream/` | **[Path]**<br>- `pk` (int, 강의 ID) | 로그인한 유저의 대여 권한(LectureRentalHistory)을 검증하여 유효한 대여 상태이거나, 프리뷰 강의 또는 강사 본인의 강의인 경우 시청용 동영상 스트리밍 주소를 반환합니다. |
 | 강의 찜하기 토글 | `POST` | `/lectures/<int:pk>/like/` | **[Path]**<br>- `pk` (int, 강의 ID) | 학생 회원이 동영상 강의를 찜 목록에 등록하거나 취소(토글)합니다. 강사 계정 등 학생 프로필이 없는 경우 404를 반환합니다. |
 | 강의 댓글 목록 조회 | `GET` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID) | 특정 강의에 작성된 최상위 부모 댓글 목록을 최신순 조회하며, 대댓글은 replies 필드 아래 중첩 반환합니다. 차단한 유저의 댓글은 제외됩니다. |
-| 강의 댓글 작성 | `POST` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID)<br>**[Body (JSON)]**<br>- `content` (str, 필수)<br>- `parent` (int, 선택)<br>- `referenced_person` (int, 선택) | VOD 강의에 새로운 댓글 또는 대댓글을 작성합니다. 대댓글 작성 시 부모 댓글 및 멘션 대상 유저를 연결할 수 있습니다. |
-| 댓글 수정/삭제 | `PATCH`<br>`DELETE` | `/lectures/comments/<int:pk>/` | **[Path]**<br>- `pk` (int, 댓글 ID)<br>**[Body (JSON)]** (PATCH 시)<br>- `content` (str, 필수) | 본인이 작성한 댓글의 내용을 변경(PATCH)하거나 완전히 삭제(DELETE)합니다. |
+| 강의 댓글 작성 | `POST` | `/lectures/<int:lecture_id>/comments/` | **[Path]**<br>- `lecture_id` (int, 강의 ID)<br>**[Body (JSON)]**<br>- `content` (str, 필수)<br>- `parent` (int, 선택)<br>- `referenced_person` (int, 선택) | VOD 강의에 새로운 댓글 또는 대댓글을 작성합니다. 무료/프리뷰 강의는 로그인 사용자에게 허용하고, 유료 강의는 강의 소유자 또는 유효 대여자만 작성할 수 있습니다. |
+| 댓글 수정/삭제 | `PATCH`<br>`DELETE` | `/lectures/comments/<int:pk>/` | **[Path]**<br>- `pk` (int, 댓글 ID)<br>**[Body (JSON)]** (PATCH 시)<br>- `content` (str, 필수) | 본인이 작성한 댓글만 변경(PATCH)하거나 삭제(DELETE)할 수 있습니다. 단, 유료 강의 댓글은 현재 강의 소유자 또는 유효 대여자 권한도 유지되어야 합니다. |
 | 최근 검색어 조회 | `GET` | `/lectures/search-history/` | 없음 | 로그인한 학생 회원의 최근 검색 키워드 내역을 최대 5개까지 최신순으로 조회합니다. 학생 프로필이 없으면 빈 목록이 반환됩니다. |
 | 최근 검색어 추가 저장 | `POST` | `/lectures/search-history/` | **[Body (JSON)]**<br>- `query` (str, 필수) | 검색한 단어를 최근 검색 이력에 저장합니다. 저장 후 최대 보관 개수인 5개를 초과하면 가장 오래된 기록을 자동으로 삭제(FIFO)합니다. |
 | 최근 검색어 개별 삭제 | `DELETE` | `/lectures/search-history/<int:pk>/` | **[Path]**<br>- `pk` (int, 검색어 기록 ID) | 본인의 최근 검색어 이력 중 특정 항목 하나를 개별 삭제합니다. |

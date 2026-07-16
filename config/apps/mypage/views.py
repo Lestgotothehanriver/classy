@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
+from django.db import transaction
 from django.db.models import Exists, OuterRef, Value, BooleanField, Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -184,28 +185,39 @@ class InstructorSettlementRequestView(APIView):
         if not instructor:
             return Response({"detail": "Instructor profile is required."}, status=403)
 
-        # 강사의 강의들 중 아직 정산되지 않은 렌탈 기록들 가져오기
-        unsettled_rentals = LectureRentalHistory.objects.filter(
-            lecture__instructor=instructor,
-            is_canceled=False,
-            is_settled=False
-        )
-        
-        total_cash = unsettled_rentals.aggregate(
-            total=Coalesce(Sum('purchased_cash'), 0)
-        )['total']
-        
-        if total_cash == 0:
-            return Response({"detail": "No settleable revenue found."}, status=400)
-            
-        settlement_record = SettlementRecord.objects.create(
-            instructor=instructor,
-            amount=total_cash,
-            status='PENDING'
-        )
-        
-        unsettled_rentals.update(is_settled=True)
-        
+        # 동시성 보호: 대상 대여 row를 select_for_update로 잠근 뒤,
+        # 잠금 안에서 합계를 다시 계산하고 정산 건에 귀속시킨다.
+        # 이렇게 하면 중복 클릭/동시 요청이 직렬화되어 같은 대여가
+        # 두 정산 건에 이중으로 들어가지 않는다.
+        # 주의: aggregate()는 별도 쿼리라 FOR UPDATE 잠금이 걸리지 않으므로,
+        #      values_list로 먼저 row를 materialize해 실제로 잠근 뒤 파이썬에서 합산한다.
+        with transaction.atomic():
+            locked_rentals = list(
+                LectureRentalHistory.objects.select_for_update().filter(
+                    lecture__instructor=instructor,
+                    is_canceled=False,
+                    is_settled=False,
+                    purchased_cash__gt=0,  # 무료/0캐시 대여는 정산 대상에서 제외
+                ).values_list('id', 'purchased_cash')
+            )
+
+            total_cash = sum(cash for _, cash in locked_rentals)
+
+            if total_cash == 0:
+                return Response({"detail": "No settleable revenue found."}, status=400)
+
+            settlement_record = SettlementRecord.objects.create(
+                instructor=instructor,
+                amount=total_cash,
+                status='PENDING'
+            )
+
+            # is_settled 마킹과 정산 건 FK 연결을 함께 기록해 감사 추적을 남긴다.
+            rental_ids = [rental_id for rental_id, _ in locked_rentals]
+            LectureRentalHistory.objects.filter(id__in=rental_ids).update(
+                is_settled=True, settlement=settlement_record
+            )
+
         logger.debug("[BACKEND_DEBUG_MYPAGE] SettlementRequest SUCCESS - amount: %d", total_cash)
         return Response({
             "detail": "Settlement requested successfully.",
