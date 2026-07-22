@@ -27,8 +27,6 @@ class ChatRoomAdmin(admin.ModelAdmin):
     search_fields = ('title',)
     ordering = ('-created_at',)
 
-admin.site.register(ChatRoom, ChatRoomAdmin)
 admin.site.register(Image)
 admin.site.register(UserDeviceToken)
-admin.site.register(ChatMessage, ChatMessageAdmin)
 # Register your models here.
