@@ -23,6 +23,10 @@ from .serializers import (
 )
 import logging
 import random
+from datetime import timedelta
+
+# 전화번호 인증번호(OTP) 유효 시간
+PHONE_VERIFICATION_EXPIRY = timedelta(minutes=3)
 from solapi import SolapiMessageService
 from solapi.model import RequestMessage
 
@@ -818,7 +822,8 @@ class VerifyPhoneChangeAPIView(APIView):
             user=request.user,
             phone=phone,
             code=code,
-            is_verified=False
+            is_verified=False,
+            created_at__gte=timezone.now() - PHONE_VERIFICATION_EXPIRY,
         ).order_by('-created_at').first()
         
         if not verification:
@@ -1154,7 +1159,8 @@ class VerifyAuthSMSAPIView(APIView):
         verification = PhoneVerification.objects.filter(
             phone=phone_number,
             code=code,
-            is_verified=False
+            is_verified=False,
+            created_at__gte=timezone.now() - PHONE_VERIFICATION_EXPIRY,
         ).order_by('-created_at').first()
         
         if not verification:
