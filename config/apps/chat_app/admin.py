@@ -1,22 +1,29 @@
 from django.contrib import admin
 from .models import ChatRoom, ChatMessage, Image, UserDeviceToken
 
+@admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ('room_title', 'sender_nickname', 'sender_name', 'text')
-    search_fields = ('room_title', 'sender_nickname', 'sender_name')
+    list_display = ('id', 'get_room_title', 'get_sender_username', 'text', 'created_at')
+    list_display_links = ('id', 'text')
+    list_filter = ('room__title', 'created_at')
+    search_fields = ('text', 'sender__user_name','room__title')
     ordering = ('-created_at',)
+    raw_id_fields = ('room', 'sender')
 
-    def sender_nickname(self, obj):
-        return obj.sender.nickname 
+    @admin.display(description='채팅방 제목')
+    def get_room_title(self, obj):
+        return obj.room.title or f"Room {obj.room.pk}"
 
-    def sender_name(self, obj):
-        return obj.sender.name
+    @admin.display(description='발신자')
+    def get_sender_username(self, obj):
+        return obj.sender.user_name
 
-    def room_title(self, obj):
-        return obj.room.title
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('room', 'sender')
+
 
 class ChatRoomAdmin(admin.ModelAdmin):
-    list_display = ('title',)
+    list_display = ('id', 'title', 'created_at')
     search_fields = ('title',)
     ordering = ('-created_at',)
 

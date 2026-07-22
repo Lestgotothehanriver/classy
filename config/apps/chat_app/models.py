@@ -34,7 +34,7 @@ class ChatRoom(models.Model):
     instructor = models.ForeignKey('accounts.Instructor', related_name="chat_rooms", on_delete=models.CASCADE)
     post = models.ForeignKey('tutoring.TutoringPost', related_name="chat_rooms", on_delete=models.CASCADE)
 
-    title        = models.CharField(max_length=255, blank=True)
+    title = models.CharField(max_length=255, blank=True)
 
     # 제안/요청을 시작한 유저 (상대방 = counterparty)
     initiated_by = models.ForeignKey(
