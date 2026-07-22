@@ -117,6 +117,16 @@ REST_FRAMEWORK = {
 }
 
 # ──────────────────────────────────────────────
+# 약관/개인정보 정책 버전 (단일 원본)
+# ──────────────────────────────────────────────
+# 시행일(=버전)은 여기서 관리한다. classy-web 문서의 시행일과 반드시 일치시킬 것.
+# 동의 기록 시 이 값이 UserConsent.version 으로 찍히며, 향후 재동의 판정 기준이 된다.
+POLICY_VERSIONS = {
+    "terms": "2026-01-01",
+    "privacy": "2026-01-01",
+}
+
+# ──────────────────────────────────────────────
 # CORS Settings
 # ──────────────────────────────────────────────
 # CORS_ALLOW_ALL_ORIGINS is set in local.py. Prod uses CSRF_TRUSTED_ORIGINS and ALLOWED_HOSTS.

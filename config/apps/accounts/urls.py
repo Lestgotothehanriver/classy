@@ -13,6 +13,7 @@ from .views import (
     SubjectListAPIView,
     SendAuthSMSAPIView, VerifyAuthSMSAPIView,
     ProfileCheckAPIView, RoleAddAPIView,
+    PolicyVersionAPIView,
 )
 
 app_name = "accounts"
@@ -21,6 +22,7 @@ urlpatterns = [
     path("signup/student/", StudentSignupAPIView.as_view(), name="signup-student"),
     path("signup/instructor/", InstructorSignupAPIView.as_view(), name="signup-instructor"),
     path("signup/instructor/retry/", InstructorRetryAPIView.as_view(), name="retry-instructor"),
+    path("policy-version/", PolicyVersionAPIView.as_view(), name="policy-version"),
     path("login/", LoginAPIView.as_view(), name="login"),
     path("check-username/", CheckUsernameAPIView.as_view(), name="check-username"),
     path("check-email/", CheckEmailAPIView.as_view(), name="check-email"),

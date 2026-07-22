@@ -5,6 +5,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Student, Instructor, Subject
+from .consent import record_consent
 from config.apps.pending.models import PendingInstructor, File
 from config.apps.notification.models import DeviceToken
 
@@ -67,10 +68,18 @@ class StudentSignupSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
 
+    # 동의 기록용 (write_only). 버전 미지정 시 서버 POLICY_VERSIONS를 권위값으로 사용.
+    terms_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    privacy_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    agreed_marketing = serializers.BooleanField(required=False, default=False, write_only=True)
+
     @transaction.atomic
     def create(self, validated_data):
         studentsubject_ids = validated_data.pop("studentsubject", []) or []
         validated_data.pop("interests", None)
+        terms_version = validated_data.pop("terms_version", "") or ""
+        privacy_version = validated_data.pop("privacy_version", "") or ""
+        agreed_marketing = validated_data.pop("agreed_marketing", False)
 
         email = validated_data["email"].lower()
         password = validated_data["password"]
@@ -104,6 +113,15 @@ class StudentSignupSerializer(serializers.Serializer):
                 obj, _ = Subject.objects.get_or_create(number=num)
                 subjects.append(obj)
             student_profile.subjects.set(subjects)
+
+        # 필수/선택 동의 기록 (append-only 감사 로그 + 마케팅 현재상태 플래그)
+        record_consent(
+            user,
+            terms_version=terms_version,
+            privacy_version=privacy_version,
+            agreed_marketing=agreed_marketing,
+            source="signup",
+        )
         return user
     # 닉네임 중복 체크 함수
     def is_validate_user_name(self, user_name):
@@ -170,9 +188,17 @@ class InstructorSignupSerializer(serializers.Serializer):
     fcm_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
     platform = serializers.CharField(required=False, allow_blank=True, write_only=True, default='android')
 
+    # 동의 기록용 (write_only). 버전 미지정 시 서버 POLICY_VERSIONS를 권위값으로 사용.
+    terms_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    privacy_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    agreed_marketing = serializers.BooleanField(required=False, default=False, write_only=True)
+
     @transaction.atomic
     def create(self, validated_data):
         import json
+        terms_version = validated_data.pop("terms_version", "") or ""
+        privacy_version = validated_data.pop("privacy_version", "") or ""
+        agreed_marketing = validated_data.pop("agreed_marketing", False)
         # CharField로 받은 instructorsubject를 List[int]로 파싱
         raw = validated_data.pop("instructorsubject", "[]") or "[]"
         if isinstance(raw, list):
@@ -244,8 +270,16 @@ class InstructorSignupSerializer(serializers.Serializer):
                 defaults={'user': user, 'platform': platform, 'is_active': True},
             )
 
+        # 필수/선택 동의 기록 (append-only 감사 로그 + 마케팅 현재상태 플래그)
+        record_consent(
+            user,
+            terms_version=terms_version,
+            privacy_version=privacy_version,
+            agreed_marketing=agreed_marketing,
+            source="signup",
+        )
         return user
-    
+
     # 닉네임 중복 체크 함수
     def is_validate_user_name(self, user_name):
         return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크

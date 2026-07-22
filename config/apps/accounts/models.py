@@ -10,6 +10,7 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 sex_choices = [
@@ -79,7 +80,47 @@ class User(AbstractUser):
     is_banned = models.BooleanField(default=False)
     withdraw_reason = models.CharField(max_length=255, blank=True)
     withdraw_reason_detail = models.TextField(blank=True)  # 탈퇴 상세 사유
+    # 마케팅 수신 동의 현재 상태(단일 진실값). 동의 '이력'은 UserConsent에 append 된다.
+    # 발송 시스템은 이 플래그를 참조한다. (기본 미동의)
+    marketing_opt_in = models.BooleanField(default=False)
 
+
+class UserConsent(models.Model):
+    """약관·개인정보·마케팅 동의 이력 (append-only 감사 로그).
+
+    갱신/삭제하지 않고 새 행만 추가한다. 버전별·시점별 동의 이력이 축적되어
+    재동의 판정과 마케팅 opt-in/opt-out 이력의 근거가 된다.
+    현재의 마케팅 수신 여부는 User.marketing_opt_in 플래그가 보유한다.
+    """
+    DOC_TERMS = "terms"
+    DOC_PRIVACY = "privacy"
+    DOC_MARKETING = "marketing"
+    DOC_TYPE_CHOICES = [
+        (DOC_TERMS, "이용약관"),
+        (DOC_PRIVACY, "개인정보처리방침"),
+        (DOC_MARKETING, "마케팅 수신"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="consents",
+    )
+    doc_type = models.CharField(max_length=20, choices=DOC_TYPE_CHOICES)
+    # 정책 시행일(=버전). 예 "2026-01-01". 마케팅 등 버전이 없는 항목은 blank 허용.
+    version = models.CharField(max_length=20, blank=True)
+    # 동의 여부. 마케팅은 opt-in(True)/opt-out(False)을 이 값으로 표현한다.
+    agreed = models.BooleanField(default=True)
+    agreed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-agreed_at"]
+        indexes = [
+            models.Index(fields=["user", "doc_type"], name="accounts_us_user_id_doc_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} {self.doc_type} v{self.version} agreed={self.agreed}"
 
 
 class Student(models.Model):

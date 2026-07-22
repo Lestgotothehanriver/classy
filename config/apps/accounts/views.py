@@ -29,6 +29,22 @@ from solapi.model import RequestMessage
 logger = logging.getLogger(__name__)
 
 
+class PolicyVersionAPIView(APIView):
+    """
+    URL: /accounts/policy-version/
+
+    약관/개인정보 현재 정책 버전(시행일)을 반환한다. 앱이 버전을 하드코딩하지 않고
+    이 값을 표시/기록에 사용하며, 향후 재동의 판정의 기준이 된다. 인증 불필요.
+
+    Returns:
+        Response: {"terms": "2026-01-01", "privacy": "2026-01-01"}
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response(getattr(settings, "POLICY_VERSIONS", {}), status=status.HTTP_200_OK)
+
+
 class StudentSignupAPIView(APIView):
     """
     URL: /accounts/signup/student/
@@ -67,7 +83,7 @@ class StudentSignupAPIView(APIView):
 
     def post(self, request):
         logger.debug("[BACKEND_DEBUG_AUTH] StudentSignup - START (data: %s)", request.data)
-        serializer = StudentSignupSerializer(data=request.data)
+        serializer = StudentSignupSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             logger.warning(f"*** [StudentSignup] Validation failed: {serializer.errors} ***")
             serializer.is_valid(raise_exception=True)
@@ -160,7 +176,7 @@ class InstructorSignupAPIView(GenericAPIView):
 
     def post(self, request):
         logger.debug("[BACKEND_DEBUG_AUTH] InstructorSignup - email: %s", request.data.get('email'))
-        serializer = InstructorSignupSerializer(data=request.data)
+        serializer = InstructorSignupSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             logger.warning(f"*** [InstructorSignup] Validation failed: {serializer.errors} ***")
             serializer.is_valid(raise_exception=True)
