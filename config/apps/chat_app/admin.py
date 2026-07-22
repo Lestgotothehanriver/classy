@@ -21,7 +21,7 @@ class ChatMessageAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('room', 'sender')
 
-
+@admin.register(ChatRoom)
 class ChatRoomAdmin(admin.ModelAdmin):
     list_display = ('id', 'title', 'created_at')
     search_fields = ('title',)
