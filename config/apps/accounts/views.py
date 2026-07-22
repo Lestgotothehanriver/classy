@@ -818,17 +818,21 @@ class VerifyPhoneChangeAPIView(APIView):
             return Response({"error": "전화번호와 인증번호가 필요합니다."}, status=400)
             
         from .models import PhoneVerification
+        # 1) 코드 일치 여부 먼저 확인 (시간 무관)
         verification = PhoneVerification.objects.filter(
             user=request.user,
             phone=phone,
             code=code,
             is_verified=False,
-            created_at__gte=timezone.now() - PHONE_VERIFICATION_EXPIRY,
         ).order_by('-created_at').first()
-        
+
         if not verification:
-            return Response({"error": "인증번호가 올바르지 않거나 만료되었습니다."}, status=400)
-            
+            return Response({"error": "인증번호가 올바르지 않습니다."}, status=400)
+
+        # 2) 만료 여부 확인
+        if verification.created_at < timezone.now() - PHONE_VERIFICATION_EXPIRY:
+            return Response({"error": "인증번호가 만료되었습니다. 다시 요청해주세요."}, status=400)
+
         # 유저 전화번호 업데이트
         user = request.user
         user.phone = phone
@@ -1156,16 +1160,20 @@ class VerifyAuthSMSAPIView(APIView):
             return Response({"error": "전화번호와 인증번호가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
             
         from .models import PhoneVerification
+        # 1) 코드 일치 여부 먼저 확인 (시간 무관)
         verification = PhoneVerification.objects.filter(
             phone=phone_number,
             code=code,
             is_verified=False,
-            created_at__gte=timezone.now() - PHONE_VERIFICATION_EXPIRY,
         ).order_by('-created_at').first()
-        
+
         if not verification:
-            return Response({"error": "인증번호가 올바르지 않거나 만료되었습니다."}, status=status.HTTP_400_BAD_REQUEST)
-            
+            return Response({"error": "인증번호가 올바르지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2) 만료 여부 확인
+        if verification.created_at < timezone.now() - PHONE_VERIFICATION_EXPIRY:
+            return Response({"error": "인증번호가 만료되었습니다. 다시 요청해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+
         verification.is_verified = True
         verification.save(update_fields=['is_verified'])
         
