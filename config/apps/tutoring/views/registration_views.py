@@ -157,3 +157,26 @@ class CommissionPaymentView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(serialize_payment(invoice))
+
+
+class PaymentInfoView(APIView):
+    """성사 수수료 입금 계좌 및 수수료율 등 전역 결제 설정을 반환합니다.
+
+    특정 인보이스에 종속되지 않는 정적 설정값이므로, 성사 등록 플로우처럼
+    아직 인보이스가 생성되기 전 화면에서도 계좌/요율을 조회할 수 있습니다.
+    앱이 계좌번호·수수료율을 하드코딩하지 않도록 하기 위한 엔드포인트입니다.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.conf import settings
+
+        return Response(
+            {
+                "bank": settings.TUTORING_PAYMENT_BANK,
+                "accountNumber": settings.TUTORING_PAYMENT_ACCOUNT_NUMBER,
+                "regularCommissionRateBps": settings.TUTORING_REGULAR_COMMISSION_RATE_BPS,
+                "shortTermCommissionRateBps": settings.TUTORING_SHORT_TERM_COMMISSION_RATE_BPS,
+            }
+        )

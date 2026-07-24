@@ -30,6 +30,7 @@ from .views import (
     ChatRoomTutoringRegistrationView,
     CommissionPaymentView,
     MyTutoringRegistrationView,
+    PaymentInfoView,
 )
 
 router = SimpleRouter()
@@ -62,6 +63,8 @@ router.register(r"resources", TutoringResourceViewSet, basename="tutoring-resour
 
 
 urlpatterns = [
+    # 성사 수수료 입금 계좌·수수료율 등 전역 결제 설정 (인보이스 무관 정적 값)
+    path("payment-info/", PaymentInfoView.as_view(), name="payment-info"),
     path(
         "resources/chatrooms/<int:chat_room_id>/",
         ChatRoomTutoringRegistrationView.as_view(),

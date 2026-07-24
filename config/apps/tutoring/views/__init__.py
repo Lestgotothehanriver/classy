@@ -33,4 +33,5 @@ from .registration_views import (
     ChatRoomTutoringRegistrationView,
     CommissionPaymentView,
     MyTutoringRegistrationView,
+    PaymentInfoView,
 )

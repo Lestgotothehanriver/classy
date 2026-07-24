@@ -27,18 +27,42 @@ logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
 # 상품 매핑 (Store product_id → 캐시 / 원화)
+# 가격 정책: 100캐시 = 120원 (캐시 × 1.2)
+# ⚠️ krw는 서버가 기록/표시하는 값이며, 실제 청구액은 App Store / Play
+#    콘솔의 상품 가격이 소스입니다. 스토어 상품 가격도 동일하게 맞춰야 합니다.
 # ──────────────────────────────────────────────
 PRODUCT_CASH_MAP = {
-    'cash_100':   {'cash': 100,   'krw': 100},
-    'cash_500':   {'cash': 500,   'krw': 500},
-    'cash_1000':  {'cash': 1000,  'krw': 1000},
-    'cash_5000':  {'cash': 5000,  'krw': 5000},
-    'cash_10000': {'cash': 10000, 'krw': 10000},
-    'cash_50000': {'cash': 50000, 'krw': 50000},
+    'cash_100':   {'cash': 100,   'krw': 120},
+    'cash_500':   {'cash': 500,   'krw': 600},
+    'cash_1000':  {'cash': 1000,  'krw': 1200},
+    'cash_5000':  {'cash': 5000,  'krw': 6000},
+    'cash_10000': {'cash': 10000, 'krw': 12000},
+    'cash_50000': {'cash': 50000, 'krw': 60000},
 }
 
 # 수수료율 (Apple/Google 기본 30%)
 STORE_FEE_RATE = 0.30
+
+
+class CashPackageListView(APIView):
+    """캐시 충전 상품(패키지) 목록을 반환합니다.
+
+    앱이 가격표를 하드코딩하지 않고 서버에서 내려받도록 하기 위한 조회 API입니다.
+    price는 표시용 원화 금액이며, 실제 청구액은 스토어 상품 가격이 소스입니다.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        packages = [
+            {
+                "productId": product_id,
+                "cash": info["cash"],
+                "price": info["krw"],
+            }
+            for product_id, info in PRODUCT_CASH_MAP.items()
+        ]
+        return Response({"results": packages})
 
 
 # PurchaseRateThrottle is imported from config.throttles
