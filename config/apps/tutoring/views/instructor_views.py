@@ -45,7 +45,10 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     serializer_class = InstructorListSerializer
 
     def get_queryset(self):
-        qs = Instructor.objects.all().select_related("tutoring_profile")
+        # 과외 프로필(InstructorInfo)을 등록 완료한 강사만 노출한다.
+        qs = Instructor.objects.filter(
+            tutoring_profile__isnull=False
+        ).select_related("tutoring_profile")
 
         if self.request.user.is_authenticated:
             qs = qs.exclude(user=self.request.user)
