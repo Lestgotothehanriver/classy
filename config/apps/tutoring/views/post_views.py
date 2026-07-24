@@ -133,8 +133,12 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
         return qs
 
     def retrieve(self, request, *args, **kwargs):
-        TutoringPost.objects.filter(pk=kwargs["pk"]).update(view_count=F("view_count") + 1)
         instance = self.get_object()
+        # 소유 학생 본인이 자기 공고를 열람할 때는 조회수를 올리지 않는다.
+        is_owner = getattr(instance.student, "user_id", None) == request.user.id
+        if not is_owner:
+            TutoringPost.objects.filter(pk=instance.pk).update(view_count=F("view_count") + 1)
+            instance.refresh_from_db(fields=["view_count"])
         serializer = self.get_serializer(instance)
         data = serializer.data
 
