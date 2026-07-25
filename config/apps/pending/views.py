@@ -86,6 +86,7 @@ class PendingCreateAPIView(APIView):
             return Response({
                 "exists": False,
                 "status": None,
+                "rejection_reason": "",
                 "university" : instructor.university,
                 "student_number" : instructor.student_number,
                 "field" : instructor.department,
@@ -95,6 +96,7 @@ class PendingCreateAPIView(APIView):
         return Response({
             "exists": True,
             "status": pending_info.status,
+            "rejection_reason": pending_info.rejection_reason,
             "university" : instructor.university,
             "student_number" : instructor.student_number,
             "field" : instructor.department,
@@ -124,9 +126,14 @@ class PendingUploadView(APIView):
     def post(self, request):
         user = request.user
         pending_instructor = user.instructor_profile.pending_info
+        # 재제출 시 인증 대기로 되돌리고, 이전 심사 결과(반려 사유·처리자)를 초기화합니다.
+        # 과거 반려 사유는 반려 시점 AdminActionLog 에 이미 보존되어 있습니다.
         pending_instructor.status = PendingInstructor.Status.PENDING
+        pending_instructor.rejection_reason = ""
+        pending_instructor.reviewed_by = None
+        pending_instructor.reviewed_at = None
         pending_instructor.save()
-        
+
         files = request.FILES.getlist('files')
         if files:
             pending_instructor.files.all().delete()

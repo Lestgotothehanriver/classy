@@ -1,47 +1,8 @@
 from django.contrib import admin
-from django.utils.html import format_html
 
 from config.apps.accounts.models import User, Student, Instructor, Subject
-from config.apps.pending.models import PendingInstructor, File
 
-
-# ── File 인라인 (PendingInstructor 상세에서 첨부 파일 확인) ──────────────────
-class FileInline(admin.TabularInline):
-    model = File
-    extra = 0
-    readonly_fields = ("file_link",)
-    fields = ("file_link",)
-    can_delete = False
-
-    def file_link(self, obj):
-        if obj.pending_file:
-            return format_html(
-                '<a href="{}" target="_blank">{}</a>',
-                obj.pending_file.url,
-                obj.pending_file.name.split("/")[-1],
-            )
-        return "-"
-
-    file_link.short_description = "첨부 파일"
-
-
-# ── PendingInstructor ────────────────────────────────────────────────────────
-@admin.register(PendingInstructor)
-class PendingInstructorAdmin(admin.ModelAdmin):
-    list_display  = ("id", "get_username", "get_email", "status", "applied_at")
-    list_filter   = ("status",)
-    search_fields = ("instructor_profile__user__username", "instructor_profile__user__email")
-    readonly_fields = ("applied_at",)
-    ordering      = ("-applied_at",)
-    inlines       = [FileInline]
-
-    def get_username(self, obj):
-        return obj.instructor_profile.user.username
-    get_username.short_description = "강사 아이디"
-
-    def get_email(self, obj):
-        return obj.instructor_profile.user.email
-    get_email.short_description = "이메일"
+# PendingInstructor(학력 인증) 어드민은 config.apps.pending.admin 로 이동했습니다.
 
 
 # ── User ─────────────────────────────────────────────────────────────────────

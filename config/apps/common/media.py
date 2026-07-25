@@ -17,13 +17,29 @@ def _file_iterator(file_obj, start: int, length: int, chunk_size: int = 8192):
         yield chunk
 
 
+# 학력 인증 문서 등 민감 파일이 저장되는 경로. 직접 접근을 차단하고
+# 슈퍼관리자 전용 스트리밍 엔드포인트로만 열람하도록 합니다.
+PROTECTED_MEDIA_PREFIXES = ("files/",)
+
+
+def deny_direct_file_access(request, path=""):
+    """보호 대상 미디어(예: /media/files/)의 직접 접근을 404 로 차단합니다."""
+    raise Http404("Not found")
+
+
 def serve_media_with_range(request, path):
     """
     MEDIA_ROOT 파일을 HTTP Range 요청까지 지원해서 제공합니다.
 
     Android/iOS 동영상 플레이어는 MP4 재생 중 `Range: bytes=...` 요청을 자주
     사용하므로, 프로덕션 fallback 미디어 서빙에서도 206 응답을 지원해야 합니다.
+
+    단, 인증 문서 등 보호 대상 경로(`PROTECTED_MEDIA_PREFIXES`)는 여기서 제공하지
+    않고 404 로 막습니다. 열람은 슈퍼관리자 전용 스트리밍 엔드포인트로만 합니다.
     """
+    if path.startswith(PROTECTED_MEDIA_PREFIXES):
+        raise Http404("Not found")
+
     try:
         full_path = safe_join(settings.MEDIA_ROOT, path)
     except ValueError as exc:

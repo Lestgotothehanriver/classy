@@ -7,8 +7,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .permissions import IsSuperAdmin
-from .serializers import AdminLoginSerializer, AdminUserSerializer
+from ..permissions import IsSuperAdmin
+from ..serializers import AdminLoginSerializer, AdminUserSerializer
 
 logger = logging.getLogger(__name__)
 

@@ -942,8 +942,12 @@ class InstructorRetryAPIView(APIView):
             File.objects.filter(pending_instructor=pending_info).delete()
             File.objects.create(pending_instructor=pending_info, pending_file=request.FILES['pending_file'])
             
-        # 상태 PENDING으로 초기화
+        # 상태 PENDING으로 초기화 (이전 심사 결과도 함께 초기화)
+        # 과거 반려 사유는 반려 시점 AdminActionLog 에 이미 보존되어 있습니다.
         pending_info.status = PendingInstructor.Status.PENDING
+        pending_info.rejection_reason = ""
+        pending_info.reviewed_by = None
+        pending_info.reviewed_at = None
         pending_info.save()
 
         # FCM 디바이스 토큰 등록 (재인증 시점에 최신 토큰으로 갱신)
