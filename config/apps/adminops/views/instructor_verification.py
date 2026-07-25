@@ -59,11 +59,11 @@ class InstructorVerificationListView(ListAPIView):
 
         q = (params.get("q") or "").strip()
         if q:
-            # 성(first_name)+이름(last_name) 을 이어붙인 실명으로도 검색 가능하게 합니다.
+            # 실명으로도 검색 가능하게 합니다.
             qs = qs.annotate(
                 _full_name=Concat(
-                    "instructor_profile__user__first_name",
                     "instructor_profile__user__last_name",
+                    "instructor_profile__user__first_name",
                 )
             ).filter(
                 Q(_full_name__icontains=q)

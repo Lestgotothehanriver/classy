@@ -52,7 +52,7 @@ class PendingInstructorAdmin(admin.ModelAdmin):
     @admin.display(description="강사")
     def instructor_label(self, obj):
         user = obj.instructor_profile.user
-        name = f"{user.first_name}{user.last_name}".strip() or user.user_name
+        name = f"{user.last_name}{user.first_name}".strip() or user.user_name
         return f"{name} ({user.email})"
 
     @admin.display(description="대학")

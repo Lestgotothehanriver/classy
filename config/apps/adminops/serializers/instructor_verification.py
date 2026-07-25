@@ -6,12 +6,12 @@ from config.apps.pending.models import File, PendingInstructor
 
 
 def _real_name(user) -> str:
-    """한국식 성+이름(first_name+last_name)을 조합합니다.
+    """한국식 성+이름(last_name+first_name)을 조합합니다.
 
-    실명 필드가 별도로 없어 first_name(성)·last_name(이름)을 붙여 사용하고,
+    실명 필드가 별도로 없어 last_name·first_name 을 붙여 사용하고,
     둘 다 비어 있으면 닉네임(user_name)으로 폴백합니다.
     """
-    name = f"{user.first_name}{user.last_name}".strip()
+    name = f"{user.last_name}{user.first_name}".strip()
     return name or user.user_name
 
 
