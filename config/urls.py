@@ -23,6 +23,7 @@ from config.apps.notification.views import DeviceTokenAPIView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("admin-api/v1/", include("config.apps.adminops.urls")),
     path("accounts/", include("config.apps.accounts.urls")),
     path("pending/", include("config.apps.pending.urls")),
     path("tutoring/", include("config.apps.tutoring.urls")),
