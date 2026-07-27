@@ -10,7 +10,7 @@ from config.apps.accounts.models import Instructor, Student, InstructorLike
 from config.apps.cash.models import InstructorMonthlyRank
 from config.apps.common.utils import parse_int_list, apply_subject_filter
 from config.apps.chat_app.models import ChatRoom
-from ..models import InstructorInfo, InstructorReview
+from ..models import InstructorInfo, InstructorReview, TutoringResource
 from ..serializers import InstructorListSerializer, InstructorInfoSerializer, InstructorReviewSerializer
 from config.apps.common.mixins import InstructorAnnotateMixin
 
@@ -217,6 +217,32 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
             .first()
         )
         data["current_rank"] = latest_rank["rank"] if latest_rank else None
+        resource_stats = TutoringResource.objects.filter(
+            instructor=instructor
+        ).aggregate(
+            tutoring_count=Count("id"),
+            average_cost=Avg("first_month_fee"),
+        )
+        data["tutoring_count"] = resource_stats["tutoring_count"] or 0
+        data["average_cost"] = resource_stats["average_cost"]
+        data["stats_display"] = {
+            "tutoring_count": (
+                f"{data['tutoring_count']}건" if data["tutoring_count"] else "-"
+            ),
+            "average_cost": (
+                round(data["average_cost"])
+                if data["average_cost"] is not None
+                else "-"
+            ),
+            "avg_rating": (
+                round(data["avg_rating"], 2)
+                if data["avg_rating"] is not None
+                else "-"
+            ),
+            "current_rank": (
+                data["current_rank"] if data["current_rank"] is not None else "-"
+            ),
+        }
         data["is_tutoring"] = instructor.is_tutoring
 
         has_chat_room = False

@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
-from config.apps.tutoring.models import TutoringPost, TutoringPostLike
+from config.apps.tutoring.models import InstructorInfo, TutoringPost, TutoringPostLike
 from config.apps.pending.models import PendingInstructor
 
 
@@ -25,6 +25,9 @@ class LikeSortingTestBase(TestCase):
         self.inst1 = Instructor.objects.create(user=self.instructor_user1, university="A대학교")
         self.inst2 = Instructor.objects.create(user=self.instructor_user2, university="B대학교")
         self.inst3 = Instructor.objects.create(user=self.instructor_user3, university="C대학교")
+        InstructorInfo.objects.create(instructor=self.inst1)
+        InstructorInfo.objects.create(instructor=self.inst2)
+        InstructorInfo.objects.create(instructor=self.inst3)
 
         # 강사 승인 상태(VERIFIED) 생성
         PendingInstructor.objects.create(instructor_profile=self.inst1, status=PendingInstructor.Status.VERIFIED)
@@ -467,6 +470,87 @@ class InstructorInfoRegistrationTest(TestCase):
         self.assertEqual(response.json()["regions"][0]["id"], region.id)
 
 
+class InstructorProfileStatsTest(TestCase):
+    def setUp(self):
+        from config.apps.tutoring.models import InstructorInfo
+        from rest_framework.authtoken.models import Token
+
+        self.client = APIClient()
+        self.viewer_user = User.objects.create_user(
+            username="stats_viewer",
+            user_name="stats_viewer",
+            password="pass1234",
+        )
+        self.student = Student.objects.create(user=self.viewer_user)
+        self.instructor_user = User.objects.create_user(
+            username="stats_instructor",
+            user_name="stats_instructor",
+            password="pass1234",
+        )
+        self.instructor = Instructor.objects.create(
+            user=self.instructor_user,
+            university="통계대학교",
+        )
+        self.info = InstructorInfo.objects.create(
+            instructor=self.instructor,
+            cost=None,
+        )
+        token = Token.objects.create(user=self.viewer_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+    def test_new_profile_has_zero_real_tutorings_and_dash_displays(self):
+        detail_response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/"
+        )
+        info_response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/info/"
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()["tutoring_count"], 0)
+        self.assertEqual(detail_response.json()["tutoring_count_display"], "-")
+        self.assertEqual(detail_response.json()["average_cost_display"], "-")
+        self.assertEqual(detail_response.json()["average_rate_display"], "-")
+        self.assertEqual(detail_response.json()["current_rank_display"], "-")
+
+        self.assertEqual(info_response.status_code, 200)
+        self.assertEqual(info_response.json()["cost_display"], "협의 후 결정")
+        self.assertEqual(info_response.json()["tutoring_count"], 0)
+        self.assertEqual(
+            info_response.json()["stats_display"],
+            {
+                "tutoring_count": "-",
+                "average_cost": "-",
+                "avg_rating": "-",
+                "current_rank": "-",
+            },
+        )
+
+    def test_only_real_tutoring_resources_are_counted(self):
+        from config.apps.tutoring.models import TutoringResource
+
+        TutoringResource.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            first_month_fee=200000,
+        )
+        TutoringResource.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            first_month_fee=400000,
+        )
+
+        response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/info/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["tutoring_count"], 2)
+        self.assertEqual(response.json()["average_cost"], 300000.0)
+        self.assertEqual(response.json()["stats_display"]["tutoring_count"], "2건")
+        self.assertEqual(response.json()["stats_display"]["average_cost"], 300000)
+
+
 class TutoringPostPatchRepresentationTest(TestCase):
     """공고 PATCH 응답이 다음 수정 화면을 채울 수 있는지 검증한다."""
 
@@ -794,6 +878,36 @@ class DuplicateProposalPreventionTest(LikeSortingTestBase):
             1,
         )
         self.assertEqual(ChatMessage.objects.filter(room=rooms.get()).count(), 1)
+
+    def test_instructor_proposal_accepts_3000_characters(self):
+        from config.apps.tutoring.models import TutoringProposal
+        from rest_framework.authtoken.models import Token
+
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = self.client.post(
+            "/tutoring/propose-to-student/",
+            data={"post_id": self.post.id, "message": "가" * 3000},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(TutoringProposal.objects.get().message, "가" * 3000)
+
+    def test_instructor_proposal_rejects_over_3000_characters(self):
+        from config.apps.tutoring.models import TutoringProposal
+        from rest_framework.authtoken.models import Token
+
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = self.client.post(
+            "/tutoring/propose-to-student/",
+            data={"post_id": self.post.id, "message": "가" * 3001},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(TutoringProposal.objects.exists())
 
 
 class SelfLookupPreventionTest(LikeSortingTestBase):

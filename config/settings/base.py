@@ -211,6 +211,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:8000')
 AUTH_USER_MODEL = "accounts.User"
 
+# SMS 인증번호와 비밀번호 재설정 토큰은 짧게 유지하고 한 번만 사용합니다.
+PHONE_VERIFICATION_TTL_SECONDS = int(
+    os.environ.get("PHONE_VERIFICATION_TTL_SECONDS", "300")
+)
+PASSWORD_RESET_TOKEN_TTL_SECONDS = int(
+    os.environ.get("PASSWORD_RESET_TOKEN_TTL_SECONDS", "600")
+)
+
 
 # ──────────────────────────────────────────────
 # In-App Purchase (IAP) Settings

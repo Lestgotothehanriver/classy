@@ -35,6 +35,18 @@ class BlockViewSet(viewsets.ModelViewSet):
         blocked_user_id = request.data.get('blocked_user')
         if not blocked_user_id:
             return Response({"error": "blocked_user is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 본인 프로필에서 차단을 눌러도 차단 관계는 만들지 않되 실패 알림이
+        # 계속 남지 않도록 정상적인 no-op 응답을 반환한다.
+        if str(blocked_user_id) == str(request.user.pk):
+            return Response(
+                {
+                    "detail": "자기 자신은 차단 대상에서 제외됩니다.",
+                    "blocked": False,
+                    "reason": "self_block",
+                },
+                status=status.HTTP_200_OK,
+            )
         
         if Block.objects.filter(user=request.user, blocked_user_id=blocked_user_id).exists():
             return Response({"error": "Already blocked"}, status=status.HTTP_400_BAD_REQUEST)

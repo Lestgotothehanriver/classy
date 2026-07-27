@@ -96,6 +96,12 @@ class InstructorListSerializer(SafeModelSerializer):
     average_rate = serializers.FloatField(read_only=True, default=None, allow_null=True)
     review_count = serializers.IntegerField(read_only=True, default=0)
     current_rank = serializers.IntegerField(read_only=True, default=None, allow_null=True)
+    tutoring_count = serializers.IntegerField(read_only=True, default=0)
+    average_cost = serializers.FloatField(read_only=True, default=None, allow_null=True)
+    tutoring_count_display = serializers.SerializerMethodField()
+    average_cost_display = serializers.SerializerMethodField()
+    average_rate_display = serializers.SerializerMethodField()
+    current_rank_display = serializers.SerializerMethodField()
     sex = serializers.CharField(source='user.sex', read_only=True)
     region = serializers.CharField(source='user.region', read_only=True)
     user_name = serializers.CharField(source='user.user_name', read_only=True)
@@ -111,7 +117,9 @@ class InstructorListSerializer(SafeModelSerializer):
             'id', 'user', 'university', 'department', 'created_at', 
             'instruction', 'student_number', 'is_tutoring', 'last_login', 
             'subjects', 'like_count', 'is_liked', 'average_rate', 
-            'review_count', 'current_rank', 'sex', 'region', 
+            'review_count', 'current_rank', 'tutoring_count', 'average_cost',
+            'tutoring_count_display', 'average_cost_display',
+            'average_rate_display', 'current_rank_display', 'sex', 'region',
             'user_name', 'birth_date', 'profile_image',
             'verification_status', 'is_certified', 'is_unverified'
         ]
@@ -128,6 +136,22 @@ class InstructorListSerializer(SafeModelSerializer):
     def get_is_unverified(self, obj):
         return not self.get_is_certified(obj)
 
+    def get_tutoring_count_display(self, obj):
+        count = getattr(obj, "tutoring_count", 0)
+        return f"{count}건" if count else "-"
+
+    def get_average_cost_display(self, obj):
+        value = getattr(obj, "average_cost", None)
+        return round(value) if value is not None else "-"
+
+    def get_average_rate_display(self, obj):
+        value = getattr(obj, "average_rate", None)
+        return round(value, 2) if value is not None else "-"
+
+    def get_current_rank_display(self, obj):
+        value = getattr(obj, "current_rank", None)
+        return value if value is not None else "-"
+
 
 class InstructorInfoSerializer(serializers.ModelSerializer):
     """
@@ -139,13 +163,15 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
     verification_status = serializers.SerializerMethodField()
     is_certified = serializers.SerializerMethodField()
     is_unverified = serializers.SerializerMethodField()
+    cost_display = serializers.SerializerMethodField()
 
     class Meta:
         model = InstructorInfo
         fields = [
             'id', 'instructor', 'cost', 'schedule', 'method', 
             'location', 'etc', 'subjects', 'regions', 'instruction',
-            'verification_status', 'is_certified', 'is_unverified'
+            'verification_status', 'is_certified', 'is_unverified',
+            'cost_display',
         ]
 
     def get_subjects(self, obj):
@@ -162,6 +188,9 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
 
     def get_is_unverified(self, obj):
         return not self.get_is_certified(obj)
+
+    def get_cost_display(self, obj):
+        return obj.cost if obj.cost is not None else "협의 후 결정"
 
 
 class InstructorReviewSerializer(serializers.ModelSerializer):
@@ -399,6 +428,12 @@ class StudentReviewWriteSerializer(serializers.ModelSerializer):
 
 class TutoringProposalSerializer(serializers.ModelSerializer):
     """과외 제안서 통합 Serializer (CRUD 모두 사용)"""
+    message = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=3000,
+    )
+
     class Meta:
         model = TutoringProposal
         fields = [

@@ -39,5 +39,8 @@ class InstructorAnnotateMixin:
             review_count=Count("instructor_reviews", distinct=True),
             like_count=Count("liked_by", distinct=True),
             current_rank=Subquery(latest_rank_qs, output_field=DjangoIntField()),
+            # 프로필 생성 여부가 아니라 실제 생성된 성사 리소스만 집계한다.
+            tutoring_count=Count("tutoring_resources", distinct=True),
+            average_cost=Avg("tutoring_resources__first_month_fee"),
         )
         return qs

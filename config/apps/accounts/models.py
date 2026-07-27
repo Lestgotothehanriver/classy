@@ -230,11 +230,22 @@ class PhoneVerification(models.Model):
         is_verified (bool): 사용자가 올바른 코드를 입력하여 인증을 완료했는지 여부.
         created_at (DateTimeField): 인증 코드 발송 일시.
     """
+    class Purpose(models.TextChoices):
+        GENERAL = "GENERAL", "일반 인증"
+        PASSWORD_RESET = "PASSWORD_RESET", "비밀번호 재설정"
+        PHONE_CHANGE = "PHONE_CHANGE", "전화번호 변경"
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="phone_verifications")
     phone = models.CharField(max_length=20)
     code = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)
     is_verified = models.BooleanField(default=False)
+    purpose = models.CharField(
+        max_length=30,
+        choices=Purpose.choices,
+        default=Purpose.GENERAL,
+    )
+    used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

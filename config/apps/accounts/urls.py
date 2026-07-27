@@ -12,6 +12,8 @@ from .views import (
     UserDetailAPIView,
     SubjectListAPIView,
     SendAuthSMSAPIView, VerifyAuthSMSAPIView,
+    RequestPasswordResetAPIView, VerifyPasswordResetCodeAPIView,
+    ConfirmPasswordResetAPIView,
     ProfileCheckAPIView, RoleAddAPIView,
     PolicyVersionAPIView,
 )
@@ -40,4 +42,19 @@ urlpatterns = [
     path("subjects/", SubjectListAPIView.as_view(), name="subject-list"),
     path("send-auth-sms/", SendAuthSMSAPIView.as_view(), name="send-auth-sms"),
     path("verify-auth-sms/", VerifyAuthSMSAPIView.as_view(), name="verify-auth-sms"),
+    path(
+        "password-reset/request/",
+        RequestPasswordResetAPIView.as_view(),
+        name="password-reset-request",
+    ),
+    path(
+        "password-reset/verify/",
+        VerifyPasswordResetCodeAPIView.as_view(),
+        name="password-reset-verify",
+    ),
+    path(
+        "password-reset/confirm/",
+        ConfirmPasswordResetAPIView.as_view(),
+        name="password-reset-confirm",
+    ),
 ]

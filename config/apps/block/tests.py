@@ -92,3 +92,17 @@ class UserBlockAPITests(APITestCase):
         self.client.force_authenticate(self.instructor_user)
         post_detail = self.client.get(f"/tutoring/posts/{self.post.pk}/")
         self.assertEqual(post_detail.status_code, 404)
+
+    def test_self_block_is_a_successful_noop(self):
+        self.client.force_authenticate(self.student_user)
+
+        response = self.client.post(
+            "/blocks/",
+            {"blocked_user": self.student_user.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["blocked"])
+        self.assertEqual(response.data["reason"], "self_block")
+        self.assertFalse(Block.objects.exists())

@@ -122,6 +122,16 @@ class InstructorProposeToStudentAPIView(APIView):
         message = request.data.get("message", "")
         if not post_id:
             return Response({"error": "post_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(message, str):
+            return Response(
+                {"error": "message must be a string."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(message) > 3000:
+            return Response(
+                {"error": "제안서는 최대 3000자까지 작성할 수 있습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             instructor, proposal, room, created = create_instructor_proposal(request.user, post_id, message)

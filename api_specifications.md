@@ -14,6 +14,9 @@
 | 강사 프로필 수정 | `PUT`<br>`PATCH` | `/accounts/signup/instructor/` | **[Body (Multipart)]**<br>- `university` (str, 선택)<br>- `department` (str, 선택) 등 수정 대상 정보 | 로그인한 강사의 프로필 정보를 수정합니다. |
 | 강사 재심사 요청 | `POST` | `/accounts/signup/instructor/retry/` | **[Body (Multipart)]**<br>- `email` (str, 필수)<br>- `pending_file` (file, 필수)<br>- `university`, `department` 등 (선택)<br>- `fcm_token`, `platform` (선택) | 강사 승인이 거절(`SUSPENDED`)된 상태에서 인증 서류를 보강하여 재인증을 요청합니다. |
 | 로그인 | `POST` | `/accounts/login/` | **[Body (JSON)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수) | 이메일과 비밀번호로 로그인하여 인증용 토큰과 사용 가능한 역할군 목록을 획득합니다. |
+| 비밀번호 재설정 인증번호 발송 | `POST` | `/accounts/password-reset/request/` | **[Body (JSON)]**<br>- `phone_number` 또는 `phone` (str, 필수) | 가입된 휴대전화 번호로 비밀번호 재설정 전용 SMS 인증번호를 발송합니다. |
+| 비밀번호 재설정 인증번호 확인 | `POST` | `/accounts/password-reset/verify/` | **[Body (JSON)]**<br>- `phone_number` 또는 `phone` (str, 필수)<br>- `code` (str, 필수) | 인증번호를 확인하고 짧게 유효한 일회용 `reset_token`을 발급합니다. |
+| 새 비밀번호 설정 | `POST` | `/accounts/password-reset/confirm/` | **[Body (JSON)]**<br>- `reset_token` (str, 필수)<br>- `new_password` (str, 필수)<br>- `new_password_confirm` (str, 선택) | 비밀번호 정책을 검증해 새 비밀번호로 변경하고 기존 로그인 토큰을 폐기합니다. |
 | 닉네임 중복 확인 | `GET` | `/accounts/check-username/` | **[Query]**<br>- `user_name` (str, 필수) | 회원가입 또는 정보 변경 시 닉네임 중복 여부를 조회합니다. (본인 닉네임 제외) |
 | 이메일 중복 확인 | `GET` | `/accounts/check-email/` | **[Query]**<br>- `email` (str, 필수) | 회원가입 또는 정보 변경 시 이메일 중복 여부를 조회합니다. (본인 이메일 제외) |
 | 휴대전화 가입 체크 | `GET` | `/accounts/check-phone/` | **[Query]**<br>- `phone` (str, 필수) | 입력한 번호로 가입된 계정이 존재하는지, 그리고 추가 가입 가능한 역할이 있는지 확인합니다. |
@@ -48,8 +51,8 @@
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
 | 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (콤마 구분 ID, 선택)<br>- `cost` (최대 수업료, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `age` (나이 범위, 선택)<br>- `university` (출신 대학교, 선택)<br>- `department` (학과명, 선택)<br>- `student_id` (학번/사번 필터, 선택)<br>- `search` (통합 검색어, 선택) | 승인 완료된 강사 목록을 다양한 조건에 맞추어 필터링 조회합니다. (차단 유저 제외) |
-| 강사 상세 프로필 | `GET` | `/tutoring/instructors/<int:pk>/` | **[Path]**<br>- `pk` (int, 강사 ID) | 특정 강사의 상세 프로필 정보를 조회합니다. |
-| 강사 과외 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 과외 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. (로그인한 학생 유저 기준 해당 강사와의 채팅방 생성 여부 `has_chat_room`: bool 포함) |
+| 강사 상세 프로필 | `GET` | `/tutoring/instructors/<int:pk>/` | **[Path]**<br>- `pk` (int, 강사 ID) | 특정 강사의 상세 프로필과 실제 수업 성사 건수·평균 수업료를 조회합니다. 값이 없는 통계는 `*_display` 필드에서 `"-"`로 반환합니다. |
+| 강사 수업 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 수업 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. 수업료 미정은 `cost_display: "협의 후 결정"`, 통계 미등록 값은 `stats_display`에서 `"-"`로 반환합니다. |
 | 강사 리뷰 목록 | `GET` | `/tutoring/instructors/<int:instructor_id>/reviews/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 특정 강사가 학생들에게서 받은 모든 리뷰 목록을 최신순으로 조회합니다. |
 | 과외 구인 공고 목록 | `GET` | `/tutoring/posts/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (지역 ID, 선택)<br>- `cost` (최대 요금, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `grade` (학년 코드, 선택)<br>- `min_rating` (최소 평점, 선택)<br>- `search` (통합 검색어, 선택) | 학생들이 등록한 활성화된 과외 구인 공고 목록을 필터 조건에 맞춰 조회합니다. (차단 유저 제외) |
 | 과외 구인 공고 상세 | `GET` | `/tutoring/posts/<int:pk>/` | **[Path]**<br>- `pk` (int, 공고 ID) | 특정 과외 구인 공고의 상세 내역을 조회합니다. (조회수 1 증가 처리 포함, 로그인한 강사 유저 기준 공고 작성 학생과의 채팅방 생성 여부 `has_chat_room`: bool 포함) |
@@ -67,7 +70,7 @@
 | 내 과외 정보 조회 | `GET` | `/tutoring/instructor-info/mine/` | 없음 | 로그인한 강사 본인의 과외 소개 정보를 원샷 조회합니다. (없을 시 `204 No Content`) |
 | 학생 → 강사 제안 신청 | `POST` | `/tutoring/propose-to-instructor/` | **[Body (JSON)]**<br>- `instructor_id` (int, 필수)<br>- `post_id` (int, 필수) | 학생이 강사에게 과외 제안을 발송하여 채팅방을 신규 개설하고 자동 첫 대화를 엽니다. |
 | 학생 → 강사 제안 취소 | `DELETE` | `/tutoring/propose-to-instructor/` | **[Body / Query]**<br>- `instructor_id` (int, 필수)<br>- `post_id` (int, 필수) | 발송했던 강사 제안을 취소하고 개설되었던 채팅방을 해제합니다. |
-| 강사 → 학생 역제안 | `POST` | `/tutoring/propose-to-student/` | **[Body (JSON)]**<br>- `post_id` (int, 필수)<br>- `message` (str, 선택) | 강사가 학생의 공고에 역제안서와 1:1 대화방을 개설합니다. |
+| 강사 → 학생 역제안 | `POST` | `/tutoring/propose-to-student/` | **[Body (JSON)]**<br>- `post_id` (int, 필수)<br>- `message` (str, 선택, 최대 3000자) | 강사가 학생의 공고에 역제안서와 1:1 대화방을 개설합니다. |
 | 강사 → 학생 역제안 취소 | `DELETE` | `/tutoring/propose-to-student/` | **[Body / Query]**<br>- `post_id` (int, 필수) | 발송했던 학생 역제안 내역 및 대화방을 철회합니다. |
 | 과외 제안서 목록 조회 | `GET` | `/tutoring/proposals/` | 없음 | 로그인한 사용자 본인과 관련된 모든 과외 제안서 내역을 조회합니다. |
 | 과외 제안서 상세 조회 | `GET` | `/tutoring/proposals/<int:pk>/` | **[Path]**<br>- `pk` (int, 제안서 ID) | 특정 과외 제안서의 상세 내역을 가져옵니다. |

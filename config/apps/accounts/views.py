@@ -3,6 +3,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core import signing
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.db.models import Q
 from config.throttles import LoginRateThrottle, SMSRateThrottle
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -24,6 +29,7 @@ from .serializers import (
 import logging
 import random
 from datetime import timedelta
+import re
 
 # 전화번호 인증번호(OTP) 유효 시간
 PHONE_VERIFICATION_EXPIRY = timedelta(minutes=3)
@@ -31,6 +37,32 @@ from solapi import SolapiMessageService
 from solapi.model import RequestMessage
 
 logger = logging.getLogger(__name__)
+
+PASSWORD_RESET_SIGNING_SALT = "accounts.password-reset"
+
+
+def normalize_phone_number(value):
+    """SMS 발송 및 조회에 사용할 숫자 형태의 국내 전화번호를 반환합니다."""
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def find_user_by_phone(phone_number):
+    """하이픈 포함 여부와 관계없이 기존 가입자를 찾습니다."""
+    raw_phone = str(phone_number or "").strip()
+    normalized_phone = normalize_phone_number(raw_phone)
+    if not normalized_phone:
+        return None
+
+    variants = {raw_phone, normalized_phone}
+    if len(normalized_phone) == 11:
+        variants.add(
+            f"{normalized_phone[:3]}-{normalized_phone[3:7]}-{normalized_phone[7:]}"
+        )
+    elif len(normalized_phone) == 10:
+        variants.add(
+            f"{normalized_phone[:3]}-{normalized_phone[3:6]}-{normalized_phone[6:]}"
+        )
+    return User.objects.filter(Q(phone__in=variants), is_active=True).first()
 
 
 class PolicyVersionAPIView(APIView):
@@ -776,7 +808,8 @@ class RequestPhoneChangeAPIView(APIView):
         PhoneVerification.objects.create(
             user=request.user,
             phone=phone,
-            code=code
+            code=code,
+            purpose=PhoneVerification.Purpose.PHONE_CHANGE,
         )
         
         # 실제 SMS 전송 로직이 들어갈 자리 (현재는 모킹)
@@ -824,6 +857,7 @@ class VerifyPhoneChangeAPIView(APIView):
             phone=phone,
             code=code,
             is_verified=False,
+            purpose=PhoneVerification.Purpose.PHONE_CHANGE,
         ).order_by('-created_at').first()
 
         if not verification:
@@ -1184,6 +1218,224 @@ class VerifyAuthSMSAPIView(APIView):
         return Response({
             "message": "전화번호 인증이 완료되었습니다."
         }, status=status.HTTP_200_OK)
+
+
+class RequestPasswordResetAPIView(APIView):
+    """
+    가입된 휴대전화 번호로 비밀번호 재설정용 인증번호를 발송합니다.
+
+    Request Body:
+        phone_number 또는 phone (str): 가입 시 등록한 휴대전화 번호.
+    """
+
+    permission_classes = []
+    throttle_classes = [SMSRateThrottle]
+
+    def post(self, request):
+        phone_number = request.data.get("phone_number") or request.data.get("phone")
+        normalized_phone = normalize_phone_number(phone_number)
+        if not normalized_phone:
+            return Response(
+                {"error": "전화번호가 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = find_user_by_phone(phone_number)
+        if user is None:
+            return Response(
+                {"error": "해당 전화번호로 가입된 계정이 없습니다."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if user.is_banned:
+            return Response(
+                {"error": "서비스 이용이 정지된 계정입니다."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        auth_code = str(random.randint(100000, 999999))
+        if not send_auth_sms(normalized_phone, auth_code):
+            return Response(
+                {"error": "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .models import PhoneVerification
+
+        with transaction.atomic():
+            # 재전송 시 이전 인증번호는 즉시 폐기하고 가장 최근 번호만 허용한다.
+            PhoneVerification.objects.filter(
+                user=user,
+                purpose=PhoneVerification.Purpose.PASSWORD_RESET,
+                used_at__isnull=True,
+            ).update(used_at=timezone.now())
+            PhoneVerification.objects.create(
+                user=user,
+                phone=normalized_phone,
+                code=auth_code,
+                purpose=PhoneVerification.Purpose.PASSWORD_RESET,
+            )
+        return Response(
+            {"message": "인증번호가 발송되었습니다."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifyPasswordResetCodeAPIView(APIView):
+    """
+    비밀번호 찾기 인증번호를 확인하고 짧게 유효한 일회용 재설정 토큰을 발급합니다.
+
+    Request Body:
+        phone_number 또는 phone (str)
+        code (str)
+    """
+
+    permission_classes = []
+    throttle_classes = [LoginRateThrottle]
+
+    def post(self, request):
+        phone_number = request.data.get("phone_number") or request.data.get("phone")
+        normalized_phone = normalize_phone_number(phone_number)
+        code = str(request.data.get("code") or "").strip()
+        if not normalized_phone or not code:
+            return Response(
+                {"error": "전화번호와 인증번호가 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .models import PhoneVerification
+
+        expires_after = timezone.timedelta(
+            seconds=settings.PHONE_VERIFICATION_TTL_SECONDS
+        )
+        verification = (
+            PhoneVerification.objects.filter(
+                phone=normalized_phone,
+                code=code,
+                is_verified=False,
+                used_at__isnull=True,
+                purpose=PhoneVerification.Purpose.PASSWORD_RESET,
+                created_at__gte=timezone.now() - expires_after,
+                user__is_active=True,
+            )
+            .select_related("user")
+            .order_by("-created_at")
+            .first()
+        )
+        if verification is None:
+            return Response(
+                {"error": "인증번호가 올바르지 않거나 만료되었습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verification.is_verified = True
+        verification.save(update_fields=["is_verified"])
+        reset_token = signing.dumps(
+            {
+                "verification_id": verification.pk,
+                "user_id": verification.user_id,
+            },
+            salt=PASSWORD_RESET_SIGNING_SALT,
+            compress=True,
+        )
+        return Response(
+            {
+                "message": "전화번호 인증이 완료되었습니다.",
+                "reset_token": reset_token,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ConfirmPasswordResetAPIView(APIView):
+    """
+    인증 완료 후 발급된 일회용 토큰으로 새 비밀번호를 설정합니다.
+
+    Request Body:
+        reset_token (str)
+        new_password (str)
+        new_password_confirm (str, optional)
+    """
+
+    permission_classes = []
+    throttle_classes = [LoginRateThrottle]
+
+    def post(self, request):
+        reset_token = str(request.data.get("reset_token") or "").strip()
+        new_password = request.data.get("new_password")
+        password_confirm = request.data.get("new_password_confirm")
+
+        if not reset_token or not new_password:
+            return Response(
+                {"error": "재설정 토큰과 새 비밀번호가 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if password_confirm is not None and new_password != password_confirm:
+            return Response(
+                {"error": "새 비밀번호가 일치하지 않습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payload = signing.loads(
+                reset_token,
+                salt=PASSWORD_RESET_SIGNING_SALT,
+                max_age=settings.PASSWORD_RESET_TOKEN_TTL_SECONDS,
+            )
+            verification_id = int(payload["verification_id"])
+            user_id = int(payload["user_id"])
+        except (
+            signing.BadSignature,
+            signing.SignatureExpired,
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            return Response(
+                {"error": "재설정 링크가 올바르지 않거나 만료되었습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .models import PhoneVerification
+
+        with transaction.atomic():
+            verification = (
+                PhoneVerification.objects.select_for_update()
+                .select_related("user")
+                .filter(
+                    pk=verification_id,
+                    user_id=user_id,
+                    user__is_active=True,
+                    is_verified=True,
+                    used_at__isnull=True,
+                    purpose=PhoneVerification.Purpose.PASSWORD_RESET,
+                )
+                .first()
+            )
+            if verification is None:
+                return Response(
+                    {"error": "이미 사용되었거나 유효하지 않은 재설정 요청입니다."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user = verification.user
+            try:
+                validate_password(new_password, user=user)
+            except DjangoValidationError as exc:
+                return Response(
+                    {"error": list(exc.messages)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user.set_password(new_password)
+            user.save(update_fields=["password"])
+            Token.objects.filter(user=user).delete()
+            verification.used_at = timezone.now()
+            verification.save(update_fields=["used_at"])
+
+        return Response(
+            {"message": "비밀번호가 성공적으로 재설정되었습니다."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class ProfileCheckAPIView(APIView):

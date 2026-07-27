@@ -170,6 +170,188 @@ class PhoneVerificationTests(APITestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class PasswordResetAPIViewTests(APITestCase):
+    def setUp(self):
+        self.request_url = reverse("accounts:password-reset-request")
+        self.verify_url = reverse("accounts:password-reset-verify")
+        self.confirm_url = reverse("accounts:password-reset-confirm")
+        self.phone = "01012345678"
+        self.old_password = "OldSecurePass!234"
+        self.new_password = "NewSecurePass!567"
+        self.user = User.objects.create_user(
+            username="password-reset@example.com",
+            email="password-reset@example.com",
+            password=self.old_password,
+            user_name="password_reset_user",
+            phone=self.phone,
+        )
+
+        self.sms_patcher = patch(
+            "config.apps.accounts.views.send_auth_sms",
+            return_value=True,
+        )
+        self.mock_send_sms = self.sms_patcher.start()
+        self.throttle_patcher = patch(
+            "rest_framework.throttling.SimpleRateThrottle.allow_request",
+            return_value=True,
+        )
+        self.throttle_patcher.start()
+
+    def tearDown(self):
+        self.sms_patcher.stop()
+        self.throttle_patcher.stop()
+
+    def _request_and_verify(self):
+        from config.apps.accounts.models import PhoneVerification
+
+        request_response = self.client.post(
+            self.request_url,
+            {"phone_number": "010-1234-5678"},
+            format="json",
+        )
+        self.assertEqual(request_response.status_code, 200)
+        self.assertNotIn("code", request_response.data)
+        self.mock_send_sms.assert_called_once()
+
+        verification = PhoneVerification.objects.get(
+            user=self.user,
+            purpose=PhoneVerification.Purpose.PASSWORD_RESET,
+        )
+        verify_response = self.client.post(
+            self.verify_url,
+            {"phone_number": self.phone, "code": verification.code},
+            format="json",
+        )
+        self.assertEqual(verify_response.status_code, 200)
+        return verification, verify_response.data["reset_token"]
+
+    def test_password_reset_flow_changes_password_and_invalidates_token(self):
+        from rest_framework.authtoken.models import Token
+
+        old_token = Token.objects.create(user=self.user)
+        verification, reset_token = self._request_and_verify()
+        response = self.client.post(
+            self.confirm_url,
+            {
+                "reset_token": reset_token,
+                "new_password": self.new_password,
+                "new_password_confirm": self.new_password,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        verification.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.new_password))
+        self.assertFalse(self.user.check_password(self.old_password))
+        self.assertIsNotNone(verification.used_at)
+        self.assertFalse(Token.objects.filter(key=old_token.key).exists())
+
+    def test_reset_token_cannot_be_reused(self):
+        _, reset_token = self._request_and_verify()
+        payload = {
+            "reset_token": reset_token,
+            "new_password": self.new_password,
+            "new_password_confirm": self.new_password,
+        }
+
+        self.assertEqual(
+            self.client.post(self.confirm_url, payload, format="json").status_code,
+            200,
+        )
+        second_response = self.client.post(
+            self.confirm_url,
+            {
+                **payload,
+                "new_password": "AnotherSecurePass!890",
+                "new_password_confirm": "AnotherSecurePass!890",
+            },
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, 400)
+
+    def test_unregistered_phone_does_not_send_sms(self):
+        response = self.client.post(
+            self.request_url,
+            {"phone_number": "01099990000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.mock_send_sms.assert_not_called()
+
+    def test_invalid_code_does_not_issue_reset_token(self):
+        self.client.post(
+            self.request_url,
+            {"phone_number": self.phone},
+            format="json",
+        )
+        response = self.client.post(
+            self.verify_url,
+            {"phone_number": self.phone, "code": "000000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("reset_token", response.data)
+
+    def test_expired_code_does_not_issue_reset_token(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from config.apps.accounts.models import PhoneVerification
+
+        self.client.post(
+            self.request_url,
+            {"phone_number": self.phone},
+            format="json",
+        )
+        verification = PhoneVerification.objects.get(user=self.user)
+        PhoneVerification.objects.filter(pk=verification.pk).update(
+            created_at=timezone.now() - timedelta(minutes=6)
+        )
+
+        response = self.client.post(
+            self.verify_url,
+            {"phone_number": self.phone, "code": verification.code},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("reset_token", response.data)
+
+    def test_resending_code_invalidates_previous_code(self):
+        with patch(
+            "config.apps.accounts.views.random.randint",
+            side_effect=[111111, 222222],
+        ):
+            self.client.post(
+                self.request_url,
+                {"phone_number": self.phone},
+                format="json",
+            )
+            self.client.post(
+                self.request_url,
+                {"phone_number": self.phone},
+                format="json",
+            )
+
+        old_response = self.client.post(
+            self.verify_url,
+            {"phone_number": self.phone, "code": "111111"},
+            format="json",
+        )
+        latest_response = self.client.post(
+            self.verify_url,
+            {"phone_number": self.phone, "code": "222222"},
+            format="json",
+        )
+
+        self.assertEqual(old_response.status_code, 400)
+        self.assertEqual(latest_response.status_code, 200)
+        self.assertIn("reset_token", latest_response.data)
+
+
 from config.apps.accounts.models import Student, Instructor, Subject
 from config.apps.pending.models import PendingInstructor
 
@@ -358,7 +540,7 @@ class RoleAddAPIViewTests(APITestCase):
         response = self.client.post(f"{self.url}?role=instructor", data, format="json")
         self.assertEqual(response.status_code, 201)
 
-        # Verify instructor profile and PendingInstructor exists
+        # 강사 역할을 추가하되, 자격 서류 심사는 마이페이지 제출 전까지 생성하지 않는다.
         self.assertTrue(Instructor.objects.filter(user=self.student_user).exists())
         instructor_profile = Instructor.objects.get(user=self.student_user)
         self.assertEqual(instructor_profile.university, "SNU")
@@ -367,6 +549,10 @@ class RoleAddAPIViewTests(APITestCase):
         self.assertEqual(instructor_profile.student_number, "2020-12345")
         self.assertEqual(instructor_profile.subjects.count(), 1)
         
-        self.assertTrue(PendingInstructor.objects.filter(instructor_profile=instructor_profile).exists())
-        pending = PendingInstructor.objects.get(instructor_profile=instructor_profile)
-        self.assertEqual(pending.status, PendingInstructor.Status.PENDING)
+        self.assertFalse(
+            PendingInstructor.objects.filter(
+                instructor_profile=instructor_profile
+            ).exists()
+        )
+        roles = {item["role"]: item for item in response.data["available_roles"]}
+        self.assertEqual(roles["instructor"]["status"], "NOT_SUBMITTED")
