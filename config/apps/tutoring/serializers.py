@@ -411,6 +411,20 @@ class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     def validate_cost(self, value):
         return validate_cost_unit(value)
 
+    def update(self, instance, validated_data):
+        """마감 공고를 재개할 때만 목록 기준 시각을 현재 시각으로 갱신합니다."""
+        is_reopening = (
+            validated_data.get("is_active") is True and not instance.is_active
+        )
+        updated_post = super().update(instance, validated_data)
+
+        if is_reopening:
+            # 재개된 공고는 새 모집글처럼 최신순과 상대 시간을 다시 계산합니다.
+            updated_post.created_at = timezone.now()
+            updated_post.save(update_fields=["created_at"])
+
+        return updated_post
+
     def to_representation(self, instance):
         # 공고 수정 응답에도 과목/지역 레이블과 기존 상세 필드를 모두 포함한다.
         return TutoringPostDetailSerializer(instance, context=self.context).data

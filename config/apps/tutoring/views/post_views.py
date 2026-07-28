@@ -219,4 +219,4 @@ class StudentMyPostAPIView(generics.ListAPIView):
             raise PermissionDenied("학생 계정만 사용할 수 있습니다.")
         return TutoringPost.objects.filter(student=student).prefetch_related(
             "subjects", "regions"
-        ).order_by("-id")
+        ).order_by("-created_at")
