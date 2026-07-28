@@ -652,6 +652,25 @@ class CommentUpdateDeleteAPIView(generics.UpdateAPIView, generics.DestroyAPIView
             raise PermissionDenied("강의 소유자 또는 유효 대여자만 댓글을 수정하거나 삭제할 수 있습니다.")
         return comment
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, "_prefetched_objects_cache", None):
+            instance._prefetched_objects_cache = {}
+
+        # 수정된 객체를 읽기 Serializer로 반환
+        # CommentWriteSerializer에는 id/is_mine이 없어 클라이언트가 응답을 파싱하지 못하므로,
+        # 생성(create)과 동일하게 CommentSerializer로 재직렬화한다.
+        # context(request)를 전달해야 is_mine 판별과 프로필 이미지 절대경로가 정상 동작함.
+        output = CommentSerializer(
+            instance, context=self.get_serializer_context()
+        ).data
+        return Response(output, status=status.HTTP_200_OK)
+
 
 # ════════════════════════════════════════════════════════════════════
 # 6) Search History Views (Create / Delete)
