@@ -60,17 +60,27 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         self.assertTrue(image_url.endswith("/media/profile_images/student.jpg"))
         self.assertNotIn("instructor.jpg", image_url)
 
-    def test_student_chat_like_uses_instructor_profile_like(self):
+    def test_student_chat_like_uses_room_liked_by(self):
+        """학생의 채팅방 찜(is_liked)은 강사 프로필 좋아요가 아니라
+        채팅방 자체의 liked_by를 기준으로 반영되어야 한다."""
         self._authenticate(self.student_user)
 
         before = self.client.get("/chatrooms/", {"role": "student"})
         self.assertEqual(before.status_code, 200)
         self.assertFalse(before.json()[0]["is_liked"])
 
+        # 강사 프로필 좋아요만으로는 채팅방 찜이 켜지지 않는다.
         InstructorLike.objects.create(
             student=self.student,
             instructor=self.instructor,
         )
+        still = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(still.status_code, 200)
+        self.assertFalse(still.json()[0]["is_liked"])
+
+        # 채팅방 자체를 찜하면 is_liked가 True가 된다.
+        room = ChatRoom.objects.first()
+        room.liked_by.add(self.student_user)
 
         after = self.client.get("/chatrooms/", {"role": "student"})
         self.assertEqual(after.status_code, 200)
