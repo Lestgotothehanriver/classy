@@ -4,6 +4,7 @@ from .views import (
     NotificationUnreadCountAPIView,
     NotificationReadAPIView,
     NotificationReadAllAPIView,
+    NotificationDeleteAPIView,
     DeviceTokenAPIView,
 )
 
@@ -12,4 +13,5 @@ urlpatterns = [
     path('unread-count/', NotificationUnreadCountAPIView.as_view()),
     path('read-all/', NotificationReadAllAPIView.as_view()),
     path('<int:pk>/read/', NotificationReadAPIView.as_view()),
+    path('<int:pk>/', NotificationDeleteAPIView.as_view()),
 ]

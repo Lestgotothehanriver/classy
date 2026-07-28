@@ -18,7 +18,7 @@ class NotificationListAPIView(APIView):
     유저가 수신한 '알림(Notification)' 목록을 조회하거나 일괄 삭제하는 API View입니다.
 
     GET 요청 시, 본인이 수신한 전체 알림 목록을 최신순으로 반환하며 쿼리 파라미터를 통해 특정 역할군(student | instructor)의 알림만 필터링 조회할 수 있습니다.
-    DELETE 요청 시, 로그인한 사용자의 알림 중 이미 읽음(is_read=True) 상태인 알림을 일괄 삭제합니다.
+    DELETE 요청 시, 로그인한 사용자의 알림을 읽음 여부와 무관하게 전체 삭제합니다.
 
     Query Parameters:
         role (str, optional): 필터링할 역할 ('student' | 'instructor').
@@ -47,7 +47,7 @@ class NotificationListAPIView(APIView):
 
     def delete(self, request):
         deleted_count, _ = Notification.objects.filter(
-            user=request.user, is_read=True
+            user=request.user
         ).delete()
         _broadcast_unread_counts(request.user)
         return Response({"deleted": deleted_count}, status=200)
@@ -127,6 +127,44 @@ class NotificationReadAPIView(APIView):
         notification.save(update_fields=["is_read"])
         _broadcast_unread_counts(request.user)
         return Response(_serialize(notification), status=200)
+
+
+class NotificationDeleteAPIView(APIView):
+    """
+    URL: /notification/<pk>/
+
+    특정 알림 한 건을 '영구 삭제(hard delete)'하는 API View입니다.
+
+    DELETE 요청 시, 지정한 알림이 본인 소유인 경우 DB에서 완전히 제거합니다.
+    타인의 알림이거나 존재하지 않는 알림 삭제 시도는 404를 반환합니다.
+
+    Path Parameters:
+        pk (int): 삭제할 알림 ID.
+
+    Returns:
+        Response: HTTP 204 No Content (성공) / 404 (대상 없음)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        logger.info(
+            "*** [NotificationDelete] Delete notification %s for: %s ***",
+            pk,
+            request.user.email,
+        )
+        deleted_count, _ = Notification.objects.filter(
+            pk=pk, user=request.user
+        ).delete()
+        if not deleted_count:
+            logger.warning(
+                "*** [NotificationDelete] Notification %s not found for user: %s ***",
+                pk,
+                request.user.email,
+            )
+            return Response({"error": "Not found"}, status=404)
+        _broadcast_unread_counts(request.user)
+        return Response(status=204)
 
 
 class NotificationReadAllAPIView(APIView):
