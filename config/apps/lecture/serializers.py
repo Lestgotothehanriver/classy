@@ -226,7 +226,7 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "author", "author_name", "author_profile_image",
-            "is_mine", "content",
+            "is_mine", "content", "is_edited",
             "referenced_person", "referenced_person_name",
             "created_at",
         ]
@@ -245,7 +245,7 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "lecture", "author", "author_name", "author_profile_image",
-            "is_mine", "content", "parent",
+            "is_mine", "content", "is_edited", "parent",
             "referenced_person", "created_at", "replies",
         ]
 

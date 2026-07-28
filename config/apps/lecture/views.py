@@ -652,6 +652,10 @@ class CommentUpdateDeleteAPIView(generics.UpdateAPIView, generics.DestroyAPIView
             raise PermissionDenied("강의 소유자 또는 유효 대여자만 댓글을 수정하거나 삭제할 수 있습니다.")
         return comment
 
+    def perform_update(self, serializer):
+        # 수정 시 '(수정됨)' 표시를 위해 is_edited 플래그를 세운다.
+        serializer.save(is_edited=True)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()

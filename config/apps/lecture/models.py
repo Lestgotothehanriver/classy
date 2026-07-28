@@ -87,6 +87,7 @@ class Comment(models.Model):
         related_name="referenced_in_comments",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    is_edited = models.BooleanField(default=False)
 
     def clean(self):
         super().clean()
