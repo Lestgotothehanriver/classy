@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from .models import ChatRoom, ChatMessage, Image
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
@@ -68,6 +69,7 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
     post_info = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     is_muted = serializers.SerializerMethodField()
+    class_status = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
@@ -87,8 +89,32 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
             "post_info",
             "is_liked",
             "is_muted",
+            "class_status",
         )
         read_only_fields = ("created_at", "is_accepted", "initiated_by")
+
+    def get_class_status(self, obj):
+        """채팅방에 연결된 성사 등록(TutoringRegistration) 기준 수업 종류.
+
+        - 등록 없음 / 취소  → None (칩 없음)
+        - 계약 정보 수집 중  → 'unregistered' (성사 등록 진행중)
+        - 등록/진행 중 + 확정 유형 → 'regular'(정규) / 'short_term'(단기)
+        """
+        try:
+            reg = obj.tutoring_registration
+        except ObjectDoesNotExist:
+            return None
+
+        if reg.contract_status == 'CANCELLED':
+            return None
+        if reg.contract_status == 'COLLECTING':
+            return 'unregistered'
+        # REGISTERED / ACTIVE — 확정된 수업 유형을 노출한다.
+        if reg.confirmed_class_type == 'REGULAR':
+            return 'regular'
+        if reg.confirmed_class_type == 'SHORT_TERM':
+            return 'short_term'
+        return 'unregistered'
 
 
     def get_last_message(self, obj):

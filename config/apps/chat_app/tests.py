@@ -113,5 +113,47 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         all_rooms = self.client.get("/chatrooms/", {"role": "instructor"})
         self.assertEqual(len(all_rooms.json()), 1)
 
+    def test_class_status_reflects_tutoring_registration(self):
+        """수업 종류 칩(class_status)은 채팅방의 성사 등록(TutoringRegistration)을 따른다."""
+        from datetime import date
+        from config.apps.tutoring.models import TutoringRegistration
+
+        self._authenticate(self.student_user)
+        room = ChatRoom.objects.first()
+
+        # 등록 없음 → None (칩 없음)
+        resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertIsNone(resp.json()[0]["class_status"])
+
+        # 계약 정보 수집 중(COLLECTING) → 'unregistered' (성사 등록 진행중)
+        reg = TutoringRegistration.objects.create(
+            student=self.student_user,
+            instructor=self.instructor_user,
+            chat_room=room,
+            subject="고등 수학",
+            start_date=date(2026, 1, 1),
+        )
+        resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(resp.json()[0]["class_status"], "unregistered")
+
+        # 등록 완료 + 정규 → 'regular'
+        reg.contract_status = "REGISTERED"
+        reg.confirmed_class_type = "REGULAR"
+        reg.save()
+        resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(resp.json()[0]["class_status"], "regular")
+
+        # 단기 → 'short_term'
+        reg.confirmed_class_type = "SHORT_TERM"
+        reg.save()
+        resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(resp.json()[0]["class_status"], "short_term")
+
+        # 취소 → None
+        reg.contract_status = "CANCELLED"
+        reg.save()
+        resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertIsNone(resp.json()[0]["class_status"])
+
 
 # Create your tests here.

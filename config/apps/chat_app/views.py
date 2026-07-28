@@ -87,8 +87,9 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         """
         role = self.request.query_params.get('role')
         from django.db.models import Q
-        
-        qs = ChatRoom.objects.all()
+
+        # class_status(수업 종류 칩) 계산 시 성사 등록을 조인해 N+1을 방지한다.
+        qs = ChatRoom.objects.select_related('tutoring_registration')
         
         blocked_user_ids = get_blocked_user_ids(self.request.user)
         if blocked_user_ids:
