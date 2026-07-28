@@ -9,6 +9,11 @@ from .views import (
     InstructorVerificationListView,
     InstructorVerificationRejectView,
     InstructorVerificationSummaryView,
+    SettlementCancelView,
+    SettlementCompleteView,
+    SettlementDetailView,
+    SettlementListView,
+    SettlementSummaryView,
 )
 
 app_name = "adminops"
@@ -46,5 +51,31 @@ urlpatterns = [
         "instructor-verifications/<int:pk>/documents/<int:file_id>/",
         InstructorVerificationDocumentView.as_view(),
         name="instructor-verification-document",
+    ),
+    # 정산 관리
+    path(
+        "settlements/",
+        SettlementListView.as_view(),
+        name="settlement-list",
+    ),
+    path(
+        "settlements/summary/",
+        SettlementSummaryView.as_view(),
+        name="settlement-summary",
+    ),
+    path(
+        "settlements/<int:pk>/",
+        SettlementDetailView.as_view(),
+        name="settlement-detail",
+    ),
+    path(
+        "settlements/<int:pk>/complete/",
+        SettlementCompleteView.as_view(),
+        name="settlement-complete",
+    ),
+    path(
+        "settlements/<int:pk>/cancel/",
+        SettlementCancelView.as_view(),
+        name="settlement-cancel",
     ),
 ]

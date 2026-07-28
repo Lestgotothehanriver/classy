@@ -182,6 +182,7 @@ class SettlementRecord(models.Model):
         status (str): 정산 처리 상태 (PENDING: 관리자 확인 대기, COMPLETED: 송금 완료, CANCELED: 관리자 취소).
         created_at (DateTimeField): 출금 요청 일시.
         processed_at (DateTimeField): 관리자가 완료/취소 처리한 일시.
+        payment_reference (str): 지급(송금) 참조번호. 완료 처리 시 관리자가 입력한 은행 송금 식별값.
         admin_note (str): 관리자 운영 메모.
     """
     STATUS_CHOICES = [
@@ -194,6 +195,7 @@ class SettlementRecord(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
+    payment_reference = models.CharField(max_length=100, blank=True, default='', help_text="지급(송금) 참조번호")
     admin_note = models.TextField(blank=True, default='')
 
     def __str__(self):

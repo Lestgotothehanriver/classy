@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.db import transaction
 from django.utils import timezone
+from .constants import PLATFORM_FEE_RATE
 from .models import (
     PurchaseHistory,
     LectureRentalHistory,
@@ -9,9 +10,6 @@ from .models import (
     SettlementRecord,
     Coupon,
 )
-
-# 플랫폼 수수료율(정산 지급 기준 계산용 표시값). 실제 송금은 자동화하지 않는다.
-PLATFORM_FEE_RATE = 0.20
 
 @admin.register(PurchaseHistory)
 class PurchaseHistoryAdmin(admin.ModelAdmin):
