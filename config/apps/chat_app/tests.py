@@ -86,5 +86,32 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         self.assertEqual(after.status_code, 200)
         self.assertTrue(after.json()[0]["is_liked"])
 
+    def test_liked_filter_returns_only_favorited_rooms(self):
+        """?liked=true 는 현재 유저가 찜(liked_by)한 채팅방만 반환한다.
+        선생님도 채팅방 기준으로 찜/필터할 수 있어야 한다."""
+        self._authenticate(self.instructor_user)
+
+        # 찜 전: liked=true 면 빈 목록
+        empty = self.client.get(
+            "/chatrooms/", {"role": "instructor", "liked": "true"}
+        )
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(len(empty.json()), 0)
+
+        # 채팅방을 찜하면 필터 결과에 포함된다.
+        room = ChatRoom.objects.first()
+        room.liked_by.add(self.instructor_user)
+
+        liked = self.client.get(
+            "/chatrooms/", {"role": "instructor", "liked": "true"}
+        )
+        self.assertEqual(liked.status_code, 200)
+        self.assertEqual(len(liked.json()), 1)
+        self.assertTrue(liked.json()[0]["is_liked"])
+
+        # liked 파라미터가 없으면 찜 여부와 무관하게 전체를 반환한다.
+        all_rooms = self.client.get("/chatrooms/", {"role": "instructor"})
+        self.assertEqual(len(all_rooms.json()), 1)
+
 
 # Create your tests here.

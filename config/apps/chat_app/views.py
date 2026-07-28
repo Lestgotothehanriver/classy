@@ -98,6 +98,11 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
                 Q(instructor__user_id__in=blocked_user_ids)
             )
 
+        # 찜(liked_by)한 채팅방만 보기 — role과 무관하게 채팅방 기준 찜을 필터링한다.
+        liked = self.request.query_params.get('liked')
+        if liked is not None and liked.lower() in ('true', '1'):
+            qs = qs.filter(liked_by=self.request.user)
+
         if role == 'student':
             return qs.filter(student__user=self.request.user)
         elif role == 'instructor':
