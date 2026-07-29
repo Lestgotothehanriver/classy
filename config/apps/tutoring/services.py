@@ -36,7 +36,7 @@ def create_student_proposal_room(user, instructor_id, post_id):
         instructor=instructor,
         post=post,
         defaults={
-            "title": f"과외 문의 - {student.user.user_name}님 & {instructor.user.user_name}님",
+            "title": f"과외 문의 - {student.user.user_name}님 & {instructor.user.user_name}님 {', '.join(str(s) for s in post.subjects.all())}",
             "initiated_by": user,
         }
     )

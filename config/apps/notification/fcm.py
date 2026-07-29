@@ -145,18 +145,33 @@ def send_push_to_user(user, title: str, body: str, data: dict = None):
 
     str_data = {k: str(v) for k, v in (data or {}).items()}
 
+    # FCM 전송은 네트워크 왕복(수백 ms~수 초)이 걸리는 블로킹 호출이다.
+    # 이를 요청/웹소켓 임계경로에서 동기로 실행하면 메시지 저장/echo 응답이 FCM 응답을
+    # 기다리게 되어 '전송 무한 로딩'처럼 보인다. 따라서 실제 전송은 데몬 스레드로 분리해
+    # fire-and-forget 한다. (DeviceToken 조회는 위에서 이미 동기로 끝냈으므로 스레드 안에서는
+    # DB 접근이 없어 커넥션 관리가 필요 없다.)
+    import threading
+    threading.Thread(
+        target=_dispatch_fcm,
+        args=(user.email, token_rows, title, body, str_data),
+        daemon=True,
+    ).start()
+
+
+def _dispatch_fcm(user_email, token_rows, title, body, str_data):
+    """실제 FCM 발송(백그라운드 스레드). DB 접근 없음."""
     try:
         _get_fcm_app()
         from firebase_admin import messaging
-        logger.debug(f"*** [FCM] Sending messages to {len(token_rows)} devices for {user.email}... ***")
+        logger.debug(f"*** [FCM] Sending messages to {len(token_rows)} devices for {user_email}... ***")
 
         messages = [
             _build_fcm_message(token, platform, title, body, str_data)
             for token, platform in token_rows
         ]
         response = messaging.send_each(messages)
-        logger.info(f"*** [FCM] Success: {response.success_count}, Failure: {response.failure_count} for {user.email} ***")
+        logger.info(f"*** [FCM] Success: {response.success_count}, Failure: {response.failure_count} for {user_email} ***")
     except ImportError:
-        logger.warning(f"*** [FCM] firebase-admin NOT INSTALLED. Skip push to {user.email} ***")
+        logger.warning(f"*** [FCM] firebase-admin NOT INSTALLED. Skip push to {user_email} ***")
     except Exception as e:
-        logger.error(f"*** [FCM] Error sending push to {user.email}: {e} ***")
+        logger.error(f"*** [FCM] Error sending push to {user_email}: {e} ***")

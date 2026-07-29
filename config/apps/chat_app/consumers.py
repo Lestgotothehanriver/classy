@@ -122,14 +122,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             img_ids = data.get("img_ids")
             img_urls = await self.save_image(img_ids, msg_id) if img_ids else []
 
-            # 수락 쮘리: 상대방 첫 답장 시 is_accepted=True + 알림
-            accepted_event = await self.try_accept_room()
-
-            # 같은 방 유저들에게 브로드캐스도
+            # echo 를 먼저 브로드캐스트해 수락/알림 처리에 막히지 않게 한다.
+            # (전송자의 낙관적 메시지가 즉시 확정되어 '전송 무한 로딩'을 방지)
             await self.channel_layer.group_send(
                 self.room_grp,
                 {"type": "chat_message", "msg": msg, "img_urls": img_urls}
             )
+
+            # 수락 처리: 상대방 첫 답장 시 is_accepted=True + 알림
+            accepted_event = await self.try_accept_room()
 
             if accepted_event:
                 # 수락 이벤트를 방 모두에게 브로드캐스
