@@ -30,6 +30,16 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         return
     # instance는 새로 생성된 ChatMessage 객체
     room = instance.room
+
+    # 수락(is_accepted) 전 메시지는 푸시하지 않는다.
+    # 이 단계의 메시지는 (1) 제안자의 첫 제안서/요청 안내 자동 메시지,
+    # (2) 상대방의 수락 답장 뿐이다.
+    #  - (1) 제안서/요청 안내는 tutoring_request/proposal 인앱 알림이 담당한다.
+    #  - (2) 수락 시점의 푸시는 notify_tutoring_accept 가 별도로 보낸다.
+    # 따라서 여기서 푸시하면 중복/불필요하므로 수락 완료된 방의 메시지만 푸시한다.
+    if not room.is_accepted:
+        return
+
     sender_id = instance.sender_id
     online = room_online_ids(room.id)
     participants = [room.student.user, room.instructor.user]
@@ -49,7 +59,13 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
     if not targets:
         return
 
-    title = room.title 
+    # 푸시 제목: '보낸 사람 닉네임 + 과목'. 방 이름(room.title) 대신 사용한다.
+    # 과목은 공고(post)의 과목명을 붙여 어떤 과외 관련 대화인지 바로 알 수 있게 한다.
+    sender_name = getattr(instance.sender, 'user_name', None) or instance.sender.username
+    subject_label = ", ".join(str(s) for s in room.post.subjects.all())
+    title = f"{sender_name}님과의 채팅방"
+    if subject_label:
+        title = f"{title} · {subject_label}"
     body = instance.text or "새 이미지가 도착했습니다."
     data = {
         "type": "message",

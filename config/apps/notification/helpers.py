@@ -54,7 +54,8 @@ def notify_tutoring_request(room):
     → 강사에게 'tutoring_request' 알림.
     """
     student_name = room.student.user.user_name
-    _create(
+    # 과외 요청은 강사가 앱을 꺼둔 상태에서도 받아야 하므로 FCM 푸시까지 함께 발송한다.
+    _notify_with_push(
         user=room.instructor.user,
         ntype='tutoring_request',
         role='instructor',
@@ -74,7 +75,8 @@ def notify_tutoring_proposal(room):
     → 학생에게 'tutoring_proposal' 알림.
     """
     instructor_name = room.instructor.user.user_name
-    _create(
+    # 과외 제안은 학생이 앱을 꺼둔 상태에서도 받아야 하므로 FCM 푸시까지 함께 발송한다.
+    _notify_with_push(
         user=room.student.user,
         ntype='tutoring_proposal',
         role='student',
@@ -176,11 +178,12 @@ def notify_tutoring_accept(room, acceptor):
         return
 
     acceptor_name = getattr(acceptor, 'user_name', None) or acceptor.username
-    _create(
+    # 수락 알림은 제안자가 앱을 꺼둔 상태에서도 반드시 받아야 하므로 FCM 푸시까지 함께 발송한다.
+    _notify_with_push(
         user=initiator,
         ntype='tutoring_accept',
         role='any',
-        title=f'과외 요청(제안) 수락 알림',
+        title=f'과외 수락 알림',
         body=f'{acceptor_name}님이 과외 요청(제안)을 수락했어요. 지금부터 자유롭게 대화가 가능해요!',
         data={
             'room_id': str(room.id),
