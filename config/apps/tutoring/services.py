@@ -9,7 +9,7 @@ from config.apps.notification.helpers import notify_tutoring_request, notify_tut
 from config.apps.block.utils import users_have_block_relation
 
 STUDENT_DUPLICATE_PROPOSAL_MESSAGE = "동일한 강사분에게 동일한 과외 공고가 이미 전송됐어요"
-INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE = "동일한 과외 공고에 대해서 제안서가 이미 존재해요"
+INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE = "동일한 과외 공고에 대해서 채팅방이 이미 존재해요"
 
 
 class DuplicateProposalError(Exception):
