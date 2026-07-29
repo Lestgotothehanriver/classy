@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from .models import ChatRoom, ChatMessage, Image
 from config.apps.notification.models import DeviceToken
 from .serializers import ChatRoomListSerializer, ChatRoomSerializer, ChatMessageSerializer
+from .services import mark_messages_read_through
 from rest_framework.views import APIView
 from config.apps.block.utils import get_blocked_user_ids
 
@@ -176,23 +177,22 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
     def read(self, request, pk=None, msg_id=None):
         """
         POST /chatrooms/<pk>/read/<msg_id>/
-        특정 메시지를 읽은 걸로 처리함 (읽은 사람 목록에 현재 유저 추가)
+        특정 메시지 이하의 방 메시지를 모두 읽은 것으로 처리함
         
         Response (200):
         {
             "read_count": 2                // int
         }
         """
-        # 해당 방의 해당 메시지 가져오기
-        msg = ChatMessage.objects.filter(pk=msg_id, room_id=pk).first()
-        if not msg:
+        read_count = mark_messages_read_through(
+            room_id=pk,
+            message_id=msg_id,
+            user=request.user,
+        )
+        if read_count is None:
             return Response(status=404)  # 메시지 없으면 404 응답
 
-        # 읽은 사람 목록에 현재 유저 추가
-        msg.read_by.add(request.user)
-
-        # 현재까지 몇 명이 읽었는지 숫자로 응답
-        return Response({"read_count": msg.read_by.count()}, status=200)
+        return Response({"read_count": read_count}, status=200)
 
     @action(detail=True, methods=["delete"])
     def out(self, request, pk=None):
@@ -374,4 +374,3 @@ class ChatNotificationToggleView(APIView):
         new_state = not tokens.first().is_chat_active
         tokens.update(is_chat_active=new_state)
         return Response({"is_chat_active": new_state}, status=200)
-

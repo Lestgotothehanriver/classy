@@ -6,6 +6,7 @@ from django.contrib.auth.models import AnonymousUser
 
 from .models import ChatRoom, ChatMessage, Image
 from .serializers import ChatMessageSerializer
+from .services import mark_messages_read_through
 
 from urllib.parse import parse_qs
 from rest_framework.authtoken.models import Token
@@ -248,12 +249,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         msg_id 이하(포함) 모든 메시지에 self.user를 read_by에 추가.
         반환: msg_id 메시지의 read_count
         """
-        qs = ChatMessage.objects.filter(room_id=self.room_id, pk__lte=msg_id)
-        for m in qs.exclude(read_by=self.user):
-            m.read_by.add(self.user)
-
-        latest = qs.filter(pk=msg_id).first()
-        return latest.read_by.count() if latest else 0
+        read_count = mark_messages_read_through(
+            room_id=self.room_id,
+            message_id=msg_id,
+            user=self.user,
+        )
+        return read_count or 0
 
     @database_sync_to_async
     def get_user_from_token(self, token_key):

@@ -3,7 +3,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from config.apps.accounts.models import Instructor, InstructorLike, Student, User
-from config.apps.chat_app.models import ChatRoom
+from config.apps.chat_app.models import ChatMessage, ChatRoom
 from config.apps.tutoring.models import TutoringPost
 
 
@@ -154,6 +154,38 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         reg.save()
         resp = self.client.get("/chatrooms/", {"role": "student"})
         self.assertIsNone(resp.json()[0]["class_status"])
+
+    def test_read_marks_all_room_messages_through_target(self):
+        """REST 읽음 처리는 WebSocket과 동일하게 대상 메시지 이하를 모두 갱신한다."""
+        self._authenticate(self.instructor_user)
+        room = ChatRoom.objects.first()
+        older = ChatMessage.objects.create(
+            room=room,
+            sender=self.student_user,
+            text="첫 번째 메시지",
+        )
+        target = ChatMessage.objects.create(
+            room=room,
+            sender=self.student_user,
+            text="두 번째 메시지",
+        )
+        newer = ChatMessage.objects.create(
+            room=room,
+            sender=self.student_user,
+            text="세 번째 메시지",
+        )
+
+        response = self.client.post(
+            f"/chatrooms/{room.pk}/read/{target.pk}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["read_count"], 2)
+        self.assertTrue(older.read_by.filter(pk=self.instructor_user.pk).exists())
+        self.assertTrue(target.read_by.filter(pk=self.instructor_user.pk).exists())
+        self.assertFalse(newer.read_by.filter(pk=self.instructor_user.pk).exists())
 
 
 # Create your tests here.
