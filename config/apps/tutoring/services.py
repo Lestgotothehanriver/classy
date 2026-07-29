@@ -102,7 +102,7 @@ def create_instructor_proposal(user, post_id, message):
         instructor=instructor,
         post=post,
         defaults={
-            "title": f"제안서 문의 - {post.student.user.username}님 & {instructor.user.username}님",
+            "title": f"제안서 문의 - {post.student.user.user_name}님 & {instructor.user.user_name}님 {', '.join(str(s) for s in post.subjects.all())}",
             "initiated_by": user,
         }
     )

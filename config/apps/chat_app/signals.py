@@ -72,6 +72,7 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         "room_id": str(room.id),
         "msg_id": str(instance.id),
         "sender_id": str(sender_id),
+        "sender_name": sender_name,  # Android MessagingStyle 발신자 표시용
     }
     # 채팅 메시지는 인앱 Notification(알림함)에 쌓지 않는다.
     # 메시지는 계속 누적되므로 알림함이 오염되기 때문. 알림함은 과외 문의/제안/수락 등
