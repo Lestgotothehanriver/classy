@@ -57,17 +57,10 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         "msg_id": str(instance.id),
         "sender_id": str(sender_id),
     }
-    from config.apps.notification.models import Notification
-    # bulk_create 대신 개별 create → post_save 시그널 발생 → WS 브로드캐스트 자동 처리
-    for uid in targets:
-        Notification.objects.create(
-            user_id=uid,
-            type="message",
-            role="student",  # 채팅 수신자는 학생 역할로 분류
-            title=title,
-            body=body,
-            data=data,
-        )
+    # 채팅 메시지는 인앱 Notification(알림함)에 쌓지 않는다.
+    # 메시지는 계속 누적되므로 알림함이 오염되기 때문. 알림함은 과외 문의/제안/수락 등
+    # 실제 '이벤트'만 담고, 채팅 메시지는 FCM 푸시로만 전달한다.
+    # (채팅방 내 실시간 수신은 chat_app.consumers 의 chat_{room_id} 그룹이 담당하므로 영향 없음)
     result = push_to_users(targets, title=title, body=body, username=instance.sender.username, data=data)
 
 

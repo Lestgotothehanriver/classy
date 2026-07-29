@@ -58,8 +58,8 @@ def notify_tutoring_request(room):
         user=room.instructor.user,
         ntype='tutoring_request',
         role='instructor',
-        title=f'{student_name} 학생이 과외를 요청했습니다.',
-        body='채팅방에서 내용을 확인해 보세요.',
+        title=f'과외 요청 알림',
+        body=f'{student_name} 학생으로부터 과외 요청이 도착했어요. 채팅방에서 확인해 보세요.',
         data={
             'room_id': str(room.id),
             'post_id': str(room.post_id),
@@ -78,8 +78,8 @@ def notify_tutoring_proposal(room):
         user=room.student.user,
         ntype='tutoring_proposal',
         role='student',
-        title=f'{instructor_name} 선생님이 과외를 제안했습니다.',
-        body='채팅방에서 제안서를 확인해 보세요.',
+        title=f'과외 제안 알림',
+        body=f'{instructor_name} 선생님으로부터 과외 제안이 도착했어요. 채팅방에서 확인해 보세요.',
         data={
             'room_id': str(room.id),
             'post_id': str(room.post_id),
@@ -101,8 +101,8 @@ def notify_fee_payment_confirmed(resource):
         user=resource.instructor.user,
         ntype='tutoring_contract_confirmed',
         role='instructor',
-        title='수수료 납부가 확인되었습니다.',
-        body='수업 성사가 완료되었습니다. 과외 내역에서 확인해 보세요.',
+        title='과외 성사 완료 알림',
+        body='수수료 납부가 확인되어 수업 성사가 완료되었습니다. 과외 내역에서 확인해 보세요.',
         data={
             'resource_id': str(resource.id),
         },
@@ -111,8 +111,8 @@ def notify_fee_payment_confirmed(resource):
         user=resource.student.user,
         ntype='tutoring_contract_confirmed',
         role='student',
-        title='과외 성사 등록이 완료되었습니다.',
-        body='수업 관리에서 계약 세부 정보와 리뷰 작성을 확인해 보세요.',
+        title='과외 성사 완료 알림',
+        body='수수료 납부가 확인되어 수업 성사가 완료되었습니다. 과외 내역에서 확인해 보세요.',
         data={
             'resource_id': str(resource.id),
         },
@@ -132,7 +132,7 @@ def notify_fee_payment_failed(resource):
             user=user,
             ntype='tutoring_contract_failed',
             role=role,
-            title='성사 등록이 실패했습니다.',
+            title='과외 성사 실패 알림',
             body='수수료 납부 확인에 실패했어요. 수업 관리에서 다시 확인해 주세요.',
             data={
                 'resource_id': str(resource.id),
@@ -158,7 +158,7 @@ def notify_registration_mismatched(registration):
             user=user,
             ntype='tutoring_contract_mismatch',
             role=role,
-            title='성사 정보가 일치하지 않습니다.',
+            title='과외 성사 정보 불일치 알림',
             body='상대방과 입력한 수업 정보가 달라요. 수업 관리에서 다시 확인해 주세요.',
             data=data,
         )
@@ -180,8 +180,8 @@ def notify_tutoring_accept(room, acceptor):
         user=initiator,
         ntype='tutoring_accept',
         role='any',
-        title=f'{acceptor_name}님이 과외를 수락했습니다.',
-        body='지금부터 자유롭게 대화하세요!',
+        title=f'과외 요청(제안) 수락 알림',
+        body=f'{acceptor_name}님이 과외 요청(제안)을 수락했어요. 지금부터 자유롭게 대화가 가능해요!',
         data={
             'room_id': str(room.id),
             'acceptor_id': str(acceptor.id),
