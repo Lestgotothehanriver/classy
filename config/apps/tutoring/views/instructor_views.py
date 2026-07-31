@@ -8,7 +8,11 @@ from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student, InstructorLike
 from config.apps.cash.models import InstructorMonthlyRank
-from config.apps.common.utils import parse_int_list, apply_subject_filter
+from config.apps.common.utils import (
+    apply_subject_filter,
+    filter_by_account_region,
+    parse_int_list,
+)
 from config.apps.chat_app.models import ChatRoom
 from ..models import InstructorInfo, InstructorReview, TutoringResource
 from ..serializers import InstructorListSerializer, InstructorInfoSerializer, InstructorReviewSerializer
@@ -55,6 +59,12 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
                 qs = qs.exclude(user_id__in=blocked_user_ids)
+            if self.request.query_params.get("local", "").lower() in ("true", "1"):
+                qs = filter_by_account_region(
+                    qs,
+                    self.request.user,
+                    "user__region",
+                )
 
         qs = self.annotate_instructor_stats(qs, self.request.user)
 

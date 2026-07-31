@@ -53,6 +53,23 @@ def apply_subject_filter(qs, owner_model, subject_ids, prefix=""):
     key = f"{prefix}subjects__number__in"
     return qs.filter(**{key: subject_ids}).distinct()
 
+def filter_by_account_region(qs, user, lookup):
+    """
+    로그인 사용자의 계정 거주지와 동일한 광역 지역으로 QuerySet을 제한합니다.
+
+    [lookup]은 대상 사용자의 지역 필드 경로이며, 계정 지역이 비어 있으면
+    전국 데이터가 노출되지 않도록 빈 QuerySet을 반환합니다.
+    """
+    region = (getattr(user, "region", "") or "").strip()
+    if not region:
+        return qs.none()
+
+    broad_region = region.split()[0].strip()
+    if not broad_region:
+        return qs.none()
+
+    return qs.filter(**{f"{lookup}__startswith": broad_region})
+
 def get_absolute_media_url(url_or_file, request=None):
     """
     미디어 파일 객체 또는 상대경로 URL을 받아 절대경로 URL을 반환합니다.
@@ -83,4 +100,3 @@ def get_absolute_media_url(url_or_file, request=None):
     if base_url.startswith("https://") and absolute_url.startswith("http://"):
         absolute_url = absolute_url.replace("http://", "https://", 1)
     return absolute_url
-

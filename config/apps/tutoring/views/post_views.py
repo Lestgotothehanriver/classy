@@ -8,7 +8,11 @@ from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Student, Instructor
 from config.apps.chat_app.models import ChatRoom
-from config.apps.common.utils import parse_int_list, apply_subject_filter
+from config.apps.common.utils import (
+    apply_subject_filter,
+    filter_by_account_region,
+    parse_int_list,
+)
 from ..models import TutoringPost
 from ..serializers import TutoringPostListSerializer, TutoringPostDetailSerializer, TutoringPostWriteSerializer, StudentMyPostSerializer
 
@@ -47,6 +51,12 @@ class TutoringPostListAPIView(generics.ListAPIView):
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
                 qs = qs.exclude(student__user_id__in=blocked_user_ids)
+            if self.request.query_params.get("local", "").lower() in ("true", "1"):
+                qs = filter_by_account_region(
+                    qs,
+                    self.request.user,
+                    "student__user__region",
+                )
 
         qs = qs.annotate(
             student_avg_rating=Avg("student__student_reviews__rating"),
@@ -65,7 +75,7 @@ class TutoringPostListAPIView(generics.ListAPIView):
 
         region_ids = parse_int_list(self.request.query_params.get("region"))
         if region_ids:
-            qs = qs.filter(region__number__in=region_ids).distinct()
+            qs = qs.filter(regions__number__in=region_ids).distinct()
 
         cost = self.request.query_params.get("cost")
         if cost and cost.isdigit():
@@ -103,7 +113,7 @@ class TutoringPostListAPIView(generics.ListAPIView):
             q |= Q(subjects__name__icontains=search)
             qs = qs.filter(q).distinct()
 
-        return qs
+        return qs.distinct()
 
 class TutoringPostDetailAPIView(generics.RetrieveAPIView):
     """

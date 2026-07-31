@@ -40,6 +40,124 @@ class LikeSortingTestBase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
 
+class LocalRecommendationPaginationTest(TestCase):
+    """계정 거주지 기반 지역 목록과 페이지 중복 방지를 검증한다."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student_user = User.objects.create_user(
+            username="local_student",
+            user_name="local_student",
+            password="pass1234",
+            region="서울 강남구",
+        )
+        self.student = Student.objects.create(user=self.student_user)
+        self.instructor_user = User.objects.create_user(
+            username="local_instructor",
+            user_name="local_instructor",
+            password="pass1234",
+            region="서울 송파구",
+        )
+        self.instructor = Instructor.objects.create(
+            user=self.instructor_user,
+            university="서울 테스트대",
+        )
+        InstructorInfo.objects.create(instructor=self.instructor)
+
+    def test_local_instructor_list_uses_account_region(self):
+        """local=true는 수업 가능 지역이 아니라 양쪽 계정 지역을 비교한다."""
+        busan_user = User.objects.create_user(
+            username="busan_instructor",
+            user_name="busan_instructor",
+            password="pass1234",
+            region="부산 해운대구",
+        )
+        busan_instructor = Instructor.objects.create(
+            user=busan_user,
+            university="부산 테스트대",
+        )
+        InstructorInfo.objects.create(instructor=busan_instructor)
+        self.client.force_authenticate(user=self.student_user)
+
+        local_response = self.client.get(
+            "/tutoring/instructors/",
+            {"local": "true"},
+        )
+        global_response = self.client.get("/tutoring/instructors/")
+
+        self.assertEqual(local_response.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in local_response.json()["results"]],
+            [self.instructor.id],
+        )
+        self.assertIn(
+            busan_instructor.id,
+            [item["id"] for item in global_response.json()["results"]],
+        )
+
+    def test_local_post_pages_are_unique_and_region_scoped(self):
+        """지역 공고의 여러 페이지를 합쳐도 같은 공고 ID가 중복되지 않는다."""
+        for index in range(21):
+            user = User.objects.create_user(
+                username=f"seoul_post_student_{index}",
+                user_name=f"seoul_post_student_{index}",
+                password="pass1234",
+                region="서울 마포구",
+            )
+            student = Student.objects.create(user=user)
+            TutoringPost.objects.create(
+                student=student,
+                title=f"서울 공고 {index}",
+                is_active=True,
+            )
+        busan_user = User.objects.create_user(
+            username="busan_post_owner",
+            user_name="busan_post_owner",
+            password="pass1234",
+            region="부산 수영구",
+        )
+        busan_student = Student.objects.create(user=busan_user)
+        busan_post = TutoringPost.objects.create(
+            student=busan_student,
+            title="부산 공고",
+            is_active=True,
+        )
+        self.client.force_authenticate(user=self.instructor_user)
+
+        first = self.client.get(
+            "/tutoring/posts/",
+            {"local": "true", "page": 1},
+        )
+        second = self.client.get(
+            "/tutoring/posts/",
+            {"local": "true", "page": 2},
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        ids = [
+            item["id"]
+            for item in first.json()["results"] + second.json()["results"]
+        ]
+        self.assertEqual(len(ids), 21)
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertNotIn(busan_post.id, ids)
+
+    def test_local_lists_are_empty_without_account_region(self):
+        """계정 지역이 비어 있으면 지역 목록은 빈 페이지를 반환한다."""
+        self.student_user.region = ""
+        self.student_user.save(update_fields=["region"])
+        self.client.force_authenticate(user=self.student_user)
+
+        response = self.client.get(
+            "/tutoring/instructors/",
+            {"local": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"], [])
+
+
 class InstructorLikeSortingTest(LikeSortingTestBase):
     """InstructorListAPIView의 좋아요 기반 정렬 테스트"""
 

@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from django.db.models import Sum
+from django.db.models import Avg, Count, Sum
 from django.db.models.functions import Coalesce
 from django.core.exceptions import ObjectDoesNotExist
 import logging
@@ -13,6 +13,9 @@ from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.main.serializers import StudentMainTutorSerializer, InstructorMainStudentSerializer
 from config.apps.block.utils import get_blocked_user_ids
+from config.apps.common.utils import filter_by_account_region
+from config.apps.tutoring.models import TutoringPost
+from config.apps.tutoring.serializers import TutoringPostListSerializer
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 메인 화면 관련 View
@@ -35,17 +38,12 @@ class StudentMainAPIView(APIView):
         logger.debug("[BACKEND_DEBUG_MAIN] StudentMain - user: %s", request.user.pk)
         user = request.user
 
-        broad_region = user.region
-
         queryset = Instructor.objects.filter(tutoring_profile__isnull=False).exclude(user=user)
         blocked_user_ids = get_blocked_user_ids(user)
         if blocked_user_ids:
             queryset = queryset.exclude(user_id__in=blocked_user_ids)
 
-        # 해당 대규모 지역으로 필터링 예: 서울 강남구 -> 서울로 시작하는 지역들만 필터링
-        if broad_region:
-            broad_region = broad_region.split(' ')[0]
-            queryset = queryset.filter(user__region__startswith=broad_region)
+        queryset = filter_by_account_region(queryset, user, "user__region")
     
         from django.db.models import Exists, OuterRef, Value, BooleanField, Count
         from config.apps.accounts.models import InstructorLike
@@ -67,8 +65,8 @@ class StudentMainAPIView(APIView):
                 is_liked=Value(False, output_field=BooleanField())
             )
 
-        # 랜덤 3명
-        recommended_tutors = queryset.order_by('?')[:3]
+        # 홈에서는 지역 강사를 최대 4명만 노출한다.
+        recommended_tutors = queryset.order_by('?')[:4]
 
         serializer = StudentMainTutorSerializer(recommended_tutors, many=True)
         logger.debug("[BACKEND_DEBUG_MAIN] StudentMain SUCCESS - tutors count: %d", len(serializer.data))
@@ -137,21 +135,56 @@ class InstructorMainAPIView(APIView):
             total=Coalesce(Sum('purchased_cash'), 0)
         )['total']
         
-        # 지역 맞춤 학생 3명 조회
-        broad_region = user.region
+        # 기존 클라이언트 하위 호환을 위한 지역 맞춤 학생 3명 조회
         queryset = Student.objects.filter(tutoring_posts__is_active=True).exclude(user=user)
         blocked_user_ids = get_blocked_user_ids(user)
         if blocked_user_ids:
             queryset = queryset.exclude(user_id__in=blocked_user_ids)
-        if broad_region:
-            broad_region = broad_region.split(' ')[0]
-            queryset = queryset.filter(user__region__startswith=broad_region)
+        queryset = filter_by_account_region(queryset, user, "user__region")
         recommended_students = queryset.distinct().order_by('?')[:3]
-        student_serializer = InstructorMainStudentSerializer(recommended_students, many=True)
+        student_serializer = InstructorMainStudentSerializer(
+            recommended_students,
+            many=True,
+            context={"request": request},
+        )
+
+        # Flutter 홈의 SSOT는 학생 요약이 아니라 실제 활성 공고다.
+        recommended_posts = TutoringPost.objects.filter(
+            is_active=True,
+        ).exclude(
+            student__user=user,
+        ).select_related(
+            "student__user",
+        ).prefetch_related(
+            "subjects",
+            "regions",
+        )
+        if blocked_user_ids:
+            recommended_posts = recommended_posts.exclude(
+                student__user_id__in=blocked_user_ids,
+            )
+        recommended_posts = filter_by_account_region(
+            recommended_posts,
+            user,
+            "student__user__region",
+        ).annotate(
+            student_avg_rating=Avg("student__student_reviews__rating"),
+            student_review_count=Count(
+                "student__student_reviews",
+                distinct=True,
+            ),
+            like_count=Count("liked_by", distinct=True),
+        ).distinct().order_by("-id")[:3]
+        post_serializer = TutoringPostListSerializer(
+            recommended_posts,
+            many=True,
+            context={"request": request},
+        )
         logger.debug("[BACKEND_DEBUG_MAIN] InstructorMain SUCCESS - students count: %d", len(student_serializer.data))
 
         return Response({
             "previous_month_rank_info": rank_data,
             "this_month_total_cash": this_month_cash,
-            "recommended_students": student_serializer.data
+            "recommended_students": student_serializer.data,
+            "recommended_posts": post_serializer.data,
         })
