@@ -1,10 +1,12 @@
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
 from config.apps.accounts.models import Instructor, InstructorLike, Student, User
 from config.apps.chat_app.models import ChatMessage, ChatRoom
 from config.apps.tutoring.models import TutoringPost
+from config.apps.notification.helpers import notify_tutoring_request
 
 
 class ChatRoomOpponentProfileImageTest(TestCase):
@@ -183,9 +185,74 @@ class ChatRoomOpponentProfileImageTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["read_count"], 2)
+        self.assertEqual(response.json()["room_id"], str(room.pk))
+        self.assertEqual(response.json()["message_id"], str(target.pk))
+        self.assertEqual(response.json()["unread_count"], 1)
         self.assertTrue(older.read_by.filter(pk=self.instructor_user.pk).exists())
         self.assertTrue(target.read_by.filter(pk=self.instructor_user.pk).exists())
         self.assertFalse(newer.read_by.filter(pk=self.instructor_user.pk).exists())
+
+    def test_read_rejects_a_non_participant(self):
+        """REST 읽음 처리는 채팅방 참가자가 아닌 사용자를 거부한다."""
+        outsider = User.objects.create_user(
+            username="chat_read_outsider",
+            user_name="chat_read_outsider",
+            password="pass1234",
+        )
+        self._authenticate(outsider)
+        room = ChatRoom.objects.first()
+        message = ChatMessage.objects.create(
+            room=room,
+            sender=self.student_user,
+            text="참가자만 읽을 수 있음",
+        )
+
+        response = self.client.post(
+            f"/chatrooms/{room.pk}/read/{message.pk}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_read_through_own_latest_message_marks_prior_counterpart_messages(self):
+        """최신 메시지가 내 메시지여도 그 이전 상대 메시지까지 읽음 처리한다."""
+        self._authenticate(self.instructor_user)
+        room = ChatRoom.objects.first()
+        incoming = ChatMessage.objects.create(
+            room=room,
+            sender=self.student_user,
+            text="상대 메시지",
+        )
+        own_latest = ChatMessage.objects.create(
+            room=room,
+            sender=self.instructor_user,
+            text="내 답장",
+        )
+
+        response = self.client.post(
+            f"/chatrooms/{room.pk}/read/{own_latest.pk}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["unread_count"], 0)
+        self.assertTrue(
+            incoming.read_by.filter(pk=self.instructor_user.pk).exists()
+        )
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_tutoring_request_push_contains_target_role(self, send_push):
+        """역할성 FCM payload는 수신 역할을 명시한다."""
+        room = ChatRoom.objects.first()
+
+        notify_tutoring_request(room)
+
+        self.assertEqual(
+            send_push.call_args.kwargs["data"]["target_role"],
+            "instructor",
+        )
 
 
 # Create your tests here.

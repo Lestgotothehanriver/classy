@@ -153,11 +153,12 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         현재 사용자가 읽지 않은 메시지 수를 반환.
         """
         user = self.context['request'].user
-        read_count = obj.messages.filter(
-            read_by=user
-        ).count()
-        total_count = obj.messages.count()
-        return total_count - read_count if total_count else 0
+        return (
+            obj.messages
+            .exclude(sender=user)
+            .exclude(read_by=user)
+            .count()
+        )
 
     def get_opponent_info(self, obj):
         request = self.context.get('request')

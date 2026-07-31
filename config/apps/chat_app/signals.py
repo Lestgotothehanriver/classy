@@ -6,7 +6,8 @@ from django.dispatch import receiver
 from django.core.cache import cache
 
 from .models import ChatMessage
-from .notifications import push_to_users
+from .notifications import broadcast_chat_summary, push_to_users
+from .services import count_unread_messages, get_participant_role
 from django.db.models import Count, Q
 
 PRESENCE_KEY = "chat:room:{room_id}:online"
@@ -30,6 +31,11 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
         return
     # instance는 새로 생성된 ChatMessage 객체
     room = instance.room
+    participants = [room.student.user, room.instructor.user]
+
+    # 앱이 실행 중일 때의 목록 갱신은 푸시 설정과 분리된 사용자 WebSocket으로 보낸다.
+    # 수락 전 첫 메시지도 새 방/최신 메시지 요약에는 반영되어야 한다.
+    broadcast_chat_summary(instance)
 
     # 수락(is_accepted) 전 메시지는 푸시하지 않는다.
     # 이 단계의 메시지는 (1) 제안자의 첫 제안서/요청 안내 자동 메시지,
@@ -42,7 +48,6 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
 
     sender_id = instance.sender_id
     online = room_online_ids(room.id)
-    participants = [room.student.user, room.instructor.user]
     participants_ids = {u.id for u in participants}
     
     non_active_user_ids = []
@@ -67,19 +72,31 @@ def notify_new_message(sender, instance: ChatMessage, created: bool, **kwargs):
     if subject_label:
         title = f"{title} · {subject_label}"
     body = instance.text or "새 이미지가 도착했습니다."
+    target_user = next((u for u in participants if u.id in targets), None)
+    target_role = (
+        get_participant_role(room, target_user)
+        if target_user is not None
+        else None
+    )
     data = {
         "type": "message",
         "room_id": str(room.id),
         "msg_id": str(instance.id),
         "sender_id": str(sender_id),
         "sender_name": sender_name,  # Android MessagingStyle 발신자 표시용
+        "created_at": instance.created_at.isoformat(),
+        "target_role": target_role or "",
+        "unread_count": str(
+            count_unread_messages(room_id=room.id, user=target_user)
+            if target_user is not None
+            else 0
+        ),
     }
     # 채팅 메시지는 인앱 Notification(알림함)에 쌓지 않는다.
     # 메시지는 계속 누적되므로 알림함이 오염되기 때문. 알림함은 과외 문의/제안/수락 등
     # 실제 '이벤트'만 담고, 채팅 메시지는 FCM 푸시로만 전달한다.
     # (채팅방 내 실시간 수신은 chat_app.consumers 의 chat_{room_id} 그룹이 담당하므로 영향 없음)
     result = push_to_users(targets, title=title, body=body, username=instance.sender.username, data=data)
-
 
 
 

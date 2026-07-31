@@ -39,7 +39,15 @@ def _notify_with_push(user, ntype, role, title, body, data=None):
         user=user,
         title=title,
         body=body,
-        data={'type': ntype, **data},
+        data={
+            'type': ntype,
+            **(
+                {'target_role': role}
+                if role in ('student', 'instructor')
+                else {}
+            ),
+            **data,
+        },
     )
     _create(user, ntype, role, title, body, data)
 
@@ -178,11 +186,17 @@ def notify_tutoring_accept(room, acceptor):
         return
 
     acceptor_name = getattr(acceptor, 'user_name', None) or acceptor.username
+    if room.student.user_id == initiator.id:
+        initiator_role = 'student'
+    elif room.instructor.user_id == initiator.id:
+        initiator_role = 'instructor'
+    else:
+        return
     # 수락 알림은 제안자가 앱을 꺼둔 상태에서도 반드시 받아야 하므로 FCM 푸시까지 함께 발송한다.
     _notify_with_push(
         user=initiator,
         ntype='tutoring_accept',
-        role='any',
+        role=initiator_role,
         title=f'과외 수락 알림',
         body=f'{acceptor_name}님이 과외 요청(제안)을 수락했어요. 지금부터 자유롭게 대화가 가능해요!',
         data={

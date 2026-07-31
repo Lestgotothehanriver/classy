@@ -1,6 +1,25 @@
 from .models import ChatMessage
 
 
+def get_participant_role(room, user):
+    """Return the chat-side role for [user], or ``None`` when not a participant."""
+    if room.student.user_id == user.id:
+        return "student"
+    if room.instructor.user_id == user.id:
+        return "instructor"
+    return None
+
+
+def count_unread_messages(*, room_id, user):
+    """Return unread counterpart messages in [room_id] for [user]."""
+    return (
+        ChatMessage.objects.filter(room_id=room_id)
+        .exclude(sender=user)
+        .exclude(read_by=user)
+        .count()
+    )
+
+
 def mark_messages_read_through(*, room_id, message_id, user):
     """[message_id] 이하의 방 메시지를 [user]가 읽은 것으로 표시한다.
 
@@ -15,7 +34,7 @@ def mark_messages_read_through(*, room_id, message_id, user):
     if target is None:
         return None
 
-    for message in messages.exclude(read_by=user):
+    for message in messages.exclude(sender=user).exclude(read_by=user):
         message.read_by.add(user)
 
     return target.read_by.count()

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from .models import ChatRoom, ChatMessage, Image
 from config.apps.notification.models import DeviceToken
 from .serializers import ChatRoomListSerializer, ChatRoomSerializer, ChatMessageSerializer
-from .services import mark_messages_read_through
+from .services import count_unread_messages, mark_messages_read_through
 from rest_framework.views import APIView
 from config.apps.block.utils import get_blocked_user_ids
 
@@ -184,6 +184,7 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
             "read_count": 2                // int
         }
         """
+        room = self.get_object()
         read_count = mark_messages_read_through(
             room_id=pk,
             message_id=msg_id,
@@ -192,7 +193,25 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         if read_count is None:
             return Response(status=404)  # 메시지 없으면 404 응답
 
-        return Response({"read_count": read_count}, status=200)
+        unread_count = count_unread_messages(
+            room_id=pk,
+            user=request.user,
+        )
+        from .notifications import broadcast_chat_read_state
+        broadcast_chat_read_state(
+            room=room,
+            message_id=msg_id,
+            reader=request.user,
+        )
+        return Response(
+            {
+                "read_count": read_count,
+                "room_id": str(pk),
+                "message_id": str(msg_id),
+                "unread_count": unread_count,
+            },
+            status=200,
+        )
 
     @action(detail=True, methods=["delete"])
     def out(self, request, pk=None):

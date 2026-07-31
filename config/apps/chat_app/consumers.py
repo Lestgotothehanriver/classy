@@ -6,7 +6,11 @@ from django.contrib.auth.models import AnonymousUser
 
 from .models import ChatRoom, ChatMessage, Image
 from .serializers import ChatMessageSerializer
-from .services import mark_messages_read_through
+from .services import (
+    count_unread_messages,
+    get_participant_role,
+    mark_messages_read_through,
+)
 
 from urllib.parse import parse_qs
 from rest_framework.authtoken.models import Token
@@ -142,14 +146,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         elif data.get("type") == "read":
             msg_id = data.get("msg_id")
-            read_cnt = await self.add_read(msg_id)
+            read_result = await self.add_read(msg_id)
+            if read_result is None:
+                await self.send(json.dumps({"event": "error", "message": "읽을 메시지를 찾지 못했습니다."}))
+                return
             await self.channel_layer.group_send(
                 self.room_grp,
                 {
                     "type": "chat_read",
                     "msg_id": msg_id,
                     "user_id": self.user.id,
-                    "read_count": read_cnt,
+                    "read_count": read_result["read_count"],
+                },
+            )
+            await self.channel_layer.group_send(
+                f"notification_user_{self.user.id}",
+                {
+                    "type": "chat.read_state",
+                    "room_id": str(self.room_id),
+                    "message_id": str(msg_id),
+                    "reader_id": str(self.user.id),
+                    "target_role": read_result["target_role"],
+                    "unread_count": read_result["unread_count"],
                 },
             )
 
@@ -244,7 +262,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return False
 
     @database_sync_to_async
-    def add_read(self, msg_id: int) -> int:
+    def add_read(self, msg_id: int):
         """
         msg_id 이하(포함) 모든 메시지에 self.user를 read_by에 추가.
         반환: msg_id 메시지의 read_count
@@ -254,7 +272,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_id=msg_id,
             user=self.user,
         )
-        return read_count or 0
+        if read_count is None:
+            return None
+        room = ChatRoom.objects.select_related(
+            "student__user",
+            "instructor__user",
+        ).get(pk=self.room_id)
+        return {
+            "read_count": read_count,
+            "target_role": get_participant_role(room, self.user),
+            "unread_count": count_unread_messages(
+                room_id=self.room_id,
+                user=self.user,
+            ),
+        }
 
     @database_sync_to_async
     def get_user_from_token(self, token_key):

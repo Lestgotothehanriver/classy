@@ -6,6 +6,8 @@ Path: /ws/notifications/?token=<auth_token>
 Server events:
   { "event": "unread_count", "student": 2, "instructor": 0 }
   { "event": "new_notification", "id": 1, "type": "...", "role": "...", "title": "...", "body": "...", "data": {}, "created_at": "..." }
+  { "event": "chat_summary", "room_id": 1, "msg_id": 2, "target_role": "student", "unread_count": 1, ... }
+  { "event": "chat_read_state", "room_id": 1, "message_id": 2, "target_role": "student", "unread_count": 0, ... }
 """
 
 import json
@@ -117,6 +119,39 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                     "event": "unread_count",
                     "student": event.get("student", 0),
                     "instructor": event.get("instructor", 0),
+                }
+            )
+        )
+
+    async def chat_summary(self, event):
+        """Forward an authoritative room-summary update to the signed-in user."""
+        await self.send(
+            json.dumps(
+                {
+                    "event": "chat_summary",
+                    "room_id": event["room_id"],
+                    "msg_id": event["msg_id"],
+                    "text": event.get("text", ""),
+                    "created_at": event["created_at"],
+                    "sender_id": event["sender_id"],
+                    "sender_name": event.get("sender_name", ""),
+                    "target_role": event["target_role"],
+                    "unread_count": event["unread_count"],
+                }
+            )
+        )
+
+    async def chat_read_state(self, event):
+        """Forward the reader's authoritative room unread state."""
+        await self.send(
+            json.dumps(
+                {
+                    "event": "chat_read_state",
+                    "room_id": event["room_id"],
+                    "message_id": event["message_id"],
+                    "reader_id": event["reader_id"],
+                    "target_role": event["target_role"],
+                    "unread_count": event["unread_count"],
                 }
             )
         )

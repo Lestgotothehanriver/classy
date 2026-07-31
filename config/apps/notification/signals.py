@@ -104,7 +104,11 @@ def notify_instructor_status_change(sender, instance, created, **kwargs):
         user=user,
         title=title,
         body=msg['body'],
-        data={'type': 'instructor_status', 'status': instance.status},
+        data={
+            'type': 'instructor_status',
+            'status': instance.status,
+            'target_role': 'instructor',
+        },
     )
 
     # 2) 인앱 Notification 생성 → (1)번 시그널이 자동으로 WS 브로드캐스트 처리
