@@ -6,6 +6,7 @@ from django.utils import timezone
 from config.apps.accounts.models import User, Student, Instructor, Subject
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.lecture.models import Lecture
+from config.apps.pending.models import PendingInstructor
 from config.apps.tutoring.models import InstructorInfo, Region, TutoringPost
 from config.apps.block.models import Block
 
@@ -95,6 +96,7 @@ class MainAPIViewSetTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['user_name'], "instructor_seoul")
         self.assertEqual(response.data[0]['average_rate'], 0.0)
+        self.assertEqual(response.data[0]['verification_status'], "NOT_SUBMITTED")
 
         # 2. Add an Instructor profile to the logged-in student user to test self-lookup exclusion
         student_instructor = Instructor.objects.create(user=self.student_user, university="연세대")
@@ -106,6 +108,19 @@ class MainAPIViewSetTests(APITestCase):
         # Should still be 1 (only instructor_seoul), and NOT containing student_seoul
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['user_name'], "instructor_seoul")
+
+    def test_student_main_exposes_instructor_verification_status(self):
+        """학생 홈 강사 요약은 전체 목록과 같은 인증 상태를 반환한다."""
+        PendingInstructor.objects.create(
+            instructor_profile=self.instructor,
+            status=PendingInstructor.Status.VERIFIED,
+        )
+        self.client.force_authenticate(user=self.student_user)
+
+        response = self.client.get(reverse("student-main"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]["verification_status"], "VERIFIED")
 
     def test_main_recommendations_hide_bidirectionally_blocked_users(self):
         Block.objects.create(

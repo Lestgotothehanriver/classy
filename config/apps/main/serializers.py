@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from config.apps.accounts.models import Instructor, Student
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
+from config.apps.tutoring.serializers import get_instructor_verification_status
 from django.db.models import Avg
 
 class StudentMainTutorSerializer(serializers.ModelSerializer):
@@ -15,6 +16,7 @@ class StudentMainTutorSerializer(serializers.ModelSerializer):
     subject_numbers = serializers.SerializerMethodField()
     average_rate = serializers.SerializerMethodField()
     profile_image = serializers.SerializerMethodField()
+    verification_status = serializers.SerializerMethodField()
     is_liked = serializers.BooleanField(read_only=True)
     like_count = serializers.IntegerField(read_only=True)
 
@@ -23,9 +25,13 @@ class StudentMainTutorSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user_name', 'first_name', 'last_name', 
             'university', 'department', 'subjects', 'subject_numbers', 
-            'average_rate', 'profile_image',
-            'region', 'student_number', 'sex', 'birth_date', 'is_liked', 'like_count'
-        ]
+              'average_rate', 'profile_image',
+              'region', 'student_number', 'sex', 'birth_date',
+              'verification_status', 'is_liked', 'like_count'
+          ]
+
+    def get_verification_status(self, obj):
+        return get_instructor_verification_status(obj)
 
     def get_subjects(self, obj):
         subject_dict = dict(STUDENT_SUBJECT_CHOICES)

@@ -39,7 +39,12 @@ class StudentMainAPIView(APIView):
         logger.debug("[BACKEND_DEBUG_MAIN] StudentMain - user: %s", request.user.pk)
         user = request.user
 
-        queryset = Instructor.objects.filter(tutoring_profile__isnull=False).exclude(user=user)
+        queryset = Instructor.objects.filter(
+            tutoring_profile__isnull=False,
+        ).select_related(
+            "user",
+            "pending_info",
+        ).exclude(user=user)
         blocked_user_ids = get_blocked_user_ids(user)
         if blocked_user_ids:
             queryset = queryset.exclude(user_id__in=blocked_user_ids)
