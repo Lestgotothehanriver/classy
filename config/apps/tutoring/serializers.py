@@ -10,10 +10,12 @@ from .models import (
     InstructorInfo,
     InstructorReview,
     StudentReview,
+    TutoringResource,
     TutoringProposal,
     Region,
 )
 from config.apps.common.serializers import M2MSyncMixin, AbsoluteFileField, AbsoluteImageField
+from config.apps.common.utils import get_absolute_media_url
 from config.apps.common.validators import validate_cost_unit
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -193,20 +195,42 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
         return obj.cost if obj.cost is not None else "협의 후 결정"
 
 
+def _review_resource_subjects(review):
+    resource = getattr(review, "resource", None)
+    if resource is not None:
+        return resource.subject.all()
+    return review.subjects.all()
+
+
+def _review_class_type(review):
+    resource = getattr(review, "resource", None)
+    return getattr(resource, "class_type", None) or None
+
+
 class InstructorReviewSerializer(serializers.ModelSerializer):
     """
     강사에 대한 리뷰를 직렬화합니다.
     """
     student_id = serializers.IntegerField(source="student.id", read_only=True)
     student_label = serializers.SerializerMethodField()
+    student_profile_image = AbsoluteImageField(
+        source="student.user.profile_image",
+        read_only=True,
+    )
+    student_region = serializers.CharField(
+        source="student.user.region",
+        read_only=True,
+    )
+    class_type = serializers.SerializerMethodField()
     subjects = serializers.SerializerMethodField()
 
     class Meta:
         model = InstructorReview
         fields = [
-            'id', 'instructor', 'student', 'professionalism', 
+            'id', 'resource', 'instructor', 'student', 'professionalism',
             'teaching_skill', 'punctuality', 'comment', 'created_at', 
-            'subjects', 'student_id', 'student_label'
+            'subjects', 'student_id', 'student_label',
+            'student_profile_image', 'student_region', 'class_type'
         ]
 
     def get_student_label(self, obj):
@@ -214,7 +238,13 @@ class InstructorReviewSerializer(serializers.ModelSerializer):
         return getattr(user, "user_name", None) or "학생"
 
     def get_subjects(self, obj):
-        return SubjectSimpleSerializer(obj.subjects.all(), many=True).data
+        return SubjectSimpleSerializer(
+            _review_resource_subjects(obj),
+            many=True,
+        ).data
+
+    def get_class_type(self, obj):
+        return _review_class_type(obj)
 
 
 # ____________________________________________________________________________________
@@ -309,25 +339,50 @@ class StudentReviewSerializer(serializers.ModelSerializer):
     instructor_id = serializers.IntegerField(source="instructor.id", read_only=True)
     instructor_label = serializers.SerializerMethodField()
     instructor_nickname = serializers.CharField(source="instructor.user.user_name", read_only=True)
+    instructor_profile_image = AbsoluteImageField(
+        source="instructor.user.profile_image",
+        read_only=True,
+    )
     instructor_university = serializers.CharField(source="instructor.university", read_only=True)
     instructor_department = serializers.CharField(source="instructor.department", read_only=True)
     instructor_student_number = serializers.CharField(source="instructor.student_number", read_only=True)
+    class_type = serializers.SerializerMethodField()
+    subjects = serializers.SerializerMethodField()
     instructor_subjects = serializers.SerializerMethodField()
 
     class Meta:
         model = StudentReview
         fields = [
-            'id', 'student', 'instructor', 'rating', 'comment', 'created_at', 
+            'id', 'resource', 'student', 'instructor', 'rating', 'comment',
+            'created_at',
             'instructor_id', 'instructor_label', 'instructor_nickname', 
+            'instructor_profile_image',
             'instructor_university', 'instructor_department', 
-            'instructor_student_number', 'instructor_subjects'
+            'instructor_student_number', 'class_type', 'subjects',
+            'instructor_subjects'
         ]
 
     def get_instructor_label(self, obj):
         return str(obj.instructor)
 
     def get_instructor_subjects(self, obj):
+        if obj.resource_id:
+            return self.get_subjects(obj)
         return SubjectSimpleSerializer(obj.instructor.subjects.all(), many=True).data
+
+    def get_subjects(self, obj):
+        if obj.resource_id:
+            return SubjectSimpleSerializer(
+                obj.resource.subject.all(),
+                many=True,
+            ).data
+        return SubjectSimpleSerializer(
+            obj.instructor.subjects.all(),
+            many=True,
+        ).data
+
+    def get_class_type(self, obj):
+        return _review_class_type(obj)
 
 
 # ____________________________________________________________________________________
@@ -363,36 +418,98 @@ class InstructorInfoWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
         return InstructorInfoSerializer(instance, context=self.context).data
 
 
-class InstructorReviewWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
-    """강사 리뷰 생성/수정용. subjects: Subject.number 리스트"""
-    m2m_fields = {'subjects': Subject}
-    subjects = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+class InstructorReviewWriteSerializer(serializers.ModelSerializer):
+    """성사 리소스에 연결된 강사 리뷰 생성/수정용."""
+    comment = serializers.CharField(
+        allow_blank=False,
+        max_length=500,
+        trim_whitespace=True,
+    )
+    resource = serializers.PrimaryKeyRelatedField(
+        queryset=TutoringResource.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = InstructorReview
         fields = [
-            'id', 'instructor', 'student', 'professionalism', 
+            'id', 'resource', 'instructor', 'student', 'professionalism',
             'teaching_skill', 'punctuality', 'comment', 'created_at', 
-            'subjects'
         ]
         read_only_fields = ["student"]
 
     def validate_professionalism(self, value):
-        if not (0 <= value <= 5):
-            raise serializers.ValidationError("전문성 점수는 0에서 5 사이여야 합니다.")
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("전문성 점수는 1에서 5 사이여야 합니다.")
         return value
 
     def validate_teaching_skill(self, value):
-        if not (0 <= value <= 5):
-            raise serializers.ValidationError("강의력 점수는 0에서 5 사이여야 합니다.")
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("강의력 점수는 1에서 5 사이여야 합니다.")
         return value
 
     def validate_punctuality(self, value):
-        if not (0 <= value <= 5):
-            raise serializers.ValidationError("시간 준수 점수는 0에서 5 사이여야 합니다.")
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("시간 준수 점수는 1에서 5 사이여야 합니다.")
         return value
 
-    # create, update 메소드는 M2MSyncMixin에서 처리됨
+    def validate(self, attrs):
+        resource = attrs.get("resource") or getattr(self.instance, "resource", None)
+        if resource is None:
+            if self.instance is not None and self.instance.resource_id is None:
+                return super().validate(attrs)
+            raise serializers.ValidationError(
+                {"resource": "성사 등록된 수업 리소스가 필요합니다."}
+            )
+        if (
+            self.instance is not None
+            and self.instance.resource_id is not None
+            and self.instance.resource_id != resource.pk
+        ):
+            raise serializers.ValidationError(
+                {"resource": "리뷰가 연결된 수업은 변경할 수 없습니다."}
+            )
+        if resource.fee_payment_status != "PAID":
+            raise serializers.ValidationError(
+                {"resource": "운영 확인이 완료된 수업만 리뷰할 수 있습니다."}
+            )
+        duplicate_reviews = InstructorReview.objects.filter(resource=resource)
+        if self.instance is not None:
+            duplicate_reviews = duplicate_reviews.exclude(pk=self.instance.pk)
+        if duplicate_reviews.exists():
+            raise serializers.ValidationError(
+                {"resource": "이 수업에는 이미 작성한 리뷰가 있습니다."}
+            )
+
+        request = self.context.get("request")
+        if request is not None and resource.student.user_id != request.user.id:
+            raise serializers.ValidationError(
+                {"resource": "본인이 수강한 수업만 리뷰할 수 있습니다."}
+            )
+
+        instructor = attrs.get("instructor") or getattr(
+            self.instance,
+            "instructor",
+            None,
+        )
+        if instructor is None or instructor.pk != resource.instructor_id:
+            raise serializers.ValidationError(
+                {"instructor": "수업 리소스의 선생님과 일치하지 않습니다."}
+            )
+        attrs["resource"] = resource
+        return super().validate(attrs)
+
+    def create(self, validated_data):
+        review = super().create(validated_data)
+        review.subjects.set(review.resource.subject.all())
+        return review
+
+    def update(self, instance, validated_data):
+        review = super().update(instance, validated_data)
+        if review.resource_id is not None:
+            review.subjects.set(review.resource.subject.all())
+        return review
 
 
 class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
@@ -432,13 +549,71 @@ class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
 
 class StudentReviewWriteSerializer(serializers.ModelSerializer):
     """학생 리뷰 생성/수정용."""
+    comment = serializers.CharField(
+        allow_blank=False,
+        max_length=500,
+        trim_whitespace=True,
+    )
+    resource = serializers.PrimaryKeyRelatedField(
+        queryset=TutoringResource.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = StudentReview
         fields = [
-            'id', 'student', 'instructor', 'rating', 'comment', 'created_at'
+            'id', 'resource', 'student', 'instructor', 'rating', 'comment',
+            'created_at'
         ]
         read_only_fields = ["instructor"]
+
+    def validate_rating(self, value):
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("평점은 1에서 5 사이여야 합니다.")
+        return value
+
+    def validate(self, attrs):
+        resource = attrs.get("resource") or getattr(self.instance, "resource", None)
+        if resource is None:
+            if self.instance is not None and self.instance.resource_id is None:
+                return super().validate(attrs)
+            raise serializers.ValidationError(
+                {"resource": "성사 등록된 수업 리소스가 필요합니다."}
+            )
+        if (
+            self.instance is not None
+            and self.instance.resource_id is not None
+            and self.instance.resource_id != resource.pk
+        ):
+            raise serializers.ValidationError(
+                {"resource": "리뷰가 연결된 수업은 변경할 수 없습니다."}
+            )
+        if resource.fee_payment_status != "PAID":
+            raise serializers.ValidationError(
+                {"resource": "운영 확인이 완료된 수업만 리뷰할 수 있습니다."}
+            )
+        duplicate_reviews = StudentReview.objects.filter(resource=resource)
+        if self.instance is not None:
+            duplicate_reviews = duplicate_reviews.exclude(pk=self.instance.pk)
+        if duplicate_reviews.exists():
+            raise serializers.ValidationError(
+                {"resource": "이 수업에는 이미 작성한 리뷰가 있습니다."}
+            )
+
+        request = self.context.get("request")
+        if request is not None and resource.instructor.user_id != request.user.id:
+            raise serializers.ValidationError(
+                {"resource": "본인이 진행한 수업만 리뷰할 수 있습니다."}
+            )
+
+        student = attrs.get("student") or getattr(self.instance, "student", None)
+        if student is None or student.pk != resource.student_id:
+            raise serializers.ValidationError(
+                {"student": "수업 리소스의 학생과 일치하지 않습니다."}
+            )
+        attrs["resource"] = resource
+        return super().validate(attrs)
 
 class TutoringProposalSerializer(serializers.ModelSerializer):
     """과외 제안서 통합 Serializer (CRUD 모두 사용)"""
@@ -559,6 +734,7 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
     payment_account_number = serializers.SerializerMethodField()
     expected_commission_amount = serializers.IntegerField(read_only=True)
     my_review = serializers.SerializerMethodField()
+    counterpart = serializers.SerializerMethodField()
 
     class Meta:
         from .models import TutoringResource
@@ -594,11 +770,15 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
                     ),
                     None,
                 )
-                ret['class_type'] = (
+                ret['class_type'] = instance.class_type or (
                     '단기 수업' if mine and mine.class_type == 'SHORT_TERM'
                     else '장기 수업' if mine else None
                 )
-                ret['first_month_fee'] = mine.first_month_fee if mine else None
+                ret['first_month_fee'] = (
+                    instance.first_month_fee
+                    if instance.first_month_fee is not None
+                    else mine.first_month_fee if mine else None
+                )
                 ret['attribute_validation_status'] = (
                     registration.attribute_validation_status
                 )
@@ -614,20 +794,76 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
     def get_payment_account_number(self, obj):
         return settings.TUTORING_PAYMENT_ACCOUNT_NUMBER
 
+    def get_counterpart(self, obj):
+        """현재 활성 역할을 기준으로 리뷰 작성 대상 정보를 반환합니다."""
+        request = self.context.get('request')
+        if request is None or not request.user.is_authenticated:
+            return None
+
+        requested_role = (
+            request.headers.get('X-Classy-Role')
+            or request.query_params.get('role')
+        )
+        is_instructor = (
+            requested_role == 'instructor'
+            or (
+                requested_role not in ('student', 'instructor')
+                and obj.instructor.user_id == request.user.id
+            )
+        )
+
+        if is_instructor:
+            user = obj.student.user
+            registration = getattr(obj, 'registration', None)
+            chat_room = getattr(registration, 'chat_room', None)
+            post = getattr(chat_room, 'post', None)
+            return {
+                'id': obj.student_id,
+                'nickname': user.user_name,
+                'profile_image': get_absolute_media_url(
+                    user.profile_image,
+                    request,
+                ),
+                'gender': getattr(post, 'sex', None) or user.sex or None,
+                'grade': getattr(post, 'grade', None) or None,
+                'field': getattr(post, 'field', None) or None,
+                'school': None,
+                'department': None,
+            }
+
+        user = obj.instructor.user
+        return {
+            'id': obj.instructor_id,
+            'nickname': user.user_name,
+            'profile_image': get_absolute_media_url(
+                user.profile_image,
+                request,
+            ),
+            'gender': None,
+            'grade': None,
+            'field': None,
+            'school': obj.instructor.university or None,
+            'department': obj.instructor.department or None,
+        }
+
     def get_my_review(self, obj):
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return None
 
         if obj.student.user_id == request.user.id:
-            review = InstructorReview.objects.filter(
-                student=obj.student,
-                instructor=obj.instructor,
-            ).order_by('-id').first()
+            review = InstructorReview.objects.filter(resource=obj).first()
+            if review is None:
+                review = InstructorReview.objects.filter(
+                    resource__isnull=True,
+                    student=obj.student,
+                    instructor=obj.instructor,
+                ).order_by('-id').first()
             if review is None:
                 return None
             return {
                 'id': review.pk,
+                'resource': review.resource_id,
                 'professionalism': review.professionalism,
                 'teaching_skill': review.teaching_skill,
                 'punctuality': review.punctuality,
@@ -635,14 +871,18 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
             }
 
         if obj.instructor.user_id == request.user.id:
-            review = StudentReview.objects.filter(
-                student=obj.student,
-                instructor=obj.instructor,
-            ).order_by('-id').first()
+            review = StudentReview.objects.filter(resource=obj).first()
+            if review is None:
+                review = StudentReview.objects.filter(
+                    resource__isnull=True,
+                    student=obj.student,
+                    instructor=obj.instructor,
+                ).order_by('-id').first()
             if review is None:
                 return None
             return {
                 'id': review.pk,
+                'resource': review.resource_id,
                 'rating': review.rating,
                 'comment': review.comment,
             }

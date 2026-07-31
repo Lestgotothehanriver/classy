@@ -204,13 +204,20 @@ class InstructorReview(models.Model):
     """
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name="instructor_reviews")
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="instructor_reviews")
+    resource = models.OneToOneField(
+        "TutoringResource",
+        on_delete=models.PROTECT,
+        related_name="instructor_review",
+        null=True,
+        blank=True,
+    )
     
     # 세분화된 리뷰 항목 (0~5점)
     professionalism = models.IntegerField(default=0)  # 전문성
     teaching_skill = models.IntegerField(default=0)   # 강의력
     punctuality = models.IntegerField(default=0)      # 시간 준수
     
-    comment = models.TextField(blank=True)
+    comment = models.TextField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     subjects = models.ManyToManyField(Subject, blank=True, related_name='instructor_reviews')
 
@@ -229,8 +236,15 @@ class StudentReview(models.Model):
     """
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="student_reviews")
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name="student_reviews")
+    resource = models.OneToOneField(
+        "TutoringResource",
+        on_delete=models.PROTECT,
+        related_name="student_review",
+        null=True,
+        blank=True,
+    )
     rating = models.IntegerField()
-    comment = models.TextField(blank=True)
+    comment = models.TextField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
 #____________________________________________________________________________________________________

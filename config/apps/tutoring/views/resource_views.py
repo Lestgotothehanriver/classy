@@ -94,7 +94,11 @@ class TutoringResourceViewSet(viewsets.ModelViewSet):
             )
 
         return queryset.select_related(
-            'student__user', 'instructor__user', 'registration'
+            'student__user',
+            'instructor__user',
+            'registration',
+            'registration__chat_room',
+            'registration__chat_room__post',
         ).prefetch_related(
             'subject', 'files', 'registration__submissions'
         ).order_by('-id')

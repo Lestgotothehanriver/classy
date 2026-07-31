@@ -183,9 +183,12 @@ class StudentReviewListAPIView(generics.ListAPIView):
                 ).exclude(student__user_id__in=blocked_user_ids)
                 
         return qs.select_related(
-            "instructor", "instructor__user"
+            "instructor",
+            "instructor__user",
+            "resource",
         ).prefetch_related(
-            "instructor__subjects"
+            "instructor__subjects",
+            "resource__subject",
         ).order_by("-id")
 
 
