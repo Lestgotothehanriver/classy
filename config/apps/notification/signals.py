@@ -65,16 +65,17 @@ def broadcast_notification_on_save(sender, instance, created, **kwargs):
 
 _STATUS_MESSAGES = {
     PendingInstructor.Status.VERIFIED: {
-        'body': '클래씨 강사로 승인되었습니다. 지금 로그인하여 활동을 시작해 보세요.',
+        'body': '학력 인증이 완료되었습니다. 지금 로그인 후 과외 활동을 시작해보세요!',
     },
     PendingInstructor.Status.SUSPENDED: {
-        'body': '제출하신 서류를 다시 확인해주세요. 자세한 문의는 고객센터를 이용해 주세요.',
+        'body': '학력 인증이 반려되었습니다. 제출하신 서류를 다시 확인해주세요. 마이페이지 > 학력 인증 메뉴에서 재제출이 가능합니다.',
     },
 }
+university_noti_title = "학력 인증 알림"
 
 _STATUS_TITLES = {
-    PendingInstructor.Status.VERIFIED: '{nickname}님의 강사 인증이 완료되었습니다! 🎉',
-    PendingInstructor.Status.SUSPENDED: '{nickname}님의 강사 인증이 반려되었습니다.',
+    PendingInstructor.Status.VERIFIED: university_noti_title,
+    PendingInstructor.Status.SUSPENDED: university_noti_title,
 }
 
 
@@ -96,7 +97,7 @@ def notify_instructor_status_change(sender, instance, created, **kwargs):
 
     user = instance.instructor_profile.user
     nickname = user.user_name
-    title = _STATUS_TITLES.get(instance.status, '클래씨 알림').format(nickname=nickname)
+    title = _STATUS_TITLES.get(instance.status, university_noti_title).format(nickname=nickname)
 
     # 1) FCM push
     from config.apps.notification.fcm import send_push_to_user
