@@ -16,6 +16,7 @@ from config.apps.block.utils import get_blocked_user_ids
 from config.apps.common.utils import filter_by_account_region
 from config.apps.tutoring.models import TutoringPost
 from config.apps.tutoring.serializers import TutoringPostListSerializer
+from config.apps.tutoring.utils import filter_posts_by_account_region
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 메인 화면 관련 View
@@ -163,10 +164,9 @@ class InstructorMainAPIView(APIView):
             recommended_posts = recommended_posts.exclude(
                 student__user_id__in=blocked_user_ids,
             )
-        recommended_posts = filter_by_account_region(
+        recommended_posts = filter_posts_by_account_region(
             recommended_posts,
             user,
-            "student__user__region",
         ).annotate(
             student_avg_rating=Avg("student__student_reviews__rating"),
             student_review_count=Count(

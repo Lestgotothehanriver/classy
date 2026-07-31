@@ -2,7 +2,12 @@ from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
-from config.apps.tutoring.models import InstructorInfo, TutoringPost, TutoringPostLike
+from config.apps.tutoring.models import (
+    InstructorInfo,
+    Region,
+    TutoringPost,
+    TutoringPostLike,
+)
 from config.apps.pending.models import PendingInstructor
 
 
@@ -63,6 +68,9 @@ class LocalRecommendationPaginationTest(TestCase):
             university="서울 테스트대",
         )
         InstructorInfo.objects.create(instructor=self.instructor)
+        self.seoul_gangnam = Region.objects.create(number=1)
+        self.seoul_gangdong = Region.objects.create(number=2)
+        self.busan_gangseo = Region.objects.create(number=80)
 
     def test_local_instructor_list_uses_account_region(self):
         """local=true는 수업 가능 지역이 아니라 양쪽 계정 지역을 비교한다."""
@@ -102,24 +110,31 @@ class LocalRecommendationPaginationTest(TestCase):
                 username=f"seoul_post_student_{index}",
                 user_name=f"seoul_post_student_{index}",
                 password="pass1234",
-                region="서울 마포구",
+                region="부산 수영구",
             )
             student = Student.objects.create(user=user)
-            TutoringPost.objects.create(
+            post = TutoringPost.objects.create(
                 student=student,
                 title=f"서울 공고 {index}",
                 is_active=True,
             )
+            post.regions.add(self.seoul_gangnam, self.seoul_gangdong)
         busan_user = User.objects.create_user(
             username="busan_post_owner",
             user_name="busan_post_owner",
             password="pass1234",
-            region="부산 수영구",
+            region="서울 마포구",
         )
         busan_student = Student.objects.create(user=busan_user)
         busan_post = TutoringPost.objects.create(
             student=busan_student,
             title="부산 공고",
+            is_active=True,
+        )
+        busan_post.regions.add(self.busan_gangseo)
+        no_region_post = TutoringPost.objects.create(
+            student=busan_student,
+            title="지역 미지정 공고",
             is_active=True,
         )
         self.client.force_authenticate(user=self.instructor_user)
@@ -132,6 +147,7 @@ class LocalRecommendationPaginationTest(TestCase):
             "/tutoring/posts/",
             {"local": "true", "page": 2},
         )
+        global_response = self.client.get("/tutoring/posts/")
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
@@ -142,6 +158,11 @@ class LocalRecommendationPaginationTest(TestCase):
         self.assertEqual(len(ids), 21)
         self.assertEqual(len(ids), len(set(ids)))
         self.assertNotIn(busan_post.id, ids)
+        self.assertNotIn(no_region_post.id, ids)
+        global_ids = [
+            item["id"] for item in global_response.json()["results"]
+        ]
+        self.assertIn(no_region_post.id, global_ids)
 
     def test_local_lists_are_empty_without_account_region(self):
         """계정 지역이 비어 있으면 지역 목록은 빈 페이지를 반환한다."""
@@ -156,6 +177,16 @@ class LocalRecommendationPaginationTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["results"], [])
+
+        self.instructor_user.region = ""
+        self.instructor_user.save(update_fields=["region"])
+        self.client.force_authenticate(user=self.instructor_user)
+        post_response = self.client.get(
+            "/tutoring/posts/",
+            {"local": "true"},
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertEqual(post_response.json()["results"], [])
 
 
 class InstructorLikeSortingTest(LikeSortingTestBase):

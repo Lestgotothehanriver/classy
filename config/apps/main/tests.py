@@ -6,7 +6,7 @@ from django.utils import timezone
 from config.apps.accounts.models import User, Student, Instructor, Subject
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.lecture.models import Lecture
-from config.apps.tutoring.models import InstructorInfo, TutoringPost
+from config.apps.tutoring.models import InstructorInfo, Region, TutoringPost
 from config.apps.block.models import Block
 
 class MainAPIViewSetTests(APITestCase):
@@ -32,8 +32,16 @@ class MainAPIViewSetTests(APITestCase):
         InstructorInfo.objects.create(instructor=self.instructor)
         # We do NOT create TutoringProfile for other_instructor to make sure only ones with profile show up
 
+        self.seoul_region = Region.objects.create(number=1)
+        self.busan_region = Region.objects.create(number=80)
+
         # Create active TutoringPost for active students
-        TutoringPost.objects.create(student=self.student, title="Seoul student post", is_active=True)
+        self.local_post = TutoringPost.objects.create(
+            student=self.student,
+            title="Seoul student post",
+            is_active=True,
+        )
+        self.local_post.regions.add(self.seoul_region)
 
         # Create subjects 
         subj = Subject.objects.create(number=1)
@@ -134,7 +142,7 @@ class MainAPIViewSetTests(APITestCase):
         self.assertEqual(len(response.data.get('recommended_posts')), 1)
         self.assertEqual(
             response.data.get('recommended_posts')[0]['id'],
-            self.student.tutoring_posts.get().id,
+            self.local_post.id,
         )
 
         # 2. Add a Student profile and active TutoringPost to the logged-in instructor user to test self-lookup exclusion
@@ -193,16 +201,18 @@ class MainAPIViewSetTests(APITestCase):
     def test_instructor_main_returns_three_unique_active_local_posts(self):
         """강사 홈은 학생이 아닌 실제 활성 지역 공고를 ID 기준 최대 3개 반환한다."""
         for index in range(4):
-            TutoringPost.objects.create(
+            post = TutoringPost.objects.create(
                 student=self.student,
                 title=f"서울 공고 {index}",
                 is_active=True,
             )
-        TutoringPost.objects.create(
+            post.regions.add(self.seoul_region)
+        inactive_post = TutoringPost.objects.create(
             student=self.student,
             title="비활성 서울 공고",
             is_active=False,
         )
+        inactive_post.regions.add(self.seoul_region)
         busan_user = User.objects.create_user(
             username="busan_post_student",
             password="password",
@@ -210,11 +220,18 @@ class MainAPIViewSetTests(APITestCase):
             user_name="busan_post_student",
         )
         busan_student = Student.objects.create(user=busan_user)
-        TutoringPost.objects.create(
+        busan_student_local_post = TutoringPost.objects.create(
             student=busan_student,
-            title="부산 공고",
+            title="부산 학생의 서울 희망 공고",
             is_active=True,
         )
+        busan_student_local_post.regions.add(self.seoul_region)
+        remote_post = TutoringPost.objects.create(
+            student=self.student,
+            title="서울 학생의 부산 희망 공고",
+            is_active=True,
+        )
+        remote_post.regions.add(self.busan_region)
 
         self.client.force_authenticate(user=self.instructor_user)
         response = self.client.get(reverse("instructor-main"))
@@ -223,11 +240,7 @@ class MainAPIViewSetTests(APITestCase):
         posts = response.data["recommended_posts"]
         self.assertEqual(len(posts), 3)
         self.assertEqual(len({item["id"] for item in posts}), 3)
-        self.assertTrue(
-            all(
-                TutoringPost.objects.get(pk=item["id"]).student.user.region.startswith(
-                    "서울"
-                )
-                for item in posts
-            )
-        )
+        post_ids = {item["id"] for item in posts}
+        self.assertIn(busan_student_local_post.id, post_ids)
+        self.assertNotIn(remote_post.id, post_ids)
+        self.assertTrue(all(item["regions"] for item in posts))

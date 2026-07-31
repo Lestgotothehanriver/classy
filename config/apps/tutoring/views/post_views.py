@@ -10,11 +10,11 @@ from config.apps.accounts.models import Student, Instructor
 from config.apps.chat_app.models import ChatRoom
 from config.apps.common.utils import (
     apply_subject_filter,
-    filter_by_account_region,
     parse_int_list,
 )
 from ..models import TutoringPost
 from ..serializers import TutoringPostListSerializer, TutoringPostDetailSerializer, TutoringPostWriteSerializer, StudentMyPostSerializer
+from ..utils import filter_posts_by_account_region
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,12 @@ class TutoringPostListAPIView(generics.ListAPIView):
     serializer_class = TutoringPostListSerializer
 
     def get_queryset(self):
-        qs = TutoringPost.objects.filter(is_active=True).select_related("student").prefetch_related("subjects")
+        qs = TutoringPost.objects.filter(is_active=True).select_related(
+            "student__user",
+        ).prefetch_related(
+            "subjects",
+            "regions",
+        )
 
         if self.request.user.is_authenticated:
             qs = qs.exclude(student__user=self.request.user)
@@ -52,10 +57,9 @@ class TutoringPostListAPIView(generics.ListAPIView):
             if blocked_user_ids:
                 qs = qs.exclude(student__user_id__in=blocked_user_ids)
             if self.request.query_params.get("local", "").lower() in ("true", "1"):
-                qs = filter_by_account_region(
+                qs = filter_posts_by_account_region(
                     qs,
                     self.request.user,
-                    "student__user__region",
                 )
 
         qs = qs.annotate(
