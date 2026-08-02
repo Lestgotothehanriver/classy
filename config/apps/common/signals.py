@@ -25,18 +25,6 @@ def delete_file_field(instance, field_name):
 def cleanup_user_profile_image(sender, instance, **kwargs):
     delete_file_field(instance, 'profile_image')
 
-@receiver(pre_save, sender=User)
-def cleanup_old_user_profile_image(sender, instance, **kwargs):
-    if not instance.pk:
-        return
-    try:
-        old_instance = User.objects.get(pk=instance.pk)
-        if old_instance.profile_image and old_instance.profile_image != instance.profile_image:
-            delete_file_field(old_instance, 'profile_image')
-    except User.DoesNotExist:
-        pass
-
-
 @receiver(post_delete, sender=Lecture)
 def cleanup_lecture_files(sender, instance, **kwargs):
     delete_file_field(instance, 'thumbnail')

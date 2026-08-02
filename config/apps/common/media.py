@@ -20,6 +20,15 @@ def _file_iterator(file_obj, start: int, length: int, chunk_size: int = 8192):
 # 학력 인증 문서 등 민감 파일이 저장되는 경로. 직접 접근을 차단하고
 # 슈퍼관리자 전용 스트리밍 엔드포인트로만 열람하도록 합니다.
 PROTECTED_MEDIA_PREFIXES = ("files/",)
+PROFILE_IMAGE_PREFIX = "profile_images/"
+PROFILE_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+def _apply_media_cache_policy(response, path):
+    """Apply immutable caching only to versioned profile image paths."""
+    if path.startswith(PROFILE_IMAGE_PREFIX):
+        response["Cache-Control"] = PROFILE_IMAGE_CACHE_CONTROL
+    return response
 
 
 def deny_direct_file_access(request, path=""):
@@ -56,7 +65,7 @@ def serve_media_with_range(request, path):
         response = FileResponse(open(full_path, "rb"), content_type=content_type)
         response["Content-Length"] = str(file_size)
         response["Accept-Ranges"] = "bytes"
-        return response
+        return _apply_media_cache_policy(response, path)
 
     if not range_header.startswith("bytes="):
         response = HttpResponse(status=416)
@@ -105,4 +114,4 @@ def serve_media_with_range(request, path):
     response["Content-Length"] = str(length)
     response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     response["Accept-Ranges"] = "bytes"
-    return response
+    return _apply_media_cache_policy(response, path)

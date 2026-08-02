@@ -13,6 +13,7 @@ from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.generics import GenericAPIView
 from .models import User
+from .uploads import replace_profile_image
 from config.apps.pending.models import PendingInstructor
 from django.shortcuts import get_object_or_404
 from django.conf import settings
@@ -904,9 +905,10 @@ class ProfileImageAPIView(APIView):
         if 'profile_image' not in request.FILES:
             return Response({"error": "profile_image 파일이 필요합니다."}, status=400)
 
-        user = request.user
-        user.profile_image = request.FILES['profile_image']
-        user.save(update_fields=['profile_image'])
+        user = replace_profile_image(
+            user_id=request.user.pk,
+            uploaded_file=request.FILES['profile_image'],
+        )
 
         return Response({
             "profile_image": request.build_absolute_uri(user.profile_image.url),

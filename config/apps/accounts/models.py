@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from config.apps.accounts.uploads import profile_image_upload_to
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
 
 sex_choices = [
@@ -76,7 +77,11 @@ class User(AbstractUser):
     region = models.CharField(max_length=50, blank=True)
     field = models.CharField(max_length=10, choices=field_choices, blank=True)
     cash = models.PositiveIntegerField(default=0)
-    profile_image = models.ImageField(upload_to='profile_images/', blank=True, null=True)
+    profile_image = models.ImageField(
+        upload_to=profile_image_upload_to,
+        blank=True,
+        null=True,
+    )
     is_banned = models.BooleanField(default=False)
     withdraw_reason = models.CharField(max_length=255, blank=True)
     withdraw_reason_detail = models.TextField(blank=True)  # 탈퇴 상세 사유
