@@ -14,6 +14,12 @@ from .views import (
     SettlementDetailView,
     SettlementListView,
     SettlementSummaryView,
+    TutoringRegistrationConfirmFeeView,
+    TutoringRegistrationDetailView,
+    TutoringRegistrationDocumentView,
+    TutoringRegistrationListView,
+    TutoringRegistrationRejectFeeView,
+    TutoringRegistrationSummaryView,
 )
 
 app_name = "adminops"
@@ -77,5 +83,36 @@ urlpatterns = [
         "settlements/<int:pk>/cancel/",
         SettlementCancelView.as_view(),
         name="settlement-cancel",
+    ),
+    # 성사등록(과외 성사) 관리
+    path(
+        "tutoring-registrations/",
+        TutoringRegistrationListView.as_view(),
+        name="tutoring-registration-list",
+    ),
+    path(
+        "tutoring-registrations/summary/",
+        TutoringRegistrationSummaryView.as_view(),
+        name="tutoring-registration-summary",
+    ),
+    path(
+        "tutoring-registrations/<int:pk>/",
+        TutoringRegistrationDetailView.as_view(),
+        name="tutoring-registration-detail",
+    ),
+    path(
+        "tutoring-registrations/<int:pk>/confirm-fee/",
+        TutoringRegistrationConfirmFeeView.as_view(),
+        name="tutoring-registration-confirm-fee",
+    ),
+    path(
+        "tutoring-registrations/<int:pk>/reject-fee/",
+        TutoringRegistrationRejectFeeView.as_view(),
+        name="tutoring-registration-reject-fee",
+    ),
+    path(
+        "tutoring-registrations/<int:pk>/documents/<int:file_id>/",
+        TutoringRegistrationDocumentView.as_view(),
+        name="tutoring-registration-document",
     ),
 ]

@@ -12,6 +12,11 @@ from .settlement import (
     SettlementListSerializer,
     SettlementRentalSerializer,
 )
+from .tutoring_registration import (
+    RejectFeeSerializer,
+    TutoringRegistrationDetailSerializer,
+    TutoringRegistrationListSerializer,
+)
 
 __all__ = [
     "AdminLoginSerializer",
@@ -25,4 +30,7 @@ __all__ = [
     "SettlementRentalSerializer",
     "SettlementCompleteSerializer",
     "SettlementCancelSerializer",
+    "TutoringRegistrationListSerializer",
+    "TutoringRegistrationDetailSerializer",
+    "RejectFeeSerializer",
 ]

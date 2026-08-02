@@ -118,61 +118,20 @@ class StudentReviewAdmin(admin.ModelAdmin):
 
 # ── TutoringResource ──────────────────────────────────────────────────────────
 
-def sync_linked_payment_state(resource, notify=True):
-    from config.apps.notification.helpers import (
-        notify_fee_payment_confirmed,
-        notify_fee_payment_failed,
-    )
-    from config.apps.tutoring.registration_services import refresh_contract_status
-
-    registration = getattr(resource, 'registration', None)
-    if registration is None:
-        if notify and resource.fee_payment_status == 'PAID':
-            notify_fee_payment_confirmed(resource)
-        elif notify and resource.fee_payment_status == 'FAILED':
-            notify_fee_payment_failed(resource)
-        return
-
-    previous_contract_status = registration.contract_status
-    invoice = registration.commission_invoices.filter(
-        invoice_type=CommissionInvoice.InvoiceType.INITIAL
-    ).first()
-    previous_invoice_status = invoice.status if invoice else None
-    if invoice:
-        if resource.fee_payment_status == 'PAID':
-            invoice.status = CommissionInvoice.Status.PAID
-            invoice.paid_at = invoice.paid_at or timezone.now()
-        elif resource.fee_payment_status == 'FAILED':
-            invoice.status = CommissionInvoice.Status.FAILED
-            invoice.paid_at = None
-        else:
-            invoice.status = CommissionInvoice.Status.PAYMENT_PENDING
-            invoice.paid_at = None
-        invoice.save(update_fields=['status', 'paid_at', 'updated_at'])
-
-    contract_status = refresh_contract_status(registration)
-    if (
-        notify
-        and contract_status == TutoringRegistration.ContractStatus.ACTIVE
-        and previous_contract_status != TutoringRegistration.ContractStatus.ACTIVE
-    ):
-        notify_fee_payment_confirmed(resource)
-    elif (
-        notify
-        and resource.fee_payment_status == 'FAILED'
-        and previous_invoice_status != CommissionInvoice.Status.FAILED
-    ):
-        # FAILED 전환 시 1회만 발송 (invoice 상태 전환 edge-guard)
-        notify_fee_payment_failed(resource)
+# 상태 동기화·전이 로직은 registration_services 로 이전해 Django Admin 액션과
+# 관리자 API 서비스가 공유 호출한다.
+from config.apps.tutoring.registration_services import (
+    confirm_fee_payment as confirm_fee_payment_service,
+    mark_fee_payment_failed as mark_fee_payment_failed_service,
+    sync_linked_payment_state,
+)
 
 
 @admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
 def confirm_fee_payment(modeladmin, request, queryset):
     updated = 0
     for resource in queryset.filter(fee_payment_status='AWAITING_CONFIRMATION'):
-        resource.fee_payment_status = 'PAID'
-        resource.save(update_fields=['fee_payment_status'])
-        sync_linked_payment_state(resource)
+        confirm_fee_payment_service(resource)
         updated += 1
     modeladmin.message_user(
         request,
@@ -187,9 +146,7 @@ def reject_fee_payment(modeladmin, request, queryset):
     )
     updated = 0
     for resource in resources:
-        resource.fee_payment_status = 'FAILED'
-        resource.save(update_fields=['fee_payment_status'])
-        sync_linked_payment_state(resource, notify=True)
+        mark_fee_payment_failed_service(resource, notify=True)
         updated += 1
     modeladmin.message_user(request, f'{updated}건 FAILED 처리 완료. 양측에 성사 실패 알림을 발송했습니다.')
 

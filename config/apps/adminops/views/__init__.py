@@ -14,6 +14,14 @@ from .settlement import (
     SettlementListView,
     SettlementSummaryView,
 )
+from .tutoring_registration import (
+    TutoringRegistrationConfirmFeeView,
+    TutoringRegistrationDetailView,
+    TutoringRegistrationDocumentView,
+    TutoringRegistrationListView,
+    TutoringRegistrationRejectFeeView,
+    TutoringRegistrationSummaryView,
+)
 
 __all__ = [
     "AdminLoginAPIView",
@@ -29,4 +37,10 @@ __all__ = [
     "SettlementDetailView",
     "SettlementCompleteView",
     "SettlementCancelView",
+    "TutoringRegistrationListView",
+    "TutoringRegistrationSummaryView",
+    "TutoringRegistrationDetailView",
+    "TutoringRegistrationConfirmFeeView",
+    "TutoringRegistrationRejectFeeView",
+    "TutoringRegistrationDocumentView",
 ]

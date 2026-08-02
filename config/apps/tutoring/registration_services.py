@@ -153,6 +153,76 @@ def refresh_contract_status(registration):
     return status_value
 
 
+def sync_linked_payment_state(resource, notify=True):
+    """``fee_payment_status`` 변경을 연결 인보이스·계약 상태에 반영한다.
+
+    Django Admin 액션과 관리자 API 서비스가 **공유 호출**하는 상태 동기화 로직이다.
+    ``TutoringResource.fee_payment_status`` 에 맞춰 INITIAL ``CommissionInvoice`` 상태를
+    갱신하고 ``refresh_contract_status`` 로 계약 상태를 재계산하며, 상태 전이 시 1회만
+    양측/강사에게 알림을 보낸다.
+    """
+    from config.apps.notification.helpers import (
+        notify_fee_payment_confirmed,
+        notify_fee_payment_failed,
+    )
+
+    registration = getattr(resource, "registration", None)
+    if registration is None:
+        if notify and resource.fee_payment_status == "PAID":
+            notify_fee_payment_confirmed(resource)
+        elif notify and resource.fee_payment_status == "FAILED":
+            notify_fee_payment_failed(resource)
+        return
+
+    previous_contract_status = registration.contract_status
+    invoice = registration.commission_invoices.filter(
+        invoice_type=CommissionInvoice.InvoiceType.INITIAL
+    ).first()
+    previous_invoice_status = invoice.status if invoice else None
+    if invoice:
+        if resource.fee_payment_status == "PAID":
+            invoice.status = CommissionInvoice.Status.PAID
+            invoice.paid_at = invoice.paid_at or timezone.now()
+        elif resource.fee_payment_status == "FAILED":
+            invoice.status = CommissionInvoice.Status.FAILED
+            invoice.paid_at = None
+        else:
+            invoice.status = CommissionInvoice.Status.PAYMENT_PENDING
+            invoice.paid_at = None
+        invoice.save(update_fields=["status", "paid_at", "updated_at"])
+
+    contract_status = refresh_contract_status(registration)
+    if (
+        notify
+        and contract_status == TutoringRegistration.ContractStatus.ACTIVE
+        and previous_contract_status != TutoringRegistration.ContractStatus.ACTIVE
+    ):
+        notify_fee_payment_confirmed(resource)
+    elif (
+        notify
+        and resource.fee_payment_status == "FAILED"
+        and previous_invoice_status != CommissionInvoice.Status.FAILED
+    ):
+        # FAILED 전환 시 1회만 발송 (invoice 상태 전환 edge-guard)
+        notify_fee_payment_failed(resource)
+
+
+def confirm_fee_payment(resource, *, notify=True):
+    """수수료 입금을 확인 처리(→PAID)하고 연결 상태를 동기화한다."""
+    resource.fee_payment_status = "PAID"
+    resource.save(update_fields=["fee_payment_status"])
+    sync_linked_payment_state(resource, notify=notify)
+    return resource
+
+
+def mark_fee_payment_failed(resource, *, notify=True):
+    """수수료 입금을 실패 처리(→FAILED)하고 연결 상태를 동기화한다."""
+    resource.fee_payment_status = "FAILED"
+    resource.save(update_fields=["fee_payment_status"])
+    sync_linked_payment_state(resource, notify=notify)
+    return resource
+
+
 def _replace_proof_files(resource, proof_files):
     for stored_file in resource.files.all():
         stored_file.file.delete(save=False)
