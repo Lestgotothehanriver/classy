@@ -9,7 +9,7 @@
 import mimetypes
 import os
 
-from django.db.models import Count, Q
+from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.db.models.functions import Concat
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.apps.tutoring.models import (
+    CommissionInvoice,
     TutoringRegistration,
     TutoringResource,
     TutoringResourceFile,
@@ -36,7 +37,7 @@ from ..services import tutoring_registration as service
 _CONTRACT_VALUES = set(TutoringRegistration.ContractStatus.values)
 _VALIDATION_VALUES = set(TutoringRegistration.AttributeValidationStatus.values)
 _FEE_VALUES = {"PENDING", "AWAITING_CONFIRMATION", "PAID", "FAILED"}
-_ORDERABLE_FIELDS = {"created_at", "updated_at", "start_date"}
+_ORDERABLE_FIELDS = {"created_at", "updated_at", "start_date", "commission_amount"}
 _ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 
 
@@ -100,11 +101,26 @@ class TutoringRegistrationListView(ListAPIView):
             )
 
         ordering = params.get("ordering", "-created_at")
-        if ordering.lstrip("-") in _ORDERABLE_FIELDS:
-            qs = qs.order_by(ordering)
-        else:
-            qs = qs.order_by("-created_at")
-        return qs
+        field = ordering.lstrip("-")
+        if field not in _ORDERABLE_FIELDS:
+            return qs.order_by("-created_at")
+
+        if field == "commission_amount":
+            # 수수료 금액은 연결 INITIAL 인보이스 값이므로 서브쿼리로 annotate 후 정렬한다.
+            # 인보이스 없는 등록(NULL)은 항상 뒤로 보낸다.
+            qs = qs.annotate(
+                _commission_amount=Subquery(
+                    CommissionInvoice.objects.filter(
+                        registration=OuterRef("pk"),
+                        invoice_type=CommissionInvoice.InvoiceType.INITIAL,
+                    ).values("commission_amount")[:1]
+                )
+            )
+            expr = F("_commission_amount")
+            expr = expr.desc(nulls_last=True) if ordering.startswith("-") else expr.asc(nulls_last=True)
+            return qs.order_by(expr)
+
+        return qs.order_by(ordering)
 
 
 class TutoringRegistrationSummaryView(APIView):
