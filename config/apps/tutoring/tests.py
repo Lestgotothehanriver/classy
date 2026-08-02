@@ -8,6 +8,7 @@ from config.apps.tutoring.models import (
     TutoringPost,
     TutoringPostLike,
 )
+from config.apps.tutoring.serializers import TutoringPostWriteSerializer
 from config.apps.pending.models import PendingInstructor
 
 
@@ -749,6 +750,58 @@ class TutoringPostPatchRepresentationTest(TestCase):
         self.assertEqual(data["situation"], "내신 대비")
         self.assertEqual(data["subjects"][0]["number"], self.subject.number)
         self.assertEqual(data["regions"][0]["id"], self.region.id)
+
+
+class TutoringPostFieldPolicyTest(TestCase):
+    """공고 학년에 따른 계열 검증과 정규화를 검증합니다."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="field_policy_student",
+            user_name="field_policy_student",
+            password="pass1234",
+        )
+        self.student = Student.objects.create(user=self.user)
+
+    def test_high_school_grade_requires_field(self):
+        serializer = TutoringPostWriteSerializer(data={"grade": "고1"})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("field", serializer.errors)
+
+    def test_non_target_grade_clears_submitted_field(self):
+        serializer = TutoringPostWriteSerializer(
+            data={"grade": "초4", "field": "문과"}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        post = serializer.save(student=self.student)
+        self.assertEqual(post.field, "")
+
+    def test_changing_to_non_target_grade_clears_existing_field(self):
+        post = TutoringPost.objects.create(
+            student=self.student,
+            grade="고2",
+            field="이과",
+        )
+        serializer = TutoringPostWriteSerializer(
+            post,
+            data={"grade": "중1"},
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated_post = serializer.save()
+        self.assertEqual(updated_post.field, "")
+
+    def test_specialized_field_is_accepted_for_nth_year_student(self):
+        serializer = TutoringPostWriteSerializer(
+            data={"grade": "N수생", "field": "특성화"}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        post = serializer.save(student=self.student)
+        self.assertEqual(post.field, "특성화")
 
 
 class TutoringPostViewCountTest(LikeSortingTestBase):

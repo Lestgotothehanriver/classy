@@ -34,8 +34,23 @@ student_field_choices = [
     ("문과", "문과"),
     ("이과", "이과"),
     ("예체능", "예체능"),
+    ("특성화", "특성화"),
     ("기타", "기타"),
 ]
+
+STUDENT_FIELD_REQUIRED_GRADES = {
+    "고1",
+    "고2",
+    "고3",
+    "N수생",
+    "재수생",
+}
+
+
+def requires_student_field(grade):
+    """계열 선택이 필요한 고등/N수 학년인지 반환합니다."""
+    return grade in STUDENT_FIELD_REQUIRED_GRADES
+
 
 method_choices = [
     ("대면", "대면"),

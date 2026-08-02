@@ -13,6 +13,7 @@ from .models import (
     TutoringResource,
     TutoringProposal,
     Region,
+    requires_student_field,
 )
 from config.apps.common.serializers import M2MSyncMixin, AbsoluteFileField, AbsoluteImageField
 from config.apps.common.utils import get_absolute_media_url
@@ -527,6 +528,25 @@ class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
 
     def validate_cost(self, value):
         return validate_cost_unit(value)
+
+    def validate(self, attrs):
+        """학년에 따라 계열을 필수 검증하거나 빈 값으로 정규화합니다."""
+        attrs = super().validate(attrs)
+        current_grade = getattr(self.instance, "grade", "")
+        current_field = getattr(self.instance, "field", "")
+        grade = attrs.get("grade", current_grade)
+        field = attrs.get("field", current_field)
+
+        if requires_student_field(grade):
+            if not field:
+                raise serializers.ValidationError(
+                    {"field": "고등학생 및 N수생은 계열을 선택해주세요."}
+                )
+        else:
+            # 구버전 앱이 비대상 학년과 계열을 함께 보내도 잘못된 조합을 저장하지 않습니다.
+            attrs["field"] = ""
+
+        return attrs
 
     def update(self, instance, validated_data):
         """마감 공고를 재개할 때만 목록 기준 시각을 현재 시각으로 갱신합니다."""
