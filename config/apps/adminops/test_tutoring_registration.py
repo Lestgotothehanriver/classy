@@ -125,6 +125,35 @@ class TutoringRegistrationAdminAPITests(APITestCase):
         )
         return TutoringRegistration.objects.get()
 
+    def _bare_registration(self, *, suffix, commission):
+        """정렬 테스트용: 앱 흐름 없이 인보이스만 붙인 최소 등록을 만든다."""
+        s_user = User.objects.create_user(
+            username=f"s_{suffix}", user_name=f"학생{suffix}", password=PASSWORD
+        )
+        i_user = User.objects.create_user(
+            username=f"i_{suffix}", user_name=f"강사{suffix}", password=PASSWORD
+        )
+        student = Student.objects.create(user=s_user)
+        instructor = Instructor.objects.create(user=i_user, university="U")
+        post = TutoringPost.objects.create(student=student, title="영어")
+        room = ChatRoom.objects.create(
+            student=student, instructor=instructor, post=post, initiated_by=s_user
+        )
+        registration = TutoringRegistration.objects.create(
+            student=s_user,
+            instructor=i_user,
+            chat_room=room,
+            subject="영어",
+            start_date="2026-08-01",
+        )
+        CommissionInvoice.objects.create(
+            registration=registration,
+            base_amount=commission * 10,
+            commission_rate_bps=1000,
+            commission_amount=commission,
+        )
+        return registration
+
     def as_admin(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
 
@@ -177,6 +206,23 @@ class TutoringRegistrationAdminAPITests(APITestCase):
         self.assertEqual(summary["REGISTERED"], 1)
         self.assertEqual(summary["total"], 1)
         self.assertEqual(summary["awaiting_confirmation"], 1)
+
+    def test_ordering_by_commission_amount(self):
+        self._submit_both()  # 수수료 75,000
+        self._bare_registration(suffix="low", commission=30000)
+        self.as_admin()
+
+        desc = self.client.get(self.LIST, {"ordering": "-commission_amount"})
+        self.assertEqual(
+            [row["commission_amount"] for row in desc.data["results"]],
+            [75000, 30000],
+        )
+
+        asc = self.client.get(self.LIST, {"ordering": "commission_amount"})
+        self.assertEqual(
+            [row["commission_amount"] for row in asc.data["results"]],
+            [30000, 75000],
+        )
 
     def test_detail_includes_contacts_account_and_submissions(self):
         registration = self._submit_both()
