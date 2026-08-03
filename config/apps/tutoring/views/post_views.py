@@ -44,7 +44,9 @@ class TutoringPostListAPIView(generics.ListAPIView):
     serializer_class = TutoringPostListSerializer
 
     def get_queryset(self):
-        qs = TutoringPost.objects.filter(is_active=True).select_related(
+        qs = TutoringPost.objects.filter(
+            is_active=True, admin_blocked_at__isnull=True
+        ).select_related(
             "student__user",
         ).prefetch_related(
             "subjects",
@@ -135,7 +137,9 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = TutoringPostDetailSerializer
-    queryset = TutoringPost.objects.select_related("student").prefetch_related(
+    queryset = TutoringPost.objects.filter(
+        admin_blocked_at__isnull=True
+    ).select_related("student").prefetch_related(
         "subjects", "regions"
     )
 

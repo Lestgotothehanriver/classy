@@ -550,6 +550,11 @@ class TutoringPostWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """마감 공고를 재개할 때만 목록 기준 시각을 현재 시각으로 갱신합니다."""
+        # 관리자(신고 조치) 차단 공고는 학생이 임의로 재개할 수 없다.
+        if instance.admin_blocked_at is not None and validated_data.get("is_active") is True:
+            raise serializers.ValidationError(
+                {"is_active": "관리자에 의해 차단된 공고는 재개할 수 없습니다."}
+            )
         is_reopening = (
             validated_data.get("is_active") is True and not instance.is_active
         )

@@ -254,3 +254,88 @@ class PhoneVerification(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class UserSanction(models.Model):
+    """관리자가 신고 처리 결과로 부과하는 단계별 제재 기록입니다.
+
+    ``User.is_banned`` 는 이 모델에서 파생되는 값이다 — 활성(``is_active=True``)이고
+    만료되지 않은 정지/영구정지가 하나라도 있으면 ``recompute_ban_state`` 가
+    ``is_banned=True`` 로 맞춘다. 경고(WARNING)는 정지가 아니므로 ban 에 영향을 주지
+    않는다. 어느 신고로 인한 제재인지 ``report`` 로 근거를 연결해 이의제기에 대비한다.
+    """
+
+    class Type(models.TextChoices):
+        WARNING = "warning", "경고"
+        SUSPENSION = "suspension", "기간 정지"
+        PERMANENT_BAN = "permanent_ban", "영구 정지"
+
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sanctions",
+        help_text="제재 대상 사용자",
+    )
+    type = models.CharField(max_length=20, choices=Type.choices)
+    reason = models.TextField(blank=True)
+    report = models.ForeignKey(
+        "report.Report",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sanctions",
+        help_text="제재 근거가 된 신고(선택)",
+    )
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sanctions_issued",
+        help_text="제재를 발급한 관리자",
+    )
+    starts_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(
+        null=True, blank=True, help_text="비우면 영구 정지"
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["target_user", "is_active"])]
+
+    def __str__(self):
+        state = "active" if self.is_active else "inactive"
+        return f"{self.get_type_display()} → user#{self.target_user_id} ({state})"
+
+    @property
+    def is_effective(self) -> bool:
+        """현재 시점에 실제로 발효 중인 정지인지(경고·해제·만료 제외)."""
+        if not self.is_active or self.type == self.Type.WARNING:
+            return False
+        if self.expires_at is not None and self.expires_at <= timezone.now():
+            return False
+        return True
+
+
+def recompute_ban_state(user):
+    """활성·미만료 정지 존재 여부로 ``user.is_banned`` 를 재계산·저장한다.
+
+    제재 발급/해제 및 정지 만료 확인 시 호출한다(변경이 있을 때만 저장). ``is_banned``
+    는 로그인/인증 흐름에서 검사되므로 이 재계산이 곧 제재의 실효를 의미한다.
+    """
+    now = timezone.now()
+    has_active_ban = (
+        UserSanction.objects.filter(
+            target_user=user,
+            is_active=True,
+            type__in=[UserSanction.Type.SUSPENSION, UserSanction.Type.PERMANENT_BAN],
+        )
+        .filter(models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now))
+        .exists()
+    )
+    if user.is_banned != has_active_ban:
+        user.is_banned = has_active_ban
+        user.save(update_fields=["is_banned"])
+    return has_active_ban

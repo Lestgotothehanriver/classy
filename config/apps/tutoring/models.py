@@ -128,6 +128,16 @@ class TutoringPost(models.Model):
     is_active = models.BooleanField(default=True)
     view_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    # 관리자(신고 조치) 차단. 학생의 is_active 와 분리된 전용 잠금으로, 설정 시
+    # 노출·모집이 차단되고 학생이 임의로 재활성화할 수 없다.
+    admin_blocked_at = models.DateTimeField(null=True, blank=True)
+    admin_blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="blocked_tutoring_posts",
+    )
 
 class TutoringPostLike(models.Model):
     """

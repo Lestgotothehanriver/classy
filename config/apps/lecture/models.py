@@ -48,6 +48,16 @@ class Lecture(models.Model):
     suspended_at = models.DateTimeField(null=True, blank=True)
     is_delete = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
+    # 관리자(신고 조치) 차단. 강사의 is_active/is_delete 와 분리된 전용 잠금으로,
+    # 설정 시 노출·재생·재판매가 모두 차단되고 강사가 임의로 재활성화할 수 없다.
+    admin_blocked_at = models.DateTimeField(null=True, blank=True)
+    admin_blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="blocked_lectures",
+    )
 
     def __str__(self):
         return self.title
@@ -88,6 +98,17 @@ class Comment(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     is_edited = models.BooleanField(default=False)
+    # 관리자(신고 조치) 차단. 하드 삭제 대신 원문을 안내 문구로 마스킹하고
+    # 대댓글 스레드 구조는 유지한다.
+    is_blocked = models.BooleanField(default=False)
+    blocked_at = models.DateTimeField(null=True, blank=True)
+    blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="blocked_comments",
+    )
 
     def clean(self):
         super().clean()

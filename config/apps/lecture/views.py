@@ -175,6 +175,12 @@ class LectureViewSet(
         URL: POST /lectures/write/<pk>/resume-sales/
         """
         lecture = self.get_object()
+        # 관리자(신고 조치) 차단 강의는 강사가 임의로 판매를 재개할 수 없다.
+        if lecture.admin_blocked_at is not None:
+            return Response(
+                {"detail": "관리자에 의해 차단된 강의는 판매를 재개할 수 없습니다."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         lecture.is_active = True
         lecture.suspended_at = None
         lecture.save(update_fields=['is_active', 'suspended_at'])
@@ -262,7 +268,8 @@ class LectureListAPIView(generics.ListAPIView):
 
         qs = Lecture.objects.filter(is_delete=False)
         if not is_own:
-            qs = qs.filter(is_active=True)
+            # 공개 브라우즈에는 판매중 + 관리자 미차단 강의만 노출한다.
+            qs = qs.filter(is_active=True, admin_blocked_at__isnull=True)
         qs = qs.select_related(
             "instructor", "instructor__user"
         ).prefetch_related("subjects").annotate(
@@ -375,7 +382,8 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LectureStreamSerializer
-    queryset = Lecture.objects.filter(is_delete=False)
+    # 관리자 차단 강의는 재생(스트리밍)을 전면 차단한다(대여자·강사 본인 포함).
+    queryset = Lecture.objects.filter(is_delete=False, admin_blocked_at__isnull=True)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -467,7 +475,9 @@ class LectureDetailAPIView(APIView):
             student = Student.objects.filter(user=request.user).first()
 
         # 삭제된 강의는 조회 불가 / 강의-강사-유저를 JOIN하여 N+1 방지
-        qs = Lecture.objects.filter(is_delete=False).select_related(
+        qs = Lecture.objects.filter(
+            is_delete=False, admin_blocked_at__isnull=True
+        ).select_related(
             "instructor", "instructor__user"
         ).prefetch_related("subjects")
         blocked_user_ids = get_blocked_user_ids(request.user)
@@ -510,14 +520,18 @@ class LectureDetailAPIView(APIView):
 
         # (2) 프리뷰 강의 — 같은 강사의 is_preview=True 영상 (현재 강의 제외, 판매중지/삭제 제외)
         preview = Lecture.objects.filter(
-            instructor=lecture.instructor, is_preview=True, is_active=True, is_delete=False
+            instructor=lecture.instructor, is_preview=True, is_active=True,
+            is_delete=False, admin_blocked_at__isnull=True,
         ).exclude(pk=pk).first()
         preview_data = LecturePreviewSerializer(preview).data if preview else None
 
         # (3) 추천 강의 — 동일 과목을 가진 강의 중 좋아요+조회수 기준 상위 10개 (판매중지/삭제 제외)
         subject_ids = list(lecture.subjects.values_list("id", flat=True))
         recommended_qs = (
-            Lecture.objects.filter(subjects__id__in=subject_ids, is_active=True, is_delete=False)
+            Lecture.objects.filter(
+                subjects__id__in=subject_ids, is_active=True, is_delete=False,
+                admin_blocked_at__isnull=True,
+            )
             .exclude(pk=pk)
             .exclude(instructor__user_id__in=blocked_user_ids)
             .distinct()

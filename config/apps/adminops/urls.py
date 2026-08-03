@@ -20,6 +20,16 @@ from .views import (
     TutoringRegistrationListView,
     TutoringRegistrationRejectFeeView,
     TutoringRegistrationSummaryView,
+    ReportedUserListView,
+    ReportedUserSummaryView,
+    ReportCaseDetailView,
+    ReportCaseResolveView,
+    ReportContentActionView,
+    ReportSanctionView,
+    ReportLiftSanctionView,
+    ReportInReviewView,
+    ReportEvidenceView,
+    LectureReviewStreamView,
 )
 
 app_name = "adminops"
@@ -114,5 +124,56 @@ urlpatterns = [
         "tutoring-registrations/<int:pk>/documents/<int:file_id>/",
         TutoringRegistrationDocumentView.as_view(),
         name="tutoring-registration-document",
+    ),
+    # 신고 관리 (가해자 중심 통합 케이스)
+    path(
+        "reports/",
+        ReportedUserListView.as_view(),
+        name="report-list",
+    ),
+    path(
+        "reports/summary/",
+        ReportedUserSummaryView.as_view(),
+        name="report-summary",
+    ),
+    path(
+        "reports/users/<int:user_id>/",
+        ReportCaseDetailView.as_view(),
+        name="report-case-detail",
+    ),
+    path(
+        "reports/users/<int:user_id>/resolve/",
+        ReportCaseResolveView.as_view(),
+        name="report-case-resolve",
+    ),
+    path(
+        "reports/users/<int:user_id>/sanction/",
+        ReportSanctionView.as_view(),
+        name="report-sanction",
+    ),
+    path(
+        "reports/users/<int:user_id>/content/",
+        ReportContentActionView.as_view(),
+        name="report-content-action",
+    ),
+    path(
+        "reports/lectures/<int:lecture_id>/review-stream/",
+        LectureReviewStreamView.as_view(),
+        name="report-lecture-review-stream",
+    ),
+    path(
+        "reports/sanctions/<int:sanction_id>/lift/",
+        ReportLiftSanctionView.as_view(),
+        name="report-lift-sanction",
+    ),
+    path(
+        "reports/<int:pk>/in-review/",
+        ReportInReviewView.as_view(),
+        name="report-in-review",
+    ),
+    path(
+        "reports/<int:pk>/evidence/",
+        ReportEvidenceView.as_view(),
+        name="report-evidence",
     ),
 ]

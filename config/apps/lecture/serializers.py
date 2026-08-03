@@ -207,6 +207,15 @@ class _CommentAuthorMixin(serializers.Serializer):
     author_name = serializers.CharField(source="author.user_name", read_only=True)
     author_profile_image = AbsoluteImageField(source="author.profile_image", read_only=True)
     is_mine = serializers.SerializerMethodField()
+    # 관리자 차단(신고 조치) 댓글은 하드 삭제하지 않고 원문을 안내 문구로 마스킹한다.
+    # 대댓글 스레드 구조는 그대로 유지된다.
+    content = serializers.SerializerMethodField()
+    is_blocked = serializers.BooleanField(read_only=True)
+
+    BLOCKED_CONTENT = "신고 처리된 댓글입니다."
+
+    def get_content(self, obj):
+        return self.BLOCKED_CONTENT if obj.is_blocked else obj.content
 
     def get_is_mine(self, obj):
         request = self.context.get("request")
@@ -226,7 +235,7 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "author", "author_name", "author_profile_image",
-            "is_mine", "content", "is_edited",
+            "is_mine", "content", "is_blocked", "is_edited",
             "referenced_person", "referenced_person_name",
             "created_at",
         ]
@@ -245,7 +254,7 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "lecture", "author", "author_name", "author_profile_image",
-            "is_mine", "content", "is_edited", "parent",
+            "is_mine", "content", "is_blocked", "is_edited", "parent",
             "referenced_person", "created_at", "replies",
         ]
 
