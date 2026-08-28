@@ -8,7 +8,6 @@ LECTURE_RENTAL_DAYS = 30
 # The signed Apple transaction is the source for the actual charged price. The
 # fallback price exists for older history rows and server-side display only.
 PRODUCT_CASH_MAP = {
-    'cash_100': {'cash': 100, 'krw': 120},
     'cash_500': {'cash': 500, 'krw': 600},
     'cash_1000': {'cash': 1000, 'krw': 1200},
     'cash_5000': {'cash': 5000, 'krw': 6000},

@@ -25,7 +25,7 @@ base64 < AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 ## App Store Connect
 
 - 아래 상품을 모두 **Consumable**로 만들고 앱 코드와 정확히 같은 ID를 사용한다.
-  `cash_100`, `cash_500`, `cash_1000`, `cash_5000`, `cash_10000`, `cash_50000`
+  `cash_500`, `cash_1000`, `cash_5000`, `cash_10000`, `cash_50000`
 - App Store Server Notifications는 V2로 설정한다.
 - Production URL은 `https://classystudy.com/cash/webhook/apple/`을 사용한다.
 - Sandbox URL은 `APPLE_IAP_ENVIRONMENT=SANDBOX`인 별도 Render 스테이징

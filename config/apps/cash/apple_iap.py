@@ -516,7 +516,11 @@ def _decode_private_key() -> bytes:
         key = encoded.encode('utf-8')
     else:
         try:
-            key = base64.b64decode(encoded, validate=True)
+            # Render/env managers may preserve line wrapping from the `base64`
+            # CLI output. Whitespace is not part of the value, so normalize it
+            # before strict decoding while still rejecting any other character.
+            compact = ''.join(encoded.split())
+            key = base64.b64decode(compact, validate=True)
         except (ValueError, binascii.Error) as exc:
             raise AppleIAPConfigurationError(
                 'APPLE_IAP_PRIVATE_KEY_BASE64 is invalid.'
