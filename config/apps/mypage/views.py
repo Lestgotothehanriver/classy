@@ -26,6 +26,9 @@ class StudentRentedLectureListView(generics.ListAPIView):
         Response: List[LectureListSerializer] 데이터
     """
     serializer_class = LectureListSerializer
+    # 모바일 클라이언트는 이 엔드포인트를 배열로 소비한다. 전역 페이지네이션
+    # wrapper(count/results)가 섞이면 기존 클라이언트와 API 계약이 깨진다.
+    pagination_class = None
 
     def get_queryset(self):
         """
@@ -98,6 +101,7 @@ class StudentLikedLectureListView(generics.ListAPIView):
         Response: List[LectureListSerializer] 데이터
     """
     serializer_class = LectureListSerializer
+    pagination_class = None
 
     def get_queryset(self):
         """
@@ -138,6 +142,7 @@ class InstructorUploadedLectureListView(generics.ListAPIView):
     """
     permission_classes = [IsAuthenticated]
     serializer_class = LectureListSerializer
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
@@ -301,4 +306,3 @@ class InstructorSettlementInfoView(APIView):
             "pending_revenue": pending_revenue,
             "account_info": account_info,
         })
-

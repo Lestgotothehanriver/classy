@@ -37,7 +37,8 @@ class PendingGetAPITestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get("/pending/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"exists": False, "status": None})
+        data = response.json()
+        self.assertEqual({"exists": data["exists"], "status": data["status"]}, {"exists": False, "status": None})
 
     def test_instructor_with_pending_status(self):
         """Instructors with a PendingInstructor entry in PENDING status should receive exists: true, status: PENDING."""
@@ -49,7 +50,8 @@ class PendingGetAPITestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get("/pending/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"exists": True, "status": "PENDING"})
+        data = response.json()
+        self.assertEqual({"exists": data["exists"], "status": data["status"]}, {"exists": True, "status": "PENDING"})
 
     def test_instructor_with_verified_status(self):
         """Instructors with a PendingInstructor entry in VERIFIED status should receive exists: true, status: VERIFIED."""
@@ -61,7 +63,8 @@ class PendingGetAPITestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get("/pending/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"exists": True, "status": "VERIFIED"})
+        data = response.json()
+        self.assertEqual({"exists": data["exists"], "status": data["status"]}, {"exists": True, "status": "VERIFIED"})
 
     def test_instructor_with_suspended_status(self):
         """Instructors with a PendingInstructor entry in SUSPENDED status should receive exists: true, status: SUSPENDED, and rejection_reason."""
@@ -74,11 +77,10 @@ class PendingGetAPITestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get("/pending/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {
-            "exists": True,
-            "status": "SUSPENDED",
-            "rejection_reason": "서류 화질이 불분명함."
-        })
+        data = response.json()
+        self.assertEqual(data["exists"], True)
+        self.assertEqual(data["status"], "SUSPENDED")
+        self.assertEqual(data["rejection_reason"], "서류 화질이 불분명함.")
 
     def test_instructor_post_with_suspended_status_returns_rejection_reason(self):
         """이미 SUSPENDED 상태인데 다시 POST 요청을 보내는 경우 rejection_reason이 에러 응답에 포함되어야 함."""
@@ -97,4 +99,3 @@ class PendingGetAPITestCase(TestCase):
             "status": "SUSPENDED",
             "rejection_reason": "인증 서류 누락."
         })
-

@@ -224,13 +224,29 @@ PASSWORD_RESET_TOKEN_TTL_SECONDS = int(
 # In-App Purchase (IAP) Settings
 # ──────────────────────────────────────────────
 
-# Apple App Store
-APPLE_IAP_SHARED_SECRET = os.environ.get('APPLE_IAP_SHARED_SECRET', '')
-APPLE_BUNDLE_ID = os.environ.get('APPLE_BUNDLE_ID', '')  # e.g. "com.classy.app"
+# Apple App Store / StoreKit 2. The private key is only used for App Store
+# Server API calls (for example, requesting a sandbox test notification).
+APPLE_BUNDLE_ID = os.environ.get('APPLE_BUNDLE_ID', '')
+_apple_app_id = os.environ.get('APPLE_APP_ID', '').strip()
+APPLE_APP_ID = int(_apple_app_id) if _apple_app_id.isdigit() else None
+APPLE_IAP_ISSUER_ID = os.environ.get('APPLE_IAP_ISSUER_ID', '')
+APPLE_IAP_KEY_ID = os.environ.get('APPLE_IAP_KEY_ID', '')
+APPLE_IAP_PRIVATE_KEY_BASE64 = os.environ.get('APPLE_IAP_PRIVATE_KEY_BASE64', '')
+APPLE_IAP_ENVIRONMENT = os.environ.get(
+    'APPLE_IAP_ENVIRONMENT',
+    'SANDBOX',
+).strip().upper()
+APPLE_IAP_ENABLE_ONLINE_CHECKS = os.environ.get(
+    'APPLE_IAP_ENABLE_ONLINE_CHECKS',
+    'true',
+).lower() in {'1', 'true', 'yes', 'on'}
+APPLE_IAP_ROOT_CERTIFICATES = [
+    BASE_DIR / 'apps' / 'cash' / 'certs' / 'AppleRootCA-G3.pem',
+]
 
-# Google Play Store
-GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', '')  # JSON string
-ANDROID_PACKAGE_NAME = os.environ.get('ANDROID_PACKAGE_NAME', '')  # e.g. "com.classy.app"
+# Apple-only rollout. Historical Google rows remain readable, but Google
+# purchase and webhook endpoints are intentionally not exposed.
+IAP_ENABLED_PLATFORMS = ('apple',)
 
 # ──────────────────────────────────────────────
 # Firebase / FCM Settings

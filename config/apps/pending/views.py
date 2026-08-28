@@ -51,7 +51,8 @@ class PendingCreateAPIView(APIView):
         if hasattr(instructor, 'pending_info') and instructor.pending_info:
             return Response({
                 "error": "이미 인증 신청 내역이 존재합니다.",
-                "status": instructor.pending_info.status
+                "status": instructor.pending_info.status,
+                "rejection_reason": instructor.pending_info.rejection_reason,
             }, status=status.HTTP_400_BAD_REQUEST)
             
         # 3. 파일 유효성 검증

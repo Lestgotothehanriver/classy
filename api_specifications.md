@@ -92,14 +92,14 @@
 | :--- | :---: | :--- | :--- | :--- |
 | 정산 계좌 조회 | `GET` | `/cash/account/` | 없음 | 강사 본인의 수익 정산용 등록 은행 계좌 정보를 가져옵니다. |
 | 정산 계좌 등록/수정 | `POST` | `/cash/account/` | **[Body (JSON)]**<br>- `bank` (str, 필수)<br>- `account_number` (str, 필수)<br>- `account_holder` (str, 필수) | 강사의 수익 정산용 계좌번호 및 예금주 정보를 신규 등록하거나 덮어씁니다. |
-| 인앱 결제 캐시 충전 | `POST` | `/cash/purchase/` | **[Body (JSON)]**<br>- `platform` ('apple'/'google', 필수)<br>- `product_id` (str, 필수)<br>- `receipt_data` (str, iOS 필수)<br>- `purchase_token` (str, AOS 필수) | App Store 또는 Play Store 영수증 검증 후 실물 캐시를 계정에 충전하고 내역을 남깁니다. |
+| Apple 캐시 상품 조회 | `GET` | `/cash/packages/` | 없음 | Apple 상품 ID, 캐시 수량, 참고 가격과 로그인 사용자 전용 `appAccountToken`을 반환합니다. 앱은 실제 표시 가격을 App Store에서 조회합니다. |
+| Apple 인앱 결제 캐시 충전 | `POST` | `/cash/purchase/` | **[Body (JSON)]**<br>- `platform` (`apple`, 필수)<br>- `product_id` (str, 필수)<br>- `signed_transaction_info` (str, StoreKit 2 JWS, 필수) | Apple 인증서 체인, Bundle ID, 환경, 상품, 소모성 타입, 수량 및 `appAccountToken`을 검증한 뒤 트랜잭션당 한 번만 캐시를 지급합니다. 동일 요청 재전송은 멱등 처리됩니다. |
 | 프로모션 쿠폰 충전 | `POST` | `/cash/coupons/redeem/` | **[Body (JSON)]**<br>- `code` (str, 필수) | 캐시가 포함된 유효한 프로모션 쿠폰을 사용하여 캐시를 적립합니다. |
-| Apple 환불 웹훅 | `POST` | `/cash/webhook/apple/` | **[Body (JSON)]**<br>- `signedPayload` (str, 필수 JWS) | Apple 앱스토어 서버 알림을 수신하여 환불 건에 대해 사용자 계정 캐시를 차감 처리합니다. (인증 미필요) |
-| Google 환불 웹훅 | `POST` | `/cash/webhook/google/` | **[Body (JSON)]**<br>- `message` (dict, 필수 Pub/Sub) | Google Play Real-time Developer Notifications를 수신하여 환불 완료 건에 대해 캐시를 차감합니다. (인증 미필요) |
+| Apple 환불 웹훅 | `POST` | `/cash/webhook/apple/` | **[Body (JSON)]**<br>- `signedPayload` (str, App Store Server Notification V2 JWS, 필수) | Apple 서명과 중첩 거래를 검증하고 `REFUND`, `REVOKE`, 부분 환불 및 `REFUND_REVERSED`를 멱등 처리합니다. 사용한 캐시로 회수하지 못한 금액은 이후 충전에서 우선 상계합니다. (인증 미필요) |
 | VOD 강의 대여 | `POST` | `/cash/rentals/` | **[Body (JSON)]**<br>- `lecture_id` (int, 필수) | 보유하고 있는 캐시를 사용하여 특정 동영상 강의의 대여 기간 시청 권한을 구매합니다. |
-| 강의 대여 취소/환불 | `POST` | `/cash/rentals/<int:pk>/cancel/` | **[Path]**<br>- `pk` (int, 대여 내역 ID) | 결제(대여) 후 7일 이내의 미사용 강의에 대해 대여를 취소하고 캐시를 반환받습니다. |
+| 강의 대여 취소/환불 | `POST` | `/cash/rentals/<int:pk>/cancel/` | **[Path]**<br>- `pk` (int, 대여 내역 ID) | 현재 정책상 대여 취소가 불가능하여 `410 Gone`을 반환합니다. |
 | 캐시 충전 내역 목록 | `GET` | `/cash/purchase-history/` | 없음 | 본인의 인앱 결제를 통한 전체 캐시 충전 이력을 최신순으로 가져옵니다. |
-| 강의 대여 내역 목록 | `GET` | `/cash/rental-history/` | 없음 | 본인이 대여한 강의 구매 내역 리스트(7일 내 환불 취소 가능 상태 정보 포함)를 가져옵니다. |
+| 강의 대여 내역 목록 | `GET` | `/cash/rental-history/` | 없음 | 본인이 대여한 강의 구매 내역 리스트를 가져옵니다. 호환용 `is_cancelable` 값은 항상 `false`입니다. |
 
 ---
 

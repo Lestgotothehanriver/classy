@@ -27,6 +27,14 @@ class PurchaseHistory(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='purchases')
     platform = models.CharField(max_length=20, choices=[('apple', 'Apple'), ('google', 'Google')])
     transaction_id = models.CharField(max_length=255, unique=True, help_text="결제 플랫폼 고유 트랜잭션 ID")
+    original_transaction_id = models.CharField(max_length=255, blank=True, default='')
+    product_id = models.CharField(max_length=100, blank=True, default='', db_index=True)
+    app_account_token = models.UUIDField(null=True, blank=True, db_index=True)
+    environment = models.CharField(max_length=20, blank=True, default='')
+    purchase_date = models.DateTimeField(null=True, blank=True)
+    price_milliunits = models.PositiveBigIntegerField(null=True, blank=True)
+    currency = models.CharField(max_length=3, blank=True, default='')
+    storefront = models.CharField(max_length=10, blank=True, default='')
     
     purchased_cash = models.PositiveIntegerField()
     paid_amount = models.PositiveIntegerField()
@@ -35,9 +43,58 @@ class PurchaseHistory(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     is_refunded = models.BooleanField(default=False)
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    refund_percentage = models.PositiveIntegerField(default=0)
+    refunded_cash = models.PositiveIntegerField(default=0)
+    refund_debt = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=['platform', 'created_at'],
+                name='cash_ph_platform_created',
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(refund_percentage__lte=100000),
+                name='cash_purchase_refund_pct_lte_100000',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user} - {self.platform} - {self.purchased_cash} cash"
+
+
+class AppStoreWebhookEvent(models.Model):
+    """Idempotency and audit record for App Store Server Notifications V2."""
+
+    class Status(models.TextChoices):
+        RECEIVED = 'RECEIVED', '수신'
+        PROCESSED = 'PROCESSED', '처리 완료'
+        IGNORED = 'IGNORED', '처리 대상 아님'
+        FAILED = 'FAILED', '처리 실패'
+
+    notification_uuid = models.UUIDField(unique=True)
+    notification_type = models.CharField(max_length=50, blank=True, default='')
+    subtype = models.CharField(max_length=50, blank=True, default='')
+    transaction_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    payload_sha256 = models.CharField(max_length=64)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.RECEIVED,
+    )
+    detail = models.CharField(max_length=255, blank=True, default='')
+    signed_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"{self.notification_type} {self.notification_uuid} ({self.status})"
 
 
 class Coupon(models.Model):

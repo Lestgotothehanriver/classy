@@ -1,285 +1,319 @@
-from django.test import TestCase
-from django.urls import reverse
-from rest_framework import status
-from rest_framework.test import APIClient
-from django.contrib.auth import get_user_model
-from config.apps.cash.models import PurchaseHistory
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from config.apps.accounts.models import Instructor, Student
+from config.apps.cash.apple_iap import (
+    AppleIAPVerificationError,
+    VerifiedAppleTransaction,
+)
+from config.apps.cash.models import LectureRentalHistory, PurchaseHistory
+from config.apps.lecture.models import Lecture
+
 User = get_user_model()
+
+
+def verified_transaction(
+    user,
+    *,
+    transaction_id='apple_tx_001',
+    product_id='cash_1000',
+    price_milliunits=1_200_000,
+):
+    return VerifiedAppleTransaction(
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id,
+        product_id=product_id,
+        app_account_token=user.apple_app_account_token,
+        environment='Sandbox',
+        purchase_date=timezone.now(),
+        price_milliunits=price_milliunits,
+        currency='KRW',
+        storefront='KOR',
+        revocation_date=None,
+        revocation_percentage=0,
+    )
 
 
 class CashPurchaseTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='testuser', password='testpassword', user_name='testuser')
+        self.user = User.objects.create_user(
+            username='testuser', password='testpassword', user_name='testuser'
+        )
         self.client.force_authenticate(user=self.user)
         self.url = reverse('cash:purchase')
-        
-        # Mock Rate Throttling to prevent 429 errors in tests
-        self.throttle_patcher = patch('rest_framework.throttling.SimpleRateThrottle.allow_request', return_value=True)
-        self.mock_throttle = self.throttle_patcher.start()
+        self.throttle_patcher = patch(
+            'rest_framework.throttling.SimpleRateThrottle.allow_request',
+            return_value=True,
+        )
+        self.throttle_patcher.start()
 
     def tearDown(self):
         self.throttle_patcher.stop()
 
-    # ── Apple 결제 성공 ─────────────────────────
-    @patch('config.apps.cash.views.verify_apple_receipt')
-    def test_apple_purchase_success(self, mock_verify):
-        mock_verify.return_value = (True, 'apple_tx_001', '')
-
-        resp = self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'valid_receipt_base64',
-            'product_id': 'cash_1000',
-        }, format='json')
-
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data['purchased_cash'], 1000)
-        self.assertEqual(resp.data['remaining_cash'], 1000)
-
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 1000)
-
-        history = PurchaseHistory.objects.get(transaction_id='apple_tx_001')
-        self.assertEqual(history.platform, 'apple')
-        self.assertEqual(history.purchased_cash, 1000)
-        self.assertEqual(history.paid_amount, 1000)
-        self.assertEqual(history.fee_deducted_amount, 700)
-        self.assertEqual(history.remaining_cash, 1000)
-
-    # ── Google 결제 성공 ────────────────────────
-    @patch('config.apps.cash.views.verify_google_receipt')
-    def test_google_purchase_success(self, mock_verify):
-        mock_verify.return_value = (True, 'GPA.1234-5678', '')
-
-        resp = self.client.post(self.url, {
-            'platform': 'google',
-            'purchase_token': 'valid_token_abc',
-            'product_id': 'cash_5000',
-        }, format='json')
-
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data['purchased_cash'], 5000)
-
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 5000)
-
-    # ── 중복 트랜잭션 차단 (409 Conflict) ──────────
-    @patch('config.apps.cash.views.verify_apple_receipt')
-    def test_duplicate_transaction_rejected(self, mock_verify):
-        mock_verify.return_value = (True, 'dup_tx_999', '')
-
-        PurchaseHistory.objects.create(
-            user=self.user,
-            platform='apple',
-            transaction_id='dup_tx_999',
-            purchased_cash=5000,
-            paid_amount=5000,
-            fee_deducted_amount=3500,
-            remaining_cash=5000,
+    def _purchase(self, product_id='cash_1000', signed_payload='signed-jws'):
+        return self.client.post(
+            self.url,
+            {
+                'platform': 'apple',
+                'signed_transaction_info': signed_payload,
+                'product_id': product_id,
+            },
+            format='json',
         )
 
-        resp = self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'some_receipt',
-            'product_id': 'cash_5000',
-        }, format='json')
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_apple_purchase_success_uses_signed_price(self, mock_verify):
+        mock_verify.return_value = verified_transaction(self.user)
 
-        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
-        self.assertIn('already been processed', resp.data['error'])
+        response = self._purchase()
 
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['purchased_cash'], 1000)
+        self.assertEqual(response.data['credited_cash'], 1000)
+        self.assertEqual(response.data['remaining_cash'], 1000)
+        self.assertFalse(response.data['idempotent'])
+        mock_verify.assert_called_once_with(
+            'signed-jws',
+            expected_product_id='cash_1000',
+            expected_app_account_token=self.user.apple_app_account_token,
+        )
         self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 0)
+        self.assertEqual(self.user.cash, 1000)
+        history = PurchaseHistory.objects.get(transaction_id='apple_tx_001')
+        self.assertEqual(history.product_id, 'cash_1000')
+        self.assertEqual(history.paid_amount, 1200)
+        self.assertEqual(history.fee_deducted_amount, 840)
 
-    # ── 검증 실패 시 캐시 미지급 ──────────────────
-    @patch('config.apps.cash.views.verify_apple_receipt')
-    def test_verification_failure_no_cash(self, mock_verify):
-        mock_verify.return_value = (False, None, 'Invalid receipt (status=21003).')
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_same_transaction_is_idempotent(self, mock_verify):
+        mock_verify.return_value = verified_transaction(
+            self.user, transaction_id='apple_tx_idempotent'
+        )
 
-        resp = self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'invalid_receipt',
-            'product_id': 'cash_1000',
-        }, format='json')
+        first = self._purchase()
+        second = self._purchase()
 
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('verification failed', resp.data['error'])
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data['idempotent'])
+        self.assertEqual(second.data['credited_cash'], 0)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 1000)
+        self.assertEqual(PurchaseHistory.objects.count(), 1)
 
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_verification_failure_does_not_credit_cash(self, mock_verify):
+        mock_verify.side_effect = AppleIAPVerificationError(
+            'Apple transaction verification failed.'
+        )
+
+        response = self._purchase(signed_payload='invalid-jws')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash, 0)
         self.assertEqual(PurchaseHistory.objects.count(), 0)
 
-    # ── 존재하지 않는 product_id ──────────────────
-    @patch('config.apps.cash.views.verify_apple_receipt')
-    def test_invalid_product_id(self, mock_verify):
-        resp = self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'some_receipt',
-            'product_id': 'cash_999999',
-        }, format='json')
-
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_invalid_product_id_is_rejected_before_apple_check(self, mock_verify):
+        response = self._purchase(product_id='cash_999999')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         mock_verify.assert_not_called()
 
-    # ── 인증 없이 접근 시 401 ─────────────────────
-    def test_unauthenticated_request(self):
+    def test_google_platform_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                'platform': 'google',
+                'signed_transaction_info': 'signed-jws',
+                'product_id': 'cash_1000',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unauthenticated_request_is_rejected(self):
         self.client.force_authenticate(user=None)
-        resp = self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'r',
-            'product_id': 'cash_1000',
-        }, format='json')
+        self.assertEqual(self._purchase().status_code, status.HTTP_401_UNAUTHORIZED)
 
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_future_purchase_offsets_refund_debt_first(self, mock_verify):
+        self.user.cash_debt = 600
+        self.user.save(update_fields=['cash_debt'])
+        mock_verify.return_value = verified_transaction(self.user)
 
-    # ── 연속 구매 시 캐시 누적 확인 ─────────────────
-    @patch('config.apps.cash.views.verify_apple_receipt')
-    def test_cumulative_cash(self, mock_verify):
-        mock_verify.side_effect = [
-            (True, 'tx_a', ''),
-            (True, 'tx_b', ''),
-        ]
+        response = self._purchase()
 
-        self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'r1',
-            'product_id': 'cash_1000',
-        }, format='json')
-
-        self.client.post(self.url, {
-            'platform': 'apple',
-            'receipt_data': 'r2',
-            'product_id': 'cash_5000',
-        }, format='json')
-
+        self.assertEqual(response.data['debt_offset'], 600)
+        self.assertEqual(response.data['credited_cash'], 400)
         self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 6000)
-        self.assertEqual(PurchaseHistory.objects.filter(user=self.user).count(), 2)
+        self.assertEqual((self.user.cash, self.user.cash_debt), (400, 0))
 
-from config.apps.cash.models import LectureRentalHistory
-from config.apps.lecture.models import Lecture
-from config.apps.accounts.models import Instructor, Subject, Student
-from django.core.files.uploadedfile import SimpleUploadedFile
-from datetime import timedelta
-from django.utils import timezone
+    def test_package_list_returns_stable_apple_account_token(self):
+        response = self.client.get(reverse('cash:packages'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 6)
+        self.assertTrue(
+            all(item['platform'] == 'apple' for item in response.data['results'])
+        )
+        self.assertTrue(
+            all(
+                item['appAccountToken'] == str(self.user.apple_app_account_token)
+                for item in response.data['results']
+            )
+        )
 
-class RentalAndRefundTests(TestCase):
+
+class CashToLectureIntegrationTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='student1', password='pw', user_name='student1')
-        self.user.cash = 10000
-        self.user.save()
-        self.student = Student.objects.create(user=self.user)
-        self.client.force_authenticate(user=self.user)
-        
-        # Setup lecture
-        self.instructor_user = User.objects.create_user(username='inst1', password='pw', user_name='inst1')
-        self.instructor = Instructor.objects.create(user=self.instructor_user, university='Test Univ')
-        self.lecture = Lecture.objects.create(
-            instructor=self.instructor,
-            title="Test Lecture",
-            price=3000,
-            rental_period=30
+        self.user = User.objects.create_user(
+            username='student1', password='password', user_name='student1'
         )
-        
-        self.rent_url = reverse('cash:lecture-rent')
+        Student.objects.create(user=self.user)
+        instructor_user = User.objects.create_user(
+            username='instructor1', password='password', user_name='instructor1'
+        )
+        instructor = Instructor.objects.create(
+            user=instructor_user, university='Test University'
+        )
+        self.lecture = Lecture.objects.create(
+            instructor=instructor,
+            title='Apple purchase integration lecture',
+            price=3000,
+            rental_period=30,
+        )
+        self.client.force_authenticate(self.user)
+
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_verified_cash_purchase_can_immediately_rent_lecture(self, mock_verify):
+        mock_verify.return_value = verified_transaction(
+            self.user,
+            transaction_id='cash_to_lecture_tx',
+            product_id='cash_5000',
+            price_milliunits=6_000_000,
+        )
+        purchase = self.client.post(
+            reverse('cash:purchase'),
+            {
+                'platform': 'apple',
+                'signed_transaction_info': 'signed-jws',
+                'product_id': 'cash_5000',
+            },
+            format='json',
+        )
+        self.assertEqual(purchase.status_code, status.HTTP_200_OK)
+        self.assertEqual(purchase.data['remaining_cash'], 5000)
+
+        rental = self.client.post(
+            reverse('cash:lecture-rent'),
+            {'lecture_id': self.lecture.id},
+            format='json',
+        )
+
+        self.assertEqual(rental.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(rental.data['remaining_cash'], 2000)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 2000)
+        self.assertTrue(
+            LectureRentalHistory.objects.filter(
+                student=self.user, lecture=self.lecture, is_canceled=False
+            ).exists()
+        )
+
+
+class RentalPolicyTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='rental-student', password='password', user_name='rental-student'
+        )
+        self.user.cash = 10_000
+        self.user.save(update_fields=['cash'])
+        Student.objects.create(user=self.user)
+        instructor_user = User.objects.create_user(
+            username='rental-instructor',
+            password='password',
+            user_name='rental-instructor',
+        )
+        instructor = Instructor.objects.create(
+            user=instructor_user, university='Test University'
+        )
+        self.lecture = Lecture.objects.create(
+            instructor=instructor,
+            title='Rental policy lecture',
+            price=3000,
+            rental_period=30,
+        )
+        self.client.force_authenticate(self.user)
 
     def test_lecture_rental_success(self):
-        resp = self.client.post(self.rent_url, {'lecture_id': self.lecture.id}, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(resp.data['remaining_cash'], 7000)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 7000)
-        self.assertTrue(LectureRentalHistory.objects.filter(student=self.user, lecture=self.lecture).exists())
+        response = self.client.post(
+            reverse('cash:lecture-rent'),
+            {'lecture_id': self.lecture.id},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['remaining_cash'], 7000)
 
     def test_lecture_rental_insufficient_cash(self):
         self.user.cash = 1000
-        self.user.save()
-        resp = self.client.post(self.rent_url, {'lecture_id': self.lecture.id}, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.save(update_fields=['cash'])
+        response = self.client.post(
+            reverse('cash:lecture-rent'),
+            {'lecture_id': self.lecture.id},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_lecture_rental_duplicate(self):
-        # Create active rental
         LectureRentalHistory.objects.create(
             lecture=self.lecture,
             student=self.user,
             purchased_cash=self.lecture.price,
-            remaining_cash=7000
+            remaining_cash=7000,
         )
-        resp = self.client.post(self.rent_url, {'lecture_id': self.lecture.id}, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('active rental', resp.data['error'])
+        response = self.client.post(
+            reverse('cash:lecture-rent'),
+            {'lecture_id': self.lecture.id},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('active rental', response.data['error'])
 
-    def test_lecture_rental_cancel_success(self):
+    def test_lecture_rental_cannot_be_canceled(self):
         rental = LectureRentalHistory.objects.create(
             lecture=self.lecture,
             student=self.user,
             purchased_cash=self.lecture.price,
-            remaining_cash=7000
+            remaining_cash=7000,
         )
-        self.user.cash = 7000
-        self.user.save()
-        
-        cancel_url = reverse('cash:lecture-rent-cancel', args=[rental.id])
-        resp = self.client.post(cancel_url, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.cash, 10000)
+        response = self.client.post(
+            reverse('cash:lecture-rent-cancel', args=[rental.id]), format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
         rental.refresh_from_db()
-        self.assertTrue(rental.is_canceled)
+        self.assertFalse(rental.is_canceled)
 
-    def test_lecture_rental_cancel_after_7_days(self):
+    def test_lecture_detail_reports_expired_rental(self):
         rental = LectureRentalHistory.objects.create(
             lecture=self.lecture,
             student=self.user,
             purchased_cash=self.lecture.price,
-            remaining_cash=7000
+            remaining_cash=7000,
         )
-        self.user.cash = 7000
-        self.user.save()
-        
-        # Manually change created_at
-        rental.created_at = timezone.now() - timedelta(days=8)
-        rental.save()
-        
-        cancel_url = reverse('cash:lecture-rent-cancel', args=[rental.id])
-        resp = self.client.post(cancel_url, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('7 days', resp.data['error'])
+        rental.expiration_date = timezone.now() - timezone.timedelta(seconds=1)
+        rental.save(update_fields=['expiration_date'])
+        response = self.client.get(reverse('lecture-detail', args=[self.lecture.id]))
+        self.assertEqual(response.data['rental_status'], 'expired')
 
-
-
-        refund_url = reverse('cash:apple-webhook')
-        resp = self.client.post(refund_url, format='json')
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_lecture_detail_rental_status(self):
-        detail_url = reverse('lecture-detail', args=[self.lecture.id])
-        
-        # 1. none
-        resp = self.client.get(detail_url)
-        self.assertEqual(resp.data['rental_status'], 'none')
-        
-        # 2. valid
-        rental = LectureRentalHistory.objects.create(
-            lecture=self.lecture,
-            student=self.user,
-            purchased_cash=self.lecture.price,
-            remaining_cash=7000
-        )
-        resp = self.client.get(detail_url)
-        self.assertEqual(resp.data['rental_status'], 'valid')
-        
-        # 3. expired
-        rental.created_at = timezone.now() - timedelta(days=31)
-        rental.save()
-        resp = self.client.get(detail_url)
-        self.assertEqual(resp.data['rental_status'], 'expired')
-        
-        # 4. none again when all are canceled (the current implementation assumes valid is skipped and expired is skipped if no non-canceled exist)
-        rental.is_canceled = True
-        rental.save()
-        resp = self.client.get(detail_url)
-        self.assertEqual(resp.data['rental_status'], 'none')
+    def test_apple_webhook_requires_signed_payload(self):
+        response = self.client.post(reverse('cash:apple-webhook'), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

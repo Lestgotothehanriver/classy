@@ -7,6 +7,8 @@
 #
 # (Role 테이블까지 만들면 더 유연해지지만, "최소" 버전에서는 생략)
 
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -77,6 +79,16 @@ class User(AbstractUser):
     region = models.CharField(max_length=50, blank=True)
     field = models.CharField(max_length=10, choices=field_choices, blank=True)
     cash = models.PositiveIntegerField(default=0)
+    # StoreKit appAccountToken. Apple returns this UUID in the signed transaction,
+    # allowing the backend to bind an IAP transaction to the authenticated user.
+    apple_app_account_token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
+    # Refunds can arrive after purchased cash has already been spent. Keep the
+    # unrecovered amount as debt and offset it against future top-ups.
+    cash_debt = models.PositiveIntegerField(default=0)
     profile_image = models.ImageField(
         upload_to=profile_image_upload_to,
         blank=True,

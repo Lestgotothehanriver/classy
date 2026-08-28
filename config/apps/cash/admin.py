@@ -9,14 +9,34 @@ from .models import (
     Account,
     SettlementRecord,
     Coupon,
+    AppStoreWebhookEvent,
 )
 
 @admin.register(PurchaseHistory)
 class PurchaseHistoryAdmin(admin.ModelAdmin):
-    list_display = ('user', 'platform', 'transaction_id', 'purchased_cash', 'paid_amount', 'fee_deducted_amount', 'remaining_cash', 'created_at', 'is_refunded')
-    list_filter = ('platform', 'is_refunded', 'created_at')
-    search_fields = ('user__username', 'transaction_id')
-    readonly_fields = ('created_at',)
+    list_display = (
+        'user', 'platform', 'product_id', 'transaction_id', 'environment',
+        'purchased_cash', 'paid_amount', 'remaining_cash', 'created_at',
+        'is_refunded', 'refund_percentage', 'refund_debt',
+    )
+    list_filter = ('platform', 'environment', 'is_refunded', 'created_at')
+    search_fields = ('user__username', 'transaction_id', 'original_transaction_id')
+    readonly_fields = ('created_at', 'refunded_at')
+
+
+@admin.register(AppStoreWebhookEvent)
+class AppStoreWebhookEventAdmin(admin.ModelAdmin):
+    list_display = (
+        'notification_uuid', 'notification_type', 'subtype', 'transaction_id',
+        'status', 'received_at', 'processed_at',
+    )
+    list_filter = ('notification_type', 'status', 'received_at')
+    search_fields = ('notification_uuid', 'transaction_id')
+    readonly_fields = (
+        'notification_uuid', 'notification_type', 'subtype', 'transaction_id',
+        'payload_sha256', 'status', 'detail', 'signed_at', 'received_at',
+        'processed_at',
+    )
 
 @admin.register(LectureRentalHistory)
 class LectureRentalHistoryAdmin(admin.ModelAdmin):

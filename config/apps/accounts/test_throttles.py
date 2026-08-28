@@ -5,6 +5,9 @@ from django.core.cache import cache
 from unittest.mock import patch
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.settings import api_settings
+from django.utils import timezone
+
+from config.apps.cash.apple_iap import VerifiedAppleTransaction
 
 User = get_user_model()
 
@@ -91,34 +94,49 @@ class RateLimitThrottlingTests(APITestCase):
         response = self.client.post(url, {"phone_number": phone}, format='json')
         self.assertEqual(response.status_code, 429)
 
-    @patch('config.apps.cash.views.verify_apple_receipt')
+    @patch('config.apps.cash.views.verify_apple_transaction')
     def test_purchase_rate_limiting(self, mock_verify):
         """Purchase API calls should be throttled by PurchaseRateThrottle after exceeding the rate (2/min)."""
         mock_verify.side_effect = [
-            (True, 'apple_tx_001', ''),
-            (True, 'apple_tx_002', ''),
-            (True, 'apple_tx_003', ''),
+            self._verified_transaction('apple_tx_001'),
+            self._verified_transaction('apple_tx_002'),
+            self._verified_transaction('apple_tx_003'),
         ]
         url = reverse("cash:purchase")
         self.client.force_authenticate(user=self.user)
         
         response = self.client.post(url, {
             'platform': 'apple',
-            'receipt_data': 'valid_receipt_base64',
+            'signed_transaction_info': 'header.payload.signature',
             'product_id': 'cash_1000',
         }, format='json')
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(url, {
             'platform': 'apple',
-            'receipt_data': 'valid_receipt_base64',
+            'signed_transaction_info': 'header.payload.signature',
             'product_id': 'cash_1000',
         }, format='json')
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(url, {
             'platform': 'apple',
-            'receipt_data': 'valid_receipt_base64',
+            'signed_transaction_info': 'header.payload.signature',
             'product_id': 'cash_1000',
         }, format='json')
         self.assertEqual(response.status_code, 429)
+
+    def _verified_transaction(self, transaction_id):
+        return VerifiedAppleTransaction(
+            transaction_id=transaction_id,
+            original_transaction_id=transaction_id,
+            product_id='cash_1000',
+            app_account_token=self.user.apple_app_account_token,
+            environment='Sandbox',
+            purchase_date=timezone.now(),
+            price_milliunits=1_200_000,
+            currency='KRW',
+            storefront='KOR',
+            revocation_date=None,
+            revocation_percentage=0,
+        )

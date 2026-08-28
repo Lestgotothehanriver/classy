@@ -11,7 +11,10 @@ def _real_name(user) -> str:
     실명 필드가 별도로 없어 last_name·first_name 을 붙여 사용하고,
     둘 다 비어 있으면 닉네임(user_name)으로 폴백합니다.
     """
-    name = f"{user.last_name}{user.first_name}".strip()
+    # Django의 first_name/last_name은 서양식 필드명이지만, 가입 화면에서
+    # first_name에 성, last_name에 이름을 저장한다. 앱에 표시하는 실명은
+    # 입력 순서(first_name + last_name)를 그대로 유지한다.
+    name = f"{user.first_name}{user.last_name}".strip()
     return name or user.user_name
 
 
