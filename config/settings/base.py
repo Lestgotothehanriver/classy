@@ -244,9 +244,24 @@ APPLE_IAP_ROOT_CERTIFICATES = [
     BASE_DIR / 'apps' / 'cash' / 'certs' / 'AppleRootCA-G3.pem',
 ]
 
-# Apple-only rollout. Historical Google rows remain readable, but Google
-# purchase and webhook endpoints are intentionally not exposed.
-IAP_ENABLED_PLATFORMS = ('apple',)
+GOOGLE_PLAY_PACKAGE_NAME = os.environ.get(
+    'GOOGLE_PLAY_PACKAGE_NAME',
+    'com.classystudy.app',
+).strip()
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 = os.environ.get(
+    'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64',
+    '',
+).strip()
+GOOGLE_PLAY_RTDN_AUDIENCE = os.environ.get(
+    'GOOGLE_PLAY_RTDN_AUDIENCE',
+    '',
+).strip()
+GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL = os.environ.get(
+    'GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL',
+    '',
+).strip()
+
+IAP_ENABLED_PLATFORMS = ('apple', 'google')
 
 # ──────────────────────────────────────────────
 # Firebase / FCM Settings
