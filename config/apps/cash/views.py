@@ -1,4 +1,5 @@
 import logging
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import F
 from rest_framework.views import APIView
@@ -16,7 +17,7 @@ from .serializers import (
     RedeemCouponSerializer,
 )
 from .models import PurchaseHistory, LectureRentalHistory, Account, Coupon
-from .constants import PRODUCT_CASH_MAP
+from .constants import GOOGLE_PRODUCT_CASH_MAP, PRODUCT_CASH_MAP
 from .apple_iap import (
     AppleIAPConfigurationError,
     AppleIAPConflictError,
@@ -25,6 +26,14 @@ from .apple_iap import (
     grant_apple_purchase,
     process_apple_notification,
     verify_apple_transaction,
+)
+from .google_iap import (
+    GoogleIAPConfigurationError,
+    GoogleIAPConflictError,
+    GoogleIAPTemporaryError,
+    GoogleIAPVerificationError,
+    process_google_notification,
+    process_google_purchase,
 )
 from config.apps.lecture.models import Lecture
 
@@ -47,6 +56,21 @@ class CashPackageListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if request.query_params.get('platform') == 'google':
+            packages = [
+                {
+                    "productId": product_id,
+                    "cash": info["cash"],
+                    "price": info["krw"],
+                    "platform": "google",
+                    "obfuscatedAccountId": str(
+                        request.user.google_play_account_token
+                    ),
+                }
+                for product_id, info in GOOGLE_PRODUCT_CASH_MAP.items()
+            ]
+            return Response({"results": packages})
+
         packages = [
             {
                 "productId": product_id,
@@ -152,18 +176,29 @@ class InstructorAccountView(APIView):
 # 캐시 구매 API
 # ──────────────────────────────────────────────
 class PurchaseCashView(APIView):
-    """Verify one StoreKit 2 signed transaction and grant cash once."""
+    """Verify one Apple or Google transaction and grant cash once."""
     permission_classes = [IsAuthenticated]
     throttle_classes = [PurchaseRateThrottle]
 
     def post(self, request):
         serializer = CashPurchaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        platform = serializer.validated_data['platform']
         product_id = serializer.validated_data['product_id']
-        if product_id not in PRODUCT_CASH_MAP:
+        product_map = (
+            GOOGLE_PRODUCT_CASH_MAP if platform == 'google' else PRODUCT_CASH_MAP
+        )
+        if product_id not in product_map:
             return Response(
                 {"error": "Invalid product_id"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if platform == 'google':
+            return self._purchase_google(
+                request,
+                product_id=product_id,
+                purchase_token=serializer.validated_data['purchase_token'],
             )
 
         try:
@@ -201,6 +236,55 @@ class PurchaseCashView(APIView):
             pk=request.user.pk
         )
 
+        return Response({
+            "message": "Cash purchase processed successfully.",
+            "purchase_id": grant.purchase.pk,
+            "purchased_cash": grant.purchase.purchased_cash,
+            "credited_cash": grant.credited_cash,
+            "debt_offset": grant.debt_offset,
+            "remaining_cash": current_user.cash,
+            "cash_debt": current_user.cash_debt,
+            "idempotent": grant.idempotent,
+        }, status=status.HTTP_200_OK)
+
+    def _purchase_google(self, request, *, product_id, purchase_token):
+        """Process a Google purchase while keeping Apple handling isolated."""
+
+        try:
+            grant = process_google_purchase(request.user, product_id, purchase_token)
+        except GoogleIAPVerificationError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except GoogleIAPConflictError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except (GoogleIAPConfigurationError, GoogleIAPTemporaryError) as exc:
+            logger.error(
+                'Google Play purchase temporarily unavailable user=%s: %s',
+                request.user.pk,
+                exc,
+            )
+            return Response(
+                {"error": "Google Play purchase verification is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception(
+                'Unexpected Google Play purchase processing failure user=%s',
+                request.user.pk,
+            )
+            return Response(
+                {"error": "Internal server error while processing Google Play purchase."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        current_user = get_user_model().objects.only('cash', 'cash_debt').get(
+            pk=request.user.pk
+        )
         return Response({
             "message": "Cash purchase processed successfully.",
             "purchase_id": grant.purchase.pk,
@@ -497,6 +581,50 @@ class RefundPurchaseView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class GooglePlayWebhookView(APIView):
+    """Authenticate and process Google Play RTDN Pub/Sub push messages."""
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = []
+
+    def post(self, request, *args, **kwargs):
+        try:
+            result = process_google_notification(
+                request.data,
+                authorization=request.headers.get('Authorization', ''),
+            )
+        except GoogleIAPVerificationError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except GoogleIAPConflictError as exc:
+            logger.error('Conflicting Google Play notification: %s', exc)
+            return Response(
+                {"error": "Conflicting Google Play notification."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except (GoogleIAPConfigurationError, GoogleIAPTemporaryError) as exc:
+            logger.error('Google Play notification temporarily unavailable: %s', exc)
+            return Response(
+                {"error": "Google Play notification is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception('Unexpected Google Play notification failure')
+            return Response(
+                {"error": "Internal server error while processing webhook."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({
+            "message": "Google Play notification processed.",
+            "duplicate": result.duplicate,
+            "status": result.event.status,
+        }, status=status.HTTP_200_OK)
 
 
 # ──────────────────────────────────────────────

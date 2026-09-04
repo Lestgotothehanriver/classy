@@ -10,6 +10,9 @@ from .models import (
     SettlementRecord,
     Coupon,
     AppStoreWebhookEvent,
+    GooglePlayPurchase,
+    GooglePlaySyncState,
+    GooglePlayWebhookEvent,
 )
 
 @admin.register(PurchaseHistory)
@@ -37,6 +40,43 @@ class AppStoreWebhookEventAdmin(admin.ModelAdmin):
         'payload_sha256', 'status', 'detail', 'signed_at', 'received_at',
         'processed_at',
     )
+
+
+@admin.register(GooglePlayPurchase)
+class GooglePlayPurchaseAdmin(admin.ModelAdmin):
+    list_display = (
+        'purchase_history', 'order_id', 'purchase_state',
+        'consumption_state', 'last_verified_at', 'consumed_at',
+    )
+    list_filter = ('purchase_state', 'consumption_state', 'last_verified_at')
+    search_fields = ('order_id', 'purchase_history__transaction_id')
+    readonly_fields = (
+        'purchase_history', 'purchase_token', 'order_id',
+        'obfuscated_external_account_id', 'purchase_state',
+        'acknowledgement_state', 'consumption_state', 'last_verified_at',
+        'consumed_at',
+    )
+
+
+@admin.register(GooglePlayWebhookEvent)
+class GooglePlayWebhookEventAdmin(admin.ModelAdmin):
+    list_display = (
+        'message_id', 'notification_type', 'product_id', 'status',
+        'received_at', 'processed_at',
+    )
+    list_filter = ('notification_type', 'status', 'received_at')
+    search_fields = ('message_id', 'product_id', 'purchase_token_sha256')
+    readonly_fields = (
+        'message_id', 'notification_type', 'product_id',
+        'purchase_token_sha256', 'status', 'detail', 'received_at',
+        'processed_at',
+    )
+
+
+@admin.register(GooglePlaySyncState)
+class GooglePlaySyncStateAdmin(admin.ModelAdmin):
+    list_display = ('key', 'last_synced_at', 'updated_at')
+    readonly_fields = ('key', 'last_synced_at', 'updated_at')
 
 @admin.register(LectureRentalHistory)
 class LectureRentalHistoryAdmin(admin.ModelAdmin):

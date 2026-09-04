@@ -15,6 +15,17 @@ PRODUCT_CASH_MAP = {
     'cash_50000': {'cash': 50000, 'krw': 60000},
 }
 
+# Google Play one-time product identifier -> granted cash and fallback KRW
+# display price. Google Play remains the source of truth for the localized
+# customer-facing price.
+GOOGLE_PRODUCT_CASH_MAP = {
+    'cash_500': {'cash': 500, 'krw': 600},
+    'cash_1000': {'cash': 1000, 'krw': 1200},
+    'cash_5000': {'cash': 5000, 'krw': 6000},
+    'cash_10000': {'cash': 10000, 'krw': 12000},
+    'cash_50000': {'cash': 50000, 'krw': 60000},
+}
+
 # Accounting estimate only. App Store Connect financial reports remain the
 # source of truth for actual proceeds.
 STORE_FEE_RATE = 0.30
