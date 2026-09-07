@@ -97,6 +97,67 @@ class AppStoreWebhookEvent(models.Model):
         return f"{self.notification_type} {self.notification_uuid} ({self.status})"
 
 
+class GooglePlayPurchase(models.Model):
+    """Google Play-specific verification and consumption state for a purchase."""
+
+    purchase_history = models.OneToOneField(
+        PurchaseHistory,
+        on_delete=models.CASCADE,
+        related_name='google_play_detail',
+    )
+    purchase_token = models.TextField(unique=True)
+    order_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    obfuscated_external_account_id = models.UUIDField(db_index=True)
+    purchase_state = models.CharField(max_length=20, default='PURCHASED')
+    acknowledgement_state = models.CharField(max_length=20, blank=True, default='')
+    consumption_state = models.CharField(max_length=20, default='NOT_CONSUMED')
+    last_verified_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Google purchase #{self.purchase_history_id} ({self.consumption_state})"
+
+
+class GooglePlayWebhookEvent(models.Model):
+    """Idempotency and audit record for Google Play RTDN messages."""
+
+    class Status(models.TextChoices):
+        RECEIVED = 'RECEIVED', '수신'
+        PROCESSED = 'PROCESSED', '처리 완료'
+        IGNORED = 'IGNORED', '처리 대상 아님'
+        FAILED = 'FAILED', '처리 실패'
+
+    message_id = models.CharField(max_length=255, unique=True)
+    notification_type = models.PositiveIntegerField(null=True, blank=True)
+    product_id = models.CharField(max_length=100, blank=True, default='')
+    purchase_token_sha256 = models.CharField(max_length=64, blank=True, default='')
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.RECEIVED,
+    )
+    detail = models.CharField(max_length=255, blank=True, default='')
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"Google RTDN {self.message_id} ({self.status})"
+
+
+class GooglePlaySyncState(models.Model):
+    """Successful checkpoint for incremental Google Play reconciliation jobs."""
+
+    key = models.CharField(max_length=64, unique=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.key}: {self.last_synced_at}"
+
+
 class Coupon(models.Model):
     """
     이벤트 및 프로모션 목적으로 발행되는 '캐시 교환 쿠폰' 모델입니다.

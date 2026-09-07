@@ -86,6 +86,13 @@ class User(AbstractUser):
         unique=True,
         editable=False,
     )
+    # Google Play Billing obfuscatedExternalAccountId. It is separate from the
+    # Apple token so each store can rotate and validate identifiers independently.
+    google_play_account_token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
     # Refunds can arrive after purchased cash has already been spent. Keep the
     # unrecovered amount as debt and offset it against future top-ups.
     cash_debt = models.PositiveIntegerField(default=0)
@@ -123,6 +130,8 @@ class UserConsent(models.Model):
         on_delete=models.CASCADE,
         related_name="consents",
     )
+    user_email = models.EmailField() # 동의 시점의 이메일 스냅샷
+    
     doc_type = models.CharField(max_length=20, choices=DOC_TYPE_CHOICES)
     # 정책 시행일(=버전). 예 "2026-01-01". 마케팅 등 버전이 없는 항목은 blank 허용.
     version = models.CharField(max_length=20, blank=True)
@@ -137,7 +146,7 @@ class UserConsent(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user_id} {self.doc_type} v{self.version} agreed={self.agreed}"
+        return f"{self.user_email} {self.doc_type} v{self.version} agreed={self.agreed}"
 
 
 class Student(models.Model):
@@ -288,6 +297,7 @@ class UserSanction(models.Model):
         related_name="sanctions",
         help_text="제재 대상 사용자",
     )
+    target_user_email = models.EmailField(help_text="제재 대상 사용자의 이메일 스냅샷")
     type = models.CharField(max_length=20, choices=Type.choices)
     reason = models.TextField(blank=True)
     report = models.ForeignKey(
@@ -319,7 +329,7 @@ class UserSanction(models.Model):
 
     def __str__(self):
         state = "active" if self.is_active else "inactive"
-        return f"{self.get_type_display()} → user#{self.target_user_id} ({state})"
+        return f"{state} → {self.target_user_email}"
 
     @property
     def is_effective(self) -> bool:
