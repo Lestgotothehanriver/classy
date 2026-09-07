@@ -294,6 +294,7 @@ class PurchaseCashView(APIView):
             "remaining_cash": current_user.cash,
             "cash_debt": current_user.cash_debt,
             "idempotent": grant.idempotent,
+            "consume_pending": grant.consume_pending,
         }, status=status.HTTP_200_OK)
 
 
