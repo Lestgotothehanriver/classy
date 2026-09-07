@@ -18,6 +18,8 @@ from .google_iap import (
     GoogleIAPVerificationError,
     VerifiedGooglePurchase,
     apply_google_voided_purchase,
+    consume_google_purchase,
+    grant_google_purchase,
     process_google_notification,
     verify_pubsub_oidc_token,
 )
@@ -141,6 +143,7 @@ class GooglePurchaseApiTests(TestCase):
         self.assertEqual(response.data['purchased_cash'], 1000)
         self.assertEqual(response.data['credited_cash'], 1000)
         self.assertFalse(response.data['idempotent'])
+        self.assertFalse(response.data['consume_pending'])
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash, 1000)
         detail = GooglePlayPurchase.objects.select_related('purchase_history').get()
@@ -222,7 +225,8 @@ class GooglePurchaseApiTests(TestCase):
 
         first = self._purchase()
 
-        self.assertEqual(first.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertTrue(first.data['consume_pending'])
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash, 1000)
         self.assertEqual(
@@ -239,6 +243,60 @@ class GooglePurchaseApiTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash, 1000)
         self.assertEqual(GooglePlayPurchase.objects.get().consumption_state, 'CONSUMED')
+
+    def test_uncertain_consume_response_recovers_already_consumed_purchase(self):
+        self.products.get.return_value.execute.side_effect = [
+            google_response(self.user),
+            google_response(self.user, consumptionState=1),
+        ]
+        self.products.consume.return_value.execute.side_effect = RuntimeError(
+            'response lost'
+        )
+
+        response = self._purchase(token='uncertain-token')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['consume_pending'])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 1000)
+        self.assertEqual(
+            GooglePlayPurchase.objects.get().consumption_state,
+            'CONSUMED',
+        )
+
+    @patch(
+        'config.apps.cash.management.commands.retry_google_pending_consumptions.consume_google_purchase'
+    )
+    def test_pending_consume_command_retries_without_regranting(
+        self,
+        mock_consume,
+    ):
+        grant = grant_google_purchase(
+            self.user,
+            verified_purchase(
+                self.user,
+                token='cron-token',
+                order_id='GPA.cron',
+            ),
+        )
+
+        call_command('retry_google_pending_consumptions')
+
+        mock_consume.assert_called_once_with(grant.detail)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 1000)
+
+    def test_stale_duplicate_skips_google_when_database_is_already_consumed(self):
+        response = self._purchase(token='stale-token')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        detail = GooglePlayPurchase.objects.select_related('purchase_history').get()
+        detail.consumption_state = 'NOT_CONSUMED'
+        self.products.consume.reset_mock()
+
+        consume_google_purchase(detail)
+
+        self.products.consume.assert_not_called()
+        self.assertEqual(detail.consumption_state, 'CONSUMED')
 
 
 @override_settings(
@@ -302,6 +360,42 @@ class GoogleRtdnAndRefundTests(TestCase):
         self.assertEqual(GooglePlayWebhookEvent.objects.count(), 1)
         self.assertEqual(PurchaseHistory.objects.count(), 1)
         mock_consume.assert_called_once()
+
+    @patch('config.apps.cash.google_iap.verify_google_purchase')
+    @patch('config.apps.cash.google_iap.verify_pubsub_oidc_token')
+    def test_rtdn_acknowledges_purchase_already_consumed_by_purchase_api(
+        self,
+        mock_auth,
+        mock_verify,
+    ):
+        """Treat an RTDN after server consumption as a successful duplicate."""
+
+        mock_auth.return_value = {}
+        grant = grant_google_purchase(
+            self.user,
+            verified_purchase(
+                self.user,
+                token='rtdn-token',
+                order_id='GPA.rtdn-consumed',
+            ),
+        )
+        detail = grant.detail
+        detail.consumption_state = 'CONSUMED'
+        detail.consumed_at = timezone.now()
+        detail.save(update_fields=['consumption_state', 'consumed_at'])
+
+        result = process_google_notification(
+            self._envelope(message_id='consumed-message'),
+            authorization='Bearer oidc-token',
+        )
+
+        self.assertFalse(result.duplicate)
+        self.assertEqual(
+            result.event.status,
+            GooglePlayWebhookEvent.Status.PROCESSED,
+        )
+        self.assertEqual(result.event.detail, 'already_processed')
+        mock_verify.assert_not_called()
 
     @patch('config.apps.cash.google_iap.verify_pubsub_oidc_token')
     def test_invalid_payload_is_failed_without_purchase(self, mock_auth):

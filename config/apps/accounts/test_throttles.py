@@ -23,7 +23,7 @@ class RateLimitThrottlingTests(APITestCase):
             'unsafe_method': '2/min',
             'login': '2/min',
             'sms': '2/min',
-            'purchase': '2/min',
+            'purchase': '10/min',
         }
         
         self.user = User.objects.create_user(
@@ -96,28 +96,21 @@ class RateLimitThrottlingTests(APITestCase):
 
     @patch('config.apps.cash.views.verify_apple_transaction')
     def test_purchase_rate_limiting(self, mock_verify):
-        """Purchase API calls should be throttled by PurchaseRateThrottle after exceeding the rate (2/min)."""
+        """Purchase API calls should allow ten requests per minute."""
         mock_verify.side_effect = [
-            self._verified_transaction('apple_tx_001'),
-            self._verified_transaction('apple_tx_002'),
-            self._verified_transaction('apple_tx_003'),
+            self._verified_transaction(f'apple_tx_{index:03d}')
+            for index in range(1, 12)
         ]
         url = reverse("cash:purchase")
         self.client.force_authenticate(user=self.user)
-        
-        response = self.client.post(url, {
-            'platform': 'apple',
-            'signed_transaction_info': 'header.payload.signature',
-            'product_id': 'cash_1000',
-        }, format='json')
-        self.assertEqual(response.status_code, 200)
 
-        response = self.client.post(url, {
-            'platform': 'apple',
-            'signed_transaction_info': 'header.payload.signature',
-            'product_id': 'cash_1000',
-        }, format='json')
-        self.assertEqual(response.status_code, 200)
+        for _ in range(10):
+            response = self.client.post(url, {
+                'platform': 'apple',
+                'signed_transaction_info': 'header.payload.signature',
+                'product_id': 'cash_1000',
+            }, format='json')
+            self.assertEqual(response.status_code, 200)
 
         response = self.client.post(url, {
             'platform': 'apple',

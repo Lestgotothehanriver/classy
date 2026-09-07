@@ -112,7 +112,7 @@ REST_FRAMEWORK = {
         "unsafe_method": "30/min",
         "login": "5/min",
         "sms": "1/min",
-        "purchase": "3/min",
+        "purchase": "10/min",
     },
 }
 

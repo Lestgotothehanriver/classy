@@ -79,6 +79,7 @@ class GooglePurchaseGrant:
     idempotent: bool
     credited_cash: int
     debt_offset: int
+    consume_pending: bool = False
 
 
 @dataclass(frozen=True)
@@ -315,27 +316,74 @@ def grant_google_purchase(
         raise
 
 
+def _mark_google_purchase_consumed(
+    locked_detail: GooglePlayPurchase,
+    detail: GooglePlayPurchase,
+) -> None:
+    """Persist a confirmed Google Play consumption on both model instances."""
+
+    now = timezone.now()
+    locked_detail.consumption_state = 'CONSUMED'
+    locked_detail.consumed_at = now
+    locked_detail.last_verified_at = now
+    locked_detail.save(update_fields=[
+        'consumption_state', 'consumed_at', 'last_verified_at',
+    ])
+    detail.consumption_state = 'CONSUMED'
+    detail.consumed_at = now
+
+
 def consume_google_purchase(detail: GooglePlayPurchase) -> None:
     """Consume one granted Google Play purchase and persist completion."""
 
-    if detail.consumption_state == 'CONSUMED':
-        return
-    service = _publisher_service()
-    _execute_google(
-        service.purchases().products().consume(
-            packageName=settings.GOOGLE_PLAY_PACKAGE_NAME,
-            productId=detail.purchase_history.product_id,
-            token=detail.purchase_token,
+    # App purchase updates, resume recovery, and RTDN can race for the same
+    # token. Re-read under a row lock so only one request calls Google consume.
+    with transaction.atomic():
+        locked_detail = (
+            GooglePlayPurchase.objects.select_for_update()
+            .select_related('purchase_history')
+            .get(pk=detail.pk)
         )
-    )
-    now = timezone.now()
-    GooglePlayPurchase.objects.filter(pk=detail.pk).update(
-        consumption_state='CONSUMED',
-        consumed_at=now,
-        last_verified_at=now,
-    )
-    detail.consumption_state = 'CONSUMED'
-    detail.consumed_at = now
+        if locked_detail.consumption_state == 'CONSUMED':
+            detail.consumption_state = 'CONSUMED'
+            detail.consumed_at = locked_detail.consumed_at
+            return
+
+        service = _publisher_service()
+        try:
+            _execute_google(
+                service.purchases().products().consume(
+                    packageName=settings.GOOGLE_PLAY_PACKAGE_NAME,
+                    productId=locked_detail.purchase_history.product_id,
+                    token=locked_detail.purchase_token,
+                )
+            )
+        except GoogleIAPTemporaryError as exc:
+            # The consume request may have reached Google even when its response
+            # was lost. Re-read the purchase before leaving it pending so a
+            # later retry does not loop forever on an already-consumed token.
+            try:
+                response = _execute_google(
+                    service.purchases().products().get(
+                        packageName=settings.GOOGLE_PLAY_PACKAGE_NAME,
+                        productId=locked_detail.purchase_history.product_id,
+                        token=locked_detail.purchase_token,
+                    ),
+                    invalid_purchase_is_verification=True,
+                )
+            except GoogleIAPError:
+                response = None
+            if (
+                response is not None
+                and int(response.get('consumptionState', 0)) == CONSUMED_STATE
+            ):
+                _mark_google_purchase_consumed(locked_detail, detail)
+                return
+            raise GoogleIAPTemporaryError(
+                'Google Play consume is temporarily unavailable.'
+            ) from exc
+
+        _mark_google_purchase_consumed(locked_detail, detail)
 
 
 def process_google_purchase(user: Any, product_id: str, purchase_token: str) -> GooglePurchaseGrant:
@@ -360,7 +408,22 @@ def process_google_purchase(user: Any, product_id: str, purchase_token: str) -> 
 
     # Consumption deliberately occurs after the grant transaction commits. A
     # transient failure therefore leaves an idempotent record for a safe retry.
-    consume_google_purchase(grant.detail)
+    try:
+        consume_google_purchase(grant.detail)
+    except (GoogleIAPConfigurationError, GoogleIAPTemporaryError) as exc:
+        logger.error(
+            'Google Play consume pending purchase_id=%s: %s',
+            grant.purchase.pk,
+            exc,
+        )
+        return GooglePurchaseGrant(
+            purchase=grant.purchase,
+            detail=grant.detail,
+            idempotent=grant.idempotent,
+            credited_cash=grant.credited_cash,
+            debt_offset=grant.debt_offset,
+            consume_pending=True,
+        )
     return grant
 
 
@@ -447,23 +510,44 @@ def process_google_notification(
                 event.status = GooglePlayWebhookEvent.Status.IGNORED
                 event.detail = 'not_a_completed_purchase'
             else:
-                verified = verify_google_purchase(
-                    purchase_token,
-                    expected_product_id=product_id,
-                    expected_account_token=None,
+                existing_detail = (
+                    GooglePlayPurchase.objects.select_related('purchase_history')
+                    .filter(purchase_token=purchase_token)
+                    .first()
                 )
-                User = get_user_model()
-                user = User.objects.filter(
-                    google_play_account_token=verified.account_token
-                ).first()
-                if user is None:
-                    raise GoogleIAPConflictError(
-                        'Google Play purchase account is unknown.'
+                if existing_detail is not None:
+                    # The app purchase API can finish the server-side consume
+                    # before this asynchronous RTDN arrives. That is a valid
+                    # duplicate delivery, not a failed or conflicting purchase.
+                    if existing_detail.purchase_history.product_id != product_id:
+                        raise GoogleIAPConflictError(
+                            'Google Play purchase product does not match.'
+                        )
+                    if existing_detail.purchase_history.is_refunded:
+                        raise GoogleIAPConflictError(
+                            'Google Play purchase was refunded.'
+                        )
+                    if existing_detail.consumption_state != 'CONSUMED':
+                        consume_google_purchase(existing_detail)
+                    event.detail = 'already_processed'
+                else:
+                    verified = verify_google_purchase(
+                        purchase_token,
+                        expected_product_id=product_id,
+                        expected_account_token=None,
                     )
-                grant = grant_google_purchase(user, verified)
-                consume_google_purchase(grant.detail)
+                    User = get_user_model()
+                    user = User.objects.filter(
+                        google_play_account_token=verified.account_token
+                    ).first()
+                    if user is None:
+                        raise GoogleIAPConflictError(
+                            'Google Play purchase account is unknown.'
+                        )
+                    grant = grant_google_purchase(user, verified)
+                    consume_google_purchase(grant.detail)
+                    event.detail = 'purchase_processed'
                 event.status = GooglePlayWebhookEvent.Status.PROCESSED
-                event.detail = 'purchase_processed'
         event.processed_at = timezone.now()
         event.save(update_fields=[
             'notification_type', 'product_id', 'purchase_token_sha256',
