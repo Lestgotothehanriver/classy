@@ -32,7 +32,7 @@ class AppleSignedTransactionTests(TestCase):
         values = {
             'transactionId': 'signed_tx_1',
             'originalTransactionId': 'signed_tx_1',
-            'productId': 'cash_1000',
+            'productId': 'cash_1000_v2',
             'type': Type.CONSUMABLE,
             'quantity': 1,
             'inAppOwnershipType': InAppOwnershipType.PURCHASED,
@@ -54,7 +54,7 @@ class AppleSignedTransactionTests(TestCase):
 
         verified = verify_apple_transaction(
             'header.payload.signature',
-            expected_product_id='cash_1000',
+        expected_product_id='cash_1000_v2',
             expected_app_account_token=self.user.apple_app_account_token,
         )
 
@@ -69,7 +69,7 @@ class AppleSignedTransactionTests(TestCase):
         with self.assertRaises(AppleIAPVerificationError):
             verify_apple_transaction(
                 'header.payload.signature',
-                expected_product_id='cash_1000',
+                expected_product_id='cash_1000_v2',
                 expected_app_account_token=self.user.apple_app_account_token,
             )
 
@@ -79,7 +79,7 @@ class AppleSignedTransactionTests(TestCase):
         with self.assertRaises(AppleIAPVerificationError):
             verify_apple_transaction(
                 'header.payload.signature',
-                expected_product_id='cash_1000',
+                expected_product_id='cash_1000_v2',
                 expected_app_account_token=self.user.apple_app_account_token,
             )
 
@@ -125,7 +125,7 @@ class AppleNotificationTests(TestCase):
         decoded_transaction = SimpleNamespace(
             transactionId='refund_tx',
             originalTransactionId='refund_tx',
-            productId='cash_1000',
+            productId='cash_1000_v2',
             appAccountToken=str(self.user.apple_app_account_token),
             environment=Environment.SANDBOX,
             rawEnvironment=None,

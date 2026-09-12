@@ -22,7 +22,7 @@ def verified_transaction(
     user,
     *,
     transaction_id='apple_tx_001',
-    product_id='cash_1000',
+    product_id='cash_1000_v2',
     price_milliunits=1_200_000,
 ):
     return VerifiedAppleTransaction(
@@ -57,7 +57,7 @@ class CashPurchaseTests(TestCase):
     def tearDown(self):
         self.throttle_patcher.stop()
 
-    def _purchase(self, product_id='cash_1000', signed_payload='signed-jws'):
+    def _purchase(self, product_id='cash_1000_v2', signed_payload='signed-jws'):
         return self.client.post(
             self.url,
             {
@@ -81,13 +81,13 @@ class CashPurchaseTests(TestCase):
         self.assertFalse(response.data['idempotent'])
         mock_verify.assert_called_once_with(
             'signed-jws',
-            expected_product_id='cash_1000',
+            expected_product_id='cash_1000_v2',
             expected_app_account_token=self.user.apple_app_account_token,
         )
         self.user.refresh_from_db()
         self.assertEqual(self.user.cash, 1000)
         history = PurchaseHistory.objects.get(transaction_id='apple_tx_001')
-        self.assertEqual(history.product_id, 'cash_1000')
+        self.assertEqual(history.product_id, 'cash_1000_v2')
         self.assertEqual(history.paid_amount, 1200)
         self.assertEqual(history.fee_deducted_amount, 840)
 
@@ -133,7 +133,7 @@ class CashPurchaseTests(TestCase):
             {
                 'platform': 'google',
                 'signed_transaction_info': 'signed-jws',
-                'product_id': 'cash_1000',
+                'product_id': 'cash_1000_v2',
             },
             format='json',
         )
@@ -159,7 +159,10 @@ class CashPurchaseTests(TestCase):
     def test_package_list_returns_stable_apple_account_token(self):
         response = self.client.get(reverse('cash:packages'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 6)
+        self.assertEqual(
+            {item['productId'] for item in response.data['results']},
+            {'cash_500', 'cash_1000_v2', 'cash_5000', 'cash_10000', 'cash_50000'},
+        )
         self.assertTrue(
             all(item['platform'] == 'apple' for item in response.data['results'])
         )

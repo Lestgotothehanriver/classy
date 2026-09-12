@@ -9,7 +9,9 @@ LECTURE_RENTAL_DAYS = 30
 # fallback price exists for older history rows and server-side display only.
 PRODUCT_CASH_MAP = {
     'cash_500': {'cash': 500, 'krw': 600},
-    'cash_1000': {'cash': 1000, 'krw': 1200},
+    # App Store Connect uses the replacement product ID; keep Google Play's
+    # legacy ID below unchanged because the stores have separate catalogs.
+    'cash_1000_v2': {'cash': 1000, 'krw': 1200},
     'cash_5000': {'cash': 5000, 'krw': 6000},
     'cash_10000': {'cash': 10000, 'krw': 12000},
     'cash_50000': {'cash': 50000, 'krw': 60000},
