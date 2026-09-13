@@ -23,9 +23,20 @@ def resolve_video_path(video_file) -> str | None:
         except Exception:
             pass
 
-    path = getattr(video_file, "path", None)
+    try:
+        path = getattr(video_file, "path", None)
+    except NotImplementedError:
+        # Remote storage has no filesystem path. Uploads are processed before save.
+        return None
     if path:
         return str(path)
+
+    # Converted videos are django File wrappers with a display name (e.g. x.mp4).
+    # ffprobe needs the temporary file's actual path before the upload to S3.
+    wrapped_file = getattr(video_file, 'file', None)
+    wrapped_path = getattr(wrapped_file, 'name', None)
+    if isinstance(wrapped_path, (str, Path)) and Path(wrapped_path).is_file():
+        return str(wrapped_path)
 
     return None
 

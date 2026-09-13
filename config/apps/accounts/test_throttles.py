@@ -108,14 +108,14 @@ class RateLimitThrottlingTests(APITestCase):
             response = self.client.post(url, {
                 'platform': 'apple',
                 'signed_transaction_info': 'header.payload.signature',
-                'product_id': 'cash_1000',
+                'product_id': 'cash_1000_v2',
             }, format='json')
             self.assertEqual(response.status_code, 200)
 
         response = self.client.post(url, {
             'platform': 'apple',
             'signed_transaction_info': 'header.payload.signature',
-            'product_id': 'cash_1000',
+            'product_id': 'cash_1000_v2',
         }, format='json')
         self.assertEqual(response.status_code, 429)
 
@@ -123,7 +123,7 @@ class RateLimitThrottlingTests(APITestCase):
         return VerifiedAppleTransaction(
             transaction_id=transaction_id,
             original_transaction_id=transaction_id,
-            product_id='cash_1000',
+            product_id='cash_1000_v2',
             app_account_token=self.user.apple_app_account_token,
             environment='Sandbox',
             purchase_date=timezone.now(),

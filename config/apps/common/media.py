@@ -2,7 +2,8 @@ import mimetypes
 import os
 
 from django.conf import settings
-from django.http import FileResponse, Http404, HttpResponse, StreamingHttpResponse
+from django.core.files.storage import default_storage
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, StreamingHttpResponse
 from django.utils._os import safe_join
 
 
@@ -48,6 +49,17 @@ def serve_media_with_range(request, path):
     """
     if path.startswith(PROTECTED_MEDIA_PREFIXES):
         raise Http404("Not found")
+
+    if getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None):
+        # Keep legacy /media/ URLs working while S3 serves byte-range requests.
+        # Never permit dot segments to bypass the protected prefix check above.
+        if path.startswith('/') or any(part in {'.', '..'} for part in path.split('/')) or '\\' in path:
+            raise Http404('Invalid media path')
+        if not default_storage.exists(path):
+            raise Http404('Media file not found')
+        response = HttpResponseRedirect(default_storage.url(path))
+        response['Cache-Control'] = 'private, no-store'
+        return response
 
     try:
         full_path = safe_join(settings.MEDIA_ROOT, path)

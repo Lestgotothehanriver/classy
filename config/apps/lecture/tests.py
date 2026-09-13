@@ -78,7 +78,8 @@ class LectureCommentPermissionTests(TestCase):
         response = self.client.get(self._comment_url(self.paid_lecture))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(len(response.data['results']), 1)
 
     def test_paid_lecture_rejects_logged_in_user_without_valid_rental(self):
         self.client.force_authenticate(user=self.other_user)

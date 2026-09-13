@@ -51,8 +51,8 @@ class TutoringRegistrationAdminAPITests(APITestCase):
             user_name="등록학생",
             phone="010-1111-2222",
             password=PASSWORD,
-            first_name="길동",
-            last_name="홍",
+            first_name="홍",
+            last_name="길동",
         )
         self.instructor_user = User.objects.create_user(
             username="reg_instructor",
@@ -60,8 +60,8 @@ class TutoringRegistrationAdminAPITests(APITestCase):
             user_name="등록강사",
             phone="010-3333-4444",
             password=PASSWORD,
-            first_name="선생",
-            last_name="김",
+            first_name="김",
+            last_name="선생",
         )
         self.student = Student.objects.create(user=self.student_user)
         self.instructor = Instructor.objects.create(

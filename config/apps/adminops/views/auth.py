@@ -1,6 +1,6 @@
 import logging
 
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny
@@ -41,7 +41,10 @@ class AdminLoginAPIView(APIView):
         password = serializer.validated_data["password"]
 
         # 기존 사용자 로그인과 동일한 인증 경로를 사용합니다.
-        user = authenticate(request, username=email, password=password)
+        # Bootstrap administrators may have a username distinct from their email.
+        candidate = get_user_model().objects.filter(email__iexact=email).first()
+        username = candidate.get_username() if candidate else email
+        user = authenticate(request, username=username, password=password)
         if user is None:
             logger.warning("[ADMIN_AUTH] login failed (invalid credentials) email=%s", email)
             return Response({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}, status=401)

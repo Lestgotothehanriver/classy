@@ -1,0 +1,24 @@
+[Unit]
+Description=Classy Django ASGI Server
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/classy-aws
+Environment=DJANGO_SETTINGS_MODULE=config.settings.aws
+EnvironmentFile=/home/ubuntu/classy-aws/.env
+ExecStart=/home/ubuntu/classy_aws_venv/bin/uvicorn config.asgi:application --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
+Restart=always
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

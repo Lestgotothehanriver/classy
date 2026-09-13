@@ -20,8 +20,10 @@ from django.conf.urls.static import static
 from django.conf import settings
 from config.apps.common.media import serve_media_with_range, deny_direct_file_access
 from config.apps.notification.views import DeviceTokenAPIView
+from config.apps.common.health import health
 
 urlpatterns = [
+    path('healthz/', health),
     # 인증 문서 등 보호 미디어의 직접 접근 차단. static()/fallback 보다 먼저 매칭되도록
     # 최상단에 둡니다. (DEBUG·프로덕션 모두 적용)
     re_path(r'^media/files/', deny_direct_file_access),

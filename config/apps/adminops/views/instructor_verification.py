@@ -62,8 +62,8 @@ class InstructorVerificationListView(ListAPIView):
             # 실명으로도 검색 가능하게 합니다.
             qs = qs.annotate(
                 _full_name=Concat(
-                    "instructor_profile__user__last_name",
                     "instructor_profile__user__first_name",
+                    "instructor_profile__user__last_name",
                 )
             ).filter(
                 Q(_full_name__icontains=q)

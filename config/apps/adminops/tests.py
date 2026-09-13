@@ -45,6 +45,16 @@ class AdminAuthTests(APITestCase):
         self.assertEqual(res.status_code, 403)
         self.assertFalse(Token.objects.filter(user__email="plain@example.com").exists())
 
+    def test_bootstrap_admin_can_login_with_email_and_distinct_username(self):
+        user = self._make_user('bootstrap@example.com', superuser=True)
+        user.username = 'initial_admin'
+        user.save(update_fields=['username'])
+        res = self.client.post(self.login_url, {
+            'email': 'bootstrap@example.com', 'password': PASSWORD,
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['user']['id'], user.pk)
+
     def test_wrong_password_returns_401(self):
         self._make_user("super2@example.com", superuser=True)
         res = self.client.post(
