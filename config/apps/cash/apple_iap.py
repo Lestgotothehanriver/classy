@@ -197,7 +197,11 @@ def _verify_store_payload(method: str, payload: str, environment=None) -> Any:
         # Only notifications use fallback. Purchases specify their account's
         # environment, so sandbox receipts cannot credit a live account.
         if (environment is None and selected is Environment.PRODUCTION
-                and exc.status is VerificationStatus.INVALID_ENVIRONMENT):
+                and exc.status in (VerificationStatus.INVALID_ENVIRONMENT,
+                                   VerificationStatus.INVALID_APP_IDENTIFIER)):
+            # Apple's verifier checks appAppleId before environment. Sandbox
+            # notifications may omit that production-only identifier. The
+            # sandbox verifier must still validate signature, bundle and store.
             return getattr(get_apple_signed_data_verifier(Environment.SANDBOX), method)(payload)
         raise
 

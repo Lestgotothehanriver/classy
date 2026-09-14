@@ -99,6 +99,46 @@ class AppleSignedTransactionTests(TestCase):
 
     @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
     @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_sandbox_notification_without_production_app_id(self, factory):
+        from unittest.mock import Mock
+        production, sandbox = Mock(), Mock()
+        production.verify_and_decode_notification.side_effect = VerificationException(
+            VerificationStatus.INVALID_APP_IDENTIFIER)
+        sandbox.verify_and_decode_notification.return_value = 'verified'
+        factory.side_effect = [production, sandbox]
+        self.assertEqual(_verify_store_payload('verify_and_decode_notification', 'signed'), 'verified')
+        sandbox.verify_and_decode_notification.assert_called_once_with('signed')
+        self.assertEqual([c.args[0] for c in factory.call_args_list],
+            [Environment.PRODUCTION, Environment.SANDBOX])
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_app_id_fallback_rejects_failed_sandbox_verification(self, factory):
+        from unittest.mock import Mock
+        for status in (VerificationStatus.VERIFICATION_FAILURE,
+                       VerificationStatus.INVALID_ENVIRONMENT,
+                       VerificationStatus.INVALID_APP_IDENTIFIER):
+            with self.subTest(status=status):
+                production, sandbox = Mock(), Mock()
+                production.verify_and_decode_notification.side_effect = VerificationException(
+                    VerificationStatus.INVALID_APP_IDENTIFIER)
+                sandbox.verify_and_decode_notification.side_effect = VerificationException(status)
+                factory.side_effect = [production, sandbox]
+                with self.assertRaises(VerificationException):
+                    _verify_store_payload('verify_and_decode_notification', 'invalid')
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_explicit_purchase_environment_never_falls_back(self, factory):
+        factory.return_value.verify_and_decode_signed_transaction.side_effect = VerificationException(
+            VerificationStatus.INVALID_APP_IDENTIFIER)
+        with self.assertRaises(VerificationException):
+            _verify_store_payload('verify_and_decode_signed_transaction', 'signed',
+                                  Environment.PRODUCTION)
+        factory.assert_called_once_with(Environment.PRODUCTION)
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
     def test_invalid_signature_does_not_trigger_environment_fallback(self, factory):
         factory.return_value.verify_and_decode_notification.side_effect = VerificationException(
             VerificationStatus.VERIFICATION_FAILURE)
