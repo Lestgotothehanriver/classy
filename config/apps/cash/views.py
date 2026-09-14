@@ -16,7 +16,13 @@ from .serializers import (
     LectureRentalSerializer,
     RedeemCouponSerializer,
 )
-from .models import PurchaseHistory, LectureRentalHistory, Account, Coupon
+from .consent import (
+    current_cash_terms_version,
+    has_current_cash_terms_consent,
+    record_cash_terms_consent,
+)
+from .ledger import create_coupon_lot, debit_lots_for_rental
+from .models import Account, CashLot, Coupon, LectureRentalHistory, PurchaseHistory
 from .constants import GOOGLE_PRODUCT_CASH_MAP, PRODUCT_CASH_MAP
 from .apple_iap import (
     AppleIAPConfigurationError,
@@ -82,6 +88,30 @@ class CashPackageListView(APIView):
             for product_id, info in PRODUCT_CASH_MAP.items()
         ]
         return Response({"results": packages})
+
+
+class CashTermsConsentView(APIView):
+    """Expose and append the versioned consent required before cash purchases."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        version = current_cash_terms_version()
+        return Response({
+            'version': version,
+            'agreed': has_current_cash_terms_consent(request.user),
+        })
+
+    def post(self, request):
+        version = str(request.data.get('version') or '')
+        try:
+            record_cash_terms_consent(request.user, version=version)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response({
+            'version': current_cash_terms_version(),
+            'agreed': True,
+        })
 
 
 # PurchaseRateThrottle is imported from config.throttles
@@ -193,6 +223,11 @@ class PurchaseCashView(APIView):
                 {"error": "Invalid product_id"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not has_current_cash_terms_consent(request.user):
+            return Response(
+                {'error': 'cash_terms_consent_required'},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         if platform == 'google':
             return self._purchase_google(
@@ -232,7 +267,7 @@ class PurchaseCashView(APIView):
             )
 
         from django.contrib.auth import get_user_model
-        current_user = get_user_model().objects.only('cash', 'cash_debt').get(
+        current_user = get_user_model().objects.only('cash').get(
             pk=request.user.pk
         )
 
@@ -241,9 +276,7 @@ class PurchaseCashView(APIView):
             "purchase_id": grant.purchase.pk,
             "purchased_cash": grant.purchase.purchased_cash,
             "credited_cash": grant.credited_cash,
-            "debt_offset": grant.debt_offset,
             "remaining_cash": current_user.cash,
-            "cash_debt": current_user.cash_debt,
             "idempotent": grant.idempotent,
         }, status=status.HTTP_200_OK)
 
@@ -282,7 +315,7 @@ class PurchaseCashView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        current_user = get_user_model().objects.only('cash', 'cash_debt').get(
+        current_user = get_user_model().objects.only('cash').get(
             pk=request.user.pk
         )
         return Response({
@@ -290,9 +323,7 @@ class PurchaseCashView(APIView):
             "purchase_id": grant.purchase.pk,
             "purchased_cash": grant.purchase.purchased_cash,
             "credited_cash": grant.credited_cash,
-            "debt_offset": grant.debt_offset,
             "remaining_cash": current_user.cash,
-            "cash_debt": current_user.cash_debt,
             "idempotent": grant.idempotent,
             "consume_pending": grant.consume_pending,
         }, status=status.HTTP_200_OK)
@@ -366,6 +397,7 @@ class RedeemCouponView(APIView):
                 coupon.redeemed_by = user
                 coupon.redeemed_at = now
                 coupon.save(update_fields=['redeemed_by', 'redeemed_at'])
+                create_coupon_lot(user=user, amount=coupon.cash_amount)
 
         except Exception as e:
             logger.exception(
@@ -478,6 +510,11 @@ class RentLectureView(APIView):
                     purchased_cash=lecture.price,
                     remaining_cash=user.cash
                 )
+                debit_lots_for_rental(
+                    user=user,
+                    rental=rental,
+                    amount=lecture.price,
+                )
 
                 logger.debug("[BACKEND_DEBUG_CASH] Rent SUCCESS - user: %s, lecture: %s, remaining: %d", user.pk, lecture_id, user.cash)
                 return Response({
@@ -536,6 +573,54 @@ class CancelLectureRentalView(APIView):
 # ──────────────────────────────────────────────
 # 구매(캐시 충전) 환불 API
 # ──────────────────────────────────────────────
+def _refund_eligibility(purchase, *, now):
+    """Return the policy action for one purchase without creating a refund."""
+    if purchase.is_refunded:
+        return 'not_eligible', '이미 환불 처리된 구매입니다.'
+    if purchase.refund_status == 'manual_review':
+        return 'support_inquiry', '해당 구매 건은 환불 상태 확인이 필요합니다.'
+    if purchase.platform == 'apple':
+        return 'store_request', 'Apple 환불 요청 경로를 안내합니다.'
+    try:
+        lot = purchase.cash_lot
+    except CashLot.DoesNotExist:
+        return 'support_inquiry', '기존 구매 내역은 고객센터에서 확인이 필요합니다.'
+    if lot.source != CashLot.Source.PAID:
+        return 'not_eligible', '유상 캐시 구매 내역이 아닙니다.'
+    purchase_at = purchase.purchase_date or purchase.created_at
+    if purchase.platform == 'google' and purchase_at < now - timedelta(hours=48):
+        return 'support_inquiry', 'Google Play 구매 후 48시간이 지나 고객센터 확인이 필요합니다.'
+    if lot.available_cash != lot.original_cash:
+        return 'support_inquiry', '해당 구매 건의 캐시가 사용되어 고객센터 확인이 필요합니다.'
+    return 'store_request', 'Google Play 환불 요청 경로를 안내합니다.'
+
+
+class CashRefundEligibilityView(APIView):
+    """Preflight one cash purchase against the published refund policy."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        purchase = (
+            PurchaseHistory.objects.filter(user=request.user, pk=pk)
+            .select_related('cash_lot')
+            .first()
+        )
+        if purchase is None:
+            return Response(
+                {'error': 'Purchase not found.'}, status=status.HTTP_404_NOT_FOUND
+            )
+        action, reason = _refund_eligibility(purchase, now=timezone.now())
+        return Response(
+            {
+                'purchase_id': purchase.pk,
+                'action': action,
+                'reason': reason,
+                'platform': purchase.platform,
+            }
+        )
+
+
 class RefundPurchaseView(APIView):
     """Verify and process App Store Server Notifications V2."""
     permission_classes = []
@@ -647,19 +732,30 @@ class PurchaseHistoryListView(APIView):
     def get(self, request):
         histories = PurchaseHistory.objects.filter(
             user=request.user
-        ).order_by('-created_at')
+        ).select_related('cash_lot').order_by('-created_at')
 
-        data = [
-            {
-                "id": h.id,
-                "date": h.created_at.isoformat(),
-                "purchased_cash": h.purchased_cash,
-                "paid_amount": h.paid_amount,
-                "remaining_cash": h.remaining_cash,
-                "is_refunded": h.is_refunded,
-            }
-            for h in histories
-        ]
+        data = []
+        now = timezone.now()
+        for h in histories:
+            action, reason = _refund_eligibility(h, now=now)
+            try:
+                available_cash = h.cash_lot.available_cash
+            except CashLot.DoesNotExist:
+                available_cash = None
+            data.append(
+                {
+                    "id": h.id,
+                    "date": h.created_at.isoformat(),
+                    "platform": h.platform,
+                    "purchased_cash": h.purchased_cash,
+                    "paid_amount": h.paid_amount,
+                    "available_cash": available_cash,
+                    "remaining_cash": h.remaining_cash,
+                    "is_refunded": h.is_refunded,
+                    "refund_action": action,
+                    "refund_reason": reason,
+                }
+            )
         return Response(data, status=status.HTTP_200_OK)
 
 

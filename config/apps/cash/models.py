@@ -47,6 +47,8 @@ class PurchaseHistory(models.Model):
     refund_percentage = models.PositiveIntegerField(default=0)
     refunded_cash = models.PositiveIntegerField(default=0)
     refund_debt = models.PositiveIntegerField(default=0)
+    refund_status = models.CharField(max_length=32, default='not_requested')
+    refund_reason = models.CharField(max_length=255, blank=True, default='')
 
     class Meta:
         indexes = [
@@ -64,6 +66,70 @@ class PurchaseHistory(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.platform} - {self.purchased_cash} cash"
+
+
+class CashLot(models.Model):
+    """One auditable source lot that contributes cash to a user's wallet."""
+
+    class Source(models.TextChoices):
+        PAID = 'paid', '유상 충전'
+        COUPON = 'coupon', '쿠폰'
+        PROMOTION = 'promotion', '프로모션'
+        LEGACY = 'legacy', '기존 잔액'
+
+    class Status(models.TextChoices):
+        ACTIVE = 'active', '사용 가능'
+        USED = 'used', '전액 사용'
+        REFUNDED = 'refunded', '환불됨'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='cash_lots',
+    )
+    purchase_history = models.OneToOneField(
+        PurchaseHistory,
+        on_delete=models.PROTECT,
+        related_name='cash_lot',
+        null=True,
+        blank=True,
+    )
+    source = models.CharField(max_length=20, choices=Source.choices)
+    original_cash = models.PositiveIntegerField()
+    available_cash = models.PositiveIntegerField()
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['user', 'source', 'created_at'])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(available_cash__lte=models.F('original_cash')),
+                name='cash_lot_available_lte_original',
+            ),
+        ]
+
+
+class CashLotUsage(models.Model):
+    """A portion of one cash lot consumed by a lecture rental."""
+
+    cash_lot = models.ForeignKey(
+        CashLot,
+        on_delete=models.PROTECT,
+        related_name='usages',
+    )
+    rental = models.ForeignKey(
+        'cash.LectureRentalHistory',
+        on_delete=models.PROTECT,
+        related_name='cash_lot_usages',
+    )
+    used_cash = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class AppStoreWebhookEvent(models.Model):

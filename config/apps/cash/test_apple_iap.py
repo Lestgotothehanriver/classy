@@ -16,7 +16,7 @@ from config.apps.cash.apple_iap import (
     process_apple_notification,
     verify_apple_transaction,
 )
-from config.apps.cash.models import AppStoreWebhookEvent, PurchaseHistory
+from config.apps.cash.models import AppStoreWebhookEvent, CashLot, PurchaseHistory
 from config.apps.cash.tests import verified_transaction
 
 User = get_user_model()
@@ -142,9 +142,7 @@ class AppleNotificationTests(TestCase):
         )
 
     @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
-    def test_refund_is_idempotent_and_records_spent_cash_as_debt(self, get_verifier):
-        self.user.cash = 200
-        self.user.save(update_fields=['cash'])
+    def test_unused_refund_is_idempotent_without_cash_debt(self, get_verifier):
         get_verifier.return_value = self._verifier(
             NotificationTypeV2.REFUND, uuid.uuid4()
         )
@@ -155,16 +153,14 @@ class AppleNotificationTests(TestCase):
         self.assertFalse(first.duplicate)
         self.assertTrue(second.duplicate)
         self.user.refresh_from_db()
-        self.assertEqual((self.user.cash, self.user.cash_debt), (0, 800))
+        self.assertEqual((self.user.cash, self.user.cash_debt), (0, 0))
         purchase = PurchaseHistory.objects.get(transaction_id='refund_tx')
         self.assertTrue(purchase.is_refunded)
-        self.assertEqual((purchase.refunded_cash, purchase.refund_debt), (1000, 800))
+        self.assertEqual((purchase.refunded_cash, purchase.refund_debt), (1000, 0))
         self.assertEqual(AppStoreWebhookEvent.objects.count(), 1)
 
     @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
-    def test_refund_reversed_restores_balance_and_releases_debt(self, get_verifier):
-        self.user.cash = 200
-        self.user.save(update_fields=['cash'])
+    def test_refund_reversed_restores_an_unused_lot(self, get_verifier):
         get_verifier.return_value = self._verifier(
             NotificationTypeV2.REFUND, uuid.uuid4()
         )
@@ -176,13 +172,13 @@ class AppleNotificationTests(TestCase):
         process_apple_notification('signed-reversal-payload')
 
         self.user.refresh_from_db()
-        self.assertEqual((self.user.cash, self.user.cash_debt), (200, 0))
+        self.assertEqual((self.user.cash, self.user.cash_debt), (1000, 0))
         purchase = PurchaseHistory.objects.get(transaction_id='refund_tx')
         self.assertFalse(purchase.is_refunded)
         self.assertEqual((purchase.refunded_cash, purchase.refund_debt), (0, 0))
 
     @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
-    def test_partial_refund_uses_apple_percentage(self, get_verifier):
+    def test_partial_refund_is_marked_for_manual_review(self, get_verifier):
         get_verifier.return_value = self._verifier(
             NotificationTypeV2.REFUND, uuid.uuid4(), percentage=50_000
         )
@@ -190,9 +186,32 @@ class AppleNotificationTests(TestCase):
         process_apple_notification('signed-partial-refund')
 
         self.user.refresh_from_db()
-        self.assertEqual((self.user.cash, self.user.cash_debt), (500, 0))
+        self.assertEqual((self.user.cash, self.user.cash_debt), (1000, 0))
         purchase = PurchaseHistory.objects.get(transaction_id='refund_tx')
-        self.assertEqual((purchase.refunded_cash, purchase.refund_percentage), (500, 50_000))
+        self.assertFalse(purchase.is_refunded)
+        self.assertEqual(purchase.refund_status, 'manual_review')
+        self.assertEqual(purchase.refund_reason, 'partial_external_refund')
+
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_spent_cash_refund_is_marked_for_manual_review(self, get_verifier):
+        lot = CashLot.objects.get(purchase_history__transaction_id='refund_tx')
+        lot.available_cash = 0
+        lot.status = CashLot.Status.USED
+        lot.save(update_fields=['available_cash', 'status'])
+        self.user.cash = 0
+        self.user.save(update_fields=['cash'])
+        get_verifier.return_value = self._verifier(
+            NotificationTypeV2.REFUND, uuid.uuid4()
+        )
+
+        process_apple_notification('signed-spent-refund-payload')
+
+        self.user.refresh_from_db()
+        purchase = PurchaseHistory.objects.get(transaction_id='refund_tx')
+        self.assertEqual((self.user.cash, self.user.cash_debt), (0, 0))
+        self.assertFalse(purchase.is_refunded)
+        self.assertEqual(purchase.refund_status, 'manual_review')
+        self.assertEqual(purchase.refund_reason, 'cash_already_used')
 
     @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
     def test_notification_uuid_cannot_be_reused_with_different_payload(

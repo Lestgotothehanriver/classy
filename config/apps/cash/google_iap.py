@@ -27,6 +27,7 @@ from .models import (
     GooglePlayWebhookEvent,
     PurchaseHistory,
 )
+from .ledger import apply_external_refund, create_paid_lot
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,6 @@ class GooglePurchaseGrant:
     detail: GooglePlayPurchase
     idempotent: bool
     credited_cash: int
-    debt_offset: int
     consume_pending: bool = False
 
 
@@ -228,7 +228,6 @@ def _existing_grant(
         detail=detail,
         idempotent=True,
         credited_cash=0,
-        debt_offset=0,
     )
 
 
@@ -267,11 +266,9 @@ def grant_google_purchase(
                 )
 
             locked_user = User.objects.select_for_update().get(pk=user.pk)
-            debt_offset = min(locked_user.cash_debt, purchased_cash)
-            credited_cash = purchased_cash - debt_offset
-            locked_user.cash_debt -= debt_offset
+            credited_cash = purchased_cash
             locked_user.cash += credited_cash
-            locked_user.save(update_fields=['cash', 'cash_debt'])
+            locked_user.save(update_fields=['cash'])
 
             purchase = PurchaseHistory.objects.create(
                 user=locked_user,
@@ -294,12 +291,12 @@ def grant_google_purchase(
                 consumption_state=verified.consumption_state,
                 last_verified_at=timezone.now(),
             )
+            create_paid_lot(purchase)
             return GooglePurchaseGrant(
                 purchase=purchase,
                 detail=detail,
                 idempotent=False,
                 credited_cash=credited_cash,
-                debt_offset=debt_offset,
             )
     except IntegrityError:
         existing = (
@@ -421,7 +418,6 @@ def process_google_purchase(user: Any, product_id: str, purchase_token: str) -> 
             detail=grant.detail,
             idempotent=grant.idempotent,
             credited_cash=grant.credited_cash,
-            debt_offset=grant.debt_offset,
             consume_pending=True,
         )
     return grant
@@ -588,14 +584,13 @@ def list_google_voided_purchases(
 
 
 def apply_google_voided_purchase(voided: dict[str, Any]) -> str:
-    """Reverse one Google grant exactly once, recording any cash shortfall as debt."""
+    """Apply a Google void without negative cash or future-top-up offsets."""
 
     purchase_token = str(voided.get('purchaseToken') or '')
     order_id = str(voided.get('orderId') or '')
     if not purchase_token and not order_id:
         return 'invalid'
 
-    User = get_user_model()
     with transaction.atomic():
         details = GooglePlayPurchase.objects.select_for_update().select_related(
             'purchase_history'
@@ -609,23 +604,4 @@ def apply_google_voided_purchase(voided: dict[str, Any]) -> str:
         purchase = PurchaseHistory.objects.select_for_update().get(
             pk=detail.purchase_history_id
         )
-        if purchase.is_refunded:
-            return 'already_refunded'
-
-        user = User.objects.select_for_update().get(pk=purchase.user_id)
-        recovered_cash = min(user.cash, purchase.purchased_cash)
-        refund_debt = purchase.purchased_cash - recovered_cash
-        user.cash -= recovered_cash
-        user.cash_debt += refund_debt
-        user.save(update_fields=['cash', 'cash_debt'])
-
-        purchase.is_refunded = True
-        purchase.refunded_at = timezone.now()
-        purchase.refund_percentage = 100000
-        purchase.refunded_cash = purchase.purchased_cash
-        purchase.refund_debt = refund_debt
-        purchase.save(update_fields=[
-            'is_refunded', 'refunded_at', 'refund_percentage',
-            'refunded_cash', 'refund_debt',
-        ])
-        return 'refunded'
+        return apply_external_refund(purchase)

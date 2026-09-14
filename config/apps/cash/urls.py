@@ -10,12 +10,15 @@ from .views import (
     RentalHistoryListView,
     CashPackageListView,
     GooglePlayWebhookView,
+    CashTermsConsentView,
+    CashRefundEligibilityView,
 )
 
 app_name = 'cash'
 
 urlpatterns = [
     path('packages/', CashPackageListView.as_view(), name='packages'),
+    path('consent/', CashTermsConsentView.as_view(), name='cash-terms-consent'),
     path('account/', InstructorAccountView.as_view(), name='instructor-account'),
     path('purchase/', PurchaseCashView.as_view(), name='purchase'),
     path('coupons/redeem/', RedeemCouponView.as_view(), name='coupon-redeem'),
@@ -24,5 +27,6 @@ urlpatterns = [
     path('rentals/', RentLectureView.as_view(), name='lecture-rent'),
     path('rentals/<int:pk>/cancel/', CancelLectureRentalView.as_view(), name='lecture-rent-cancel'),
     path('purchase-history/', PurchaseHistoryListView.as_view(), name='purchase-history'),
+    path('purchases/<int:pk>/refund-eligibility/', CashRefundEligibilityView.as_view(), name='refund-eligibility'),
     path('rental-history/', RentalHistoryListView.as_view(), name='rental-history'),
 ]

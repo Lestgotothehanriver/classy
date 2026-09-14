@@ -16,7 +16,7 @@ from config.apps.cash.models import GooglePlaySyncState
 class Command(BaseCommand):
     """Reconcile voided purchases using a durable, overlapping checkpoint."""
 
-    help = 'Synchronize Google Play voided purchases and cash debt.'
+    help = 'Synchronize Google Play voided purchases for manual review or lot recovery.'
 
     def handle(self, *args, **options):
         """Run one bounded reconciliation pass for Render Cron."""

@@ -6,7 +6,6 @@ import base64
 import binascii
 import hashlib
 import logging
-import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone as dt_timezone
@@ -35,6 +34,7 @@ from appstoreserverlibrary.signed_data_verifier import (
 
 from .constants import PRODUCT_CASH_MAP, STORE_FEE_RATE
 from .models import AppStoreWebhookEvent, PurchaseHistory
+from .ledger import apply_external_refund, create_paid_lot, reverse_external_refund
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,6 @@ class ApplePurchaseGrant:
     purchase: PurchaseHistory
     idempotent: bool
     credited_cash: int
-    debt_offset: int
 
 
 @dataclass(frozen=True)
@@ -264,7 +263,6 @@ def _existing_grant(
         purchase=purchase,
         idempotent=True,
         credited_cash=0,
-        debt_offset=0,
     )
 
 
@@ -290,11 +288,9 @@ def grant_apple_purchase(user: Any, verified: VerifiedAppleTransaction) -> Apple
                 return _existing_grant(existing, user.pk, verified)
 
             locked_user = User.objects.select_for_update().get(pk=user.pk)
-            debt_offset = min(locked_user.cash_debt, purchased_cash)
-            credited_cash = purchased_cash - debt_offset
-            locked_user.cash_debt -= debt_offset
+            credited_cash = purchased_cash
             locked_user.cash += credited_cash
-            locked_user.save(update_fields=['cash', 'cash_debt'])
+            locked_user.save(update_fields=['cash'])
 
             purchase = PurchaseHistory.objects.create(
                 user=locked_user,
@@ -313,11 +309,11 @@ def grant_apple_purchase(user: Any, verified: VerifiedAppleTransaction) -> Apple
                 fee_deducted_amount=fee_deducted_amount,
                 remaining_cash=locked_user.cash,
             )
+            create_paid_lot(purchase)
             return ApplePurchaseGrant(
                 purchase=purchase,
                 idempotent=False,
                 credited_cash=credited_cash,
-                debt_offset=debt_offset,
             )
     except IntegrityError:
         # A concurrent request may have won the unique transaction race. The
@@ -359,7 +355,6 @@ def _set_refund_target(
     verified: VerifiedAppleTransaction,
     target_percentage: int,
 ) -> tuple[PurchaseHistory | None, str]:
-    User = get_user_model()
     purchase = (
         PurchaseHistory.objects.select_for_update()
         .filter(transaction_id=verified.transaction_id, platform='apple')
@@ -374,39 +369,14 @@ def _set_refund_target(
         raise AppleIAPConflictError('Notification transaction does not match purchase.')
 
     target_percentage = min(max(target_percentage, 0), 100000)
-    target_cash = math.ceil(purchase.purchased_cash * target_percentage / 100000)
-    current_cash = purchase.refunded_cash
-    locked_user = User.objects.select_for_update().get(pk=purchase.user_id)
-
-    if target_cash > current_cash:
-        delta = target_cash - current_cash
-        recovered = min(locked_user.cash, delta)
-        debt = delta - recovered
-        locked_user.cash -= recovered
-        locked_user.cash_debt += debt
-        purchase.refund_debt += debt
-    elif target_cash < current_cash:
-        restore = current_cash - target_cash
-        released_debt = min(purchase.refund_debt, restore, locked_user.cash_debt)
-        locked_user.cash_debt -= released_debt
-        purchase.refund_debt -= released_debt
-        locked_user.cash += restore - released_debt
-
-    locked_user.save(update_fields=['cash', 'cash_debt'])
-    purchase.refunded_cash = target_cash
-    purchase.refund_percentage = target_percentage
-    purchase.is_refunded = target_cash > 0
-    purchase.refunded_at = timezone.now() if target_cash > 0 else None
-    purchase.save(
-        update_fields=[
-            'refunded_cash',
-            'refund_percentage',
-            'refund_debt',
-            'is_refunded',
-            'refunded_at',
-        ]
-    )
-    return purchase, 'refund_applied' if target_cash > 0 else 'refund_reversed'
+    if target_percentage == 0:
+        return purchase, reverse_external_refund(purchase)
+    if target_percentage < 100000:
+        purchase.refund_status = 'manual_review'
+        purchase.refund_reason = 'partial_external_refund'
+        purchase.save(update_fields=['refund_status', 'refund_reason'])
+        return purchase, 'manual_review'
+    return purchase, apply_external_refund(purchase)
 
 
 def process_apple_notification(signed_payload: str) -> AppleNotificationResult:
