@@ -14,6 +14,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from .constants import GOOGLE_PRODUCT_CASH_MAP
+from .consent import record_cash_terms_consent
 from .google_iap import (
     GoogleIAPVerificationError,
     VerifiedGooglePurchase,
@@ -24,6 +25,7 @@ from .google_iap import (
     verify_pubsub_oidc_token,
 )
 from .models import (
+    CashLot,
     GooglePlayPurchase,
     GooglePlaySyncState,
     GooglePlayWebhookEvent,
@@ -80,6 +82,7 @@ class GooglePurchaseApiTests(TestCase):
             user_name='google-user',
         )
         self.client.force_authenticate(self.user)
+        record_cash_terms_consent(user=self.user, version='2026-09-14')
         self.products = MagicMock()
         self.service = MagicMock()
         self.service.purchases.return_value.products.return_value = self.products
@@ -457,7 +460,7 @@ class GoogleRtdnAndRefundTests(TestCase):
 
         self.assertFalse(PurchaseHistory.objects.exists())
 
-    def test_voided_purchase_removes_cash_and_records_debt_once(self):
+    def test_voided_purchase_with_used_lot_requires_manual_review(self):
         self.user.cash = 400
         self.user.save(update_fields=['cash'])
         purchase = PurchaseHistory.objects.create(
@@ -482,18 +485,26 @@ class GoogleRtdnAndRefundTests(TestCase):
             last_verified_at=timezone.now(),
             consumed_at=timezone.now(),
         )
+        CashLot.objects.create(
+            user=self.user,
+            purchase_history=purchase,
+            source=CashLot.Source.PAID,
+            original_cash=1000,
+            available_cash=0,
+            status=CashLot.Status.USED,
+        )
 
         first = apply_google_voided_purchase({'purchaseToken': 'voided-token'})
         second = apply_google_voided_purchase({'purchaseToken': 'voided-token'})
 
-        self.assertEqual(first, 'refunded')
-        self.assertEqual(second, 'already_refunded')
+        self.assertEqual(first, 'manual_review')
+        self.assertEqual(second, 'manual_review')
         self.user.refresh_from_db()
         purchase.refresh_from_db()
-        self.assertEqual((self.user.cash, self.user.cash_debt), (0, 600))
-        self.assertTrue(purchase.is_refunded)
-        self.assertEqual(purchase.refunded_cash, 1000)
-        self.assertEqual(purchase.refund_debt, 600)
+        self.assertEqual((self.user.cash, self.user.cash_debt), (400, 0))
+        self.assertFalse(purchase.is_refunded)
+        self.assertEqual(purchase.refund_status, 'manual_review')
+        self.assertEqual(purchase.refund_reason, 'cash_already_used')
 
     @patch(
         'config.apps.cash.management.commands.sync_google_voided_purchases.list_google_voided_purchases',

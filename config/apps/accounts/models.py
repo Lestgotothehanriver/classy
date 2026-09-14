@@ -119,10 +119,12 @@ class UserConsent(models.Model):
     DOC_TERMS = "terms"
     DOC_PRIVACY = "privacy"
     DOC_MARKETING = "marketing"
+    DOC_CASH_TERMS = "cash_terms"
     DOC_TYPE_CHOICES = [
         (DOC_TERMS, "이용약관"),
         (DOC_PRIVACY, "개인정보처리방침"),
         (DOC_MARKETING, "마케팅 수신"),
+        (DOC_CASH_TERMS, "캐시 이용약관"),
     ]
 
     user = models.ForeignKey(

@@ -8,6 +8,7 @@ from rest_framework.settings import api_settings
 from django.utils import timezone
 
 from config.apps.cash.apple_iap import VerifiedAppleTransaction
+from config.apps.cash.consent import record_cash_terms_consent
 
 User = get_user_model()
 
@@ -32,6 +33,7 @@ class RateLimitThrottlingTests(APITestCase):
             password="testpassword123",
             user_name="throttler"
         )
+        record_cash_terms_consent(user=self.user, version='2026-09-14')
         # Mock external dependencies
         self.patcher_sms = patch('config.apps.accounts.views.send_auth_sms', return_value=True)
         self.mock_send_sms = self.patcher_sms.start()

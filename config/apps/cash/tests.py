@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -7,12 +8,19 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from config.apps.accounts.models import Instructor, Student
+from config.apps.accounts.models import Instructor, Student, UserConsent
 from config.apps.cash.apple_iap import (
     AppleIAPVerificationError,
     VerifiedAppleTransaction,
 )
-from config.apps.cash.models import LectureRentalHistory, PurchaseHistory
+from config.apps.cash.consent import record_cash_terms_consent
+from config.apps.cash.models import (
+    CashLot,
+    CashLotUsage,
+    LectureRentalHistory,
+    PurchaseHistory,
+)
+from config.apps.cash.views import _refund_eligibility
 from config.apps.lecture.models import Lecture
 
 User = get_user_model()
@@ -47,6 +55,7 @@ class CashPurchaseTests(TestCase):
             username='testuser', password='testpassword', user_name='testuser'
         )
         self.client.force_authenticate(user=self.user)
+        record_cash_terms_consent(user=self.user, version='2026-09-14')
         self.url = reverse('cash:purchase')
         self.throttle_patcher = patch(
             'rest_framework.throttling.SimpleRateThrottle.allow_request',
@@ -90,6 +99,24 @@ class CashPurchaseTests(TestCase):
         self.assertEqual(history.product_id, 'cash_1000_v2')
         self.assertEqual(history.paid_amount, 1200)
         self.assertEqual(history.fee_deducted_amount, 840)
+        lot = CashLot.objects.get(purchase_history=history)
+        self.assertEqual(
+            (lot.source, lot.original_cash, lot.available_cash),
+            (CashLot.Source.PAID, 1000, 1000),
+        )
+
+    @patch('config.apps.cash.views.verify_apple_transaction')
+    def test_purchase_requires_current_cash_terms_consent(self, mock_verify):
+        UserConsent.objects.filter(
+            user=self.user,
+            doc_type=UserConsent.DOC_CASH_TERMS,
+        ).delete()
+
+        response = self._purchase()
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data['error'], 'cash_terms_consent_required')
+        mock_verify.assert_not_called()
 
     @patch('config.apps.cash.views.verify_apple_transaction')
     def test_same_transaction_is_idempotent(self, mock_verify):
@@ -144,17 +171,16 @@ class CashPurchaseTests(TestCase):
         self.assertEqual(self._purchase().status_code, status.HTTP_401_UNAUTHORIZED)
 
     @patch('config.apps.cash.views.verify_apple_transaction')
-    def test_future_purchase_offsets_refund_debt_first(self, mock_verify):
+    def test_future_purchase_does_not_offset_historic_refund_debt(self, mock_verify):
         self.user.cash_debt = 600
         self.user.save(update_fields=['cash_debt'])
         mock_verify.return_value = verified_transaction(self.user)
 
         response = self._purchase()
 
-        self.assertEqual(response.data['debt_offset'], 600)
-        self.assertEqual(response.data['credited_cash'], 400)
+        self.assertEqual(response.data['credited_cash'], 1000)
         self.user.refresh_from_db()
-        self.assertEqual((self.user.cash, self.user.cash_debt), (400, 0))
+        self.assertEqual((self.user.cash, self.user.cash_debt), (1000, 600))
 
     def test_package_list_returns_stable_apple_account_token(self):
         response = self.client.get(reverse('cash:packages'))
@@ -172,6 +198,57 @@ class CashPurchaseTests(TestCase):
                 for item in response.data['results']
             )
         )
+
+    def test_google_purchase_after_48_hours_shows_support_inquiry(self):
+        now = timezone.now()
+        purchase = PurchaseHistory.objects.create(
+            user=self.user,
+            platform='google',
+            transaction_id='google-over-48-hours',
+            product_id='cash_1000',
+            purchase_date=now - timedelta(hours=48, seconds=1),
+            purchased_cash=1000,
+            paid_amount=1200,
+            fee_deducted_amount=840,
+            remaining_cash=1000,
+        )
+        CashLot.objects.create(
+            user=self.user,
+            purchase_history=purchase,
+            source=CashLot.Source.PAID,
+            original_cash=1000,
+            available_cash=1000,
+        )
+
+        action, _ = _refund_eligibility(purchase, now=now)
+
+        self.assertEqual(action, 'support_inquiry')
+
+    def test_apple_purchase_always_uses_apple_request_route(self):
+        now = timezone.now()
+        purchase = PurchaseHistory.objects.create(
+            user=self.user,
+            platform='apple',
+            transaction_id='apple-used-and-expired',
+            product_id='cash_1000_v2',
+            purchase_date=now - timedelta(days=8),
+            purchased_cash=1000,
+            paid_amount=1200,
+            fee_deducted_amount=840,
+            remaining_cash=0,
+        )
+        CashLot.objects.create(
+            user=self.user,
+            purchase_history=purchase,
+            source=CashLot.Source.PAID,
+            original_cash=1000,
+            available_cash=0,
+            status=CashLot.Status.USED,
+        )
+
+        action, _ = _refund_eligibility(purchase, now=now)
+
+        self.assertEqual(action, 'store_request')
 
 
 class CashToLectureIntegrationTests(TestCase):
@@ -194,6 +271,7 @@ class CashToLectureIntegrationTests(TestCase):
             rental_period=30,
         )
         self.client.force_authenticate(self.user)
+        record_cash_terms_consent(user=self.user, version='2026-09-14')
 
     @patch('config.apps.cash.views.verify_apple_transaction')
     def test_verified_cash_purchase_can_immediately_rent_lecture(self, mock_verify):
@@ -230,6 +308,9 @@ class CashToLectureIntegrationTests(TestCase):
                 student=self.user, lecture=self.lecture, is_canceled=False
             ).exists()
         )
+        lot = CashLot.objects.get(purchase_history__transaction_id='cash_to_lecture_tx')
+        self.assertEqual(lot.available_cash, 2000)
+        self.assertEqual(CashLotUsage.objects.get(cash_lot=lot).used_cash, 3000)
 
 
 class RentalPolicyTests(TestCase):
@@ -240,6 +321,12 @@ class RentalPolicyTests(TestCase):
         )
         self.user.cash = 10_000
         self.user.save(update_fields=['cash'])
+        CashLot.objects.create(
+            user=self.user,
+            source=CashLot.Source.LEGACY,
+            original_cash=10_000,
+            available_cash=10_000,
+        )
         Student.objects.create(user=self.user)
         instructor_user = User.objects.create_user(
             username='rental-instructor',
