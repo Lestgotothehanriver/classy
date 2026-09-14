@@ -106,7 +106,7 @@ class CashLot(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=['user', 'source', 'created_at'])]
+        indexes = [models.Index(fields=['user', 'source', 'created_at'], name='cash_lot_user_source_created')]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(available_cash__lte=models.F('original_cash')),
@@ -280,6 +280,7 @@ class LectureRentalHistory(models.Model):
     remaining_cash = models.PositiveIntegerField()
     is_canceled = models.BooleanField(default=False)
     is_settled = models.BooleanField(default=False)
+    is_sandbox = models.BooleanField(default=False, editable=False)
     settlement = models.ForeignKey(
         'cash.SettlementRecord',
         on_delete=models.SET_NULL,
@@ -296,6 +297,8 @@ class LectureRentalHistory(models.Model):
         from datetime import timedelta
         from config.apps.cash.constants import LECTURE_RENTAL_DAYS
         is_new = self._state.adding
+        if is_new:
+            self.is_sandbox = self.student.iap_environment == 'SANDBOX'
         super().save(*args, **kwargs)
         if is_new and self.expiration_date is None:
             self.expiration_date = self.created_at + timedelta(days=LECTURE_RENTAL_DAYS)

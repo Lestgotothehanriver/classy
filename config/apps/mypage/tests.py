@@ -87,6 +87,32 @@ class MypageAPIViewSetTests(APITestCase):
         self.assertEqual(response.data['amount'], 1500)
         self.assertTrue(SettlementRecord.objects.filter(instructor=self.instructor).exists())
 
+    def test_sandbox_rental_is_accessible_but_never_settleable(self):
+        sandbox = User.objects.create_user(
+            username='review-student', user_name='review-student',
+            password='test-only', iap_environment='SANDBOX',
+        )
+        rental = LectureRentalHistory.objects.create(
+            lecture=self.lecture, student=sandbox,
+            purchased_cash=50000, remaining_cash=0,
+        )
+        self.assertTrue(rental.is_sandbox)
+        # The flag persists even if account configuration changes later.
+        sandbox.iap_environment = 'PRODUCTION'
+        sandbox.save(update_fields=['iap_environment'])
+        rental.save()
+        rental.refresh_from_db()
+        self.assertTrue(rental.is_sandbox)
+        self.client.force_authenticate(user=self.instructor_user)
+        info = self.client.get(reverse('instructor-settlement-info'))
+        self.assertEqual(info.data['total_revenue'], 1500)
+        self.assertEqual(info.data['settleable_revenue'], 1500)
+        result = self.client.post(reverse('instructor-request-settlement'))
+        self.assertEqual(result.data['amount'], 1500)
+        rental.refresh_from_db()
+        self.assertFalse(rental.is_settled)
+        self.assertIsNone(rental.settlement_id)
+
 
 class InstructorSettlementFlowTests(APITestCase):
     """정산 신청/연결/중복방지/제외 조건 및 admin 상태 전이 검증."""

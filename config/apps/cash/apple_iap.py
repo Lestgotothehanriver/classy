@@ -155,12 +155,12 @@ def _cached_verifier(
     )
 
 
-def get_apple_signed_data_verifier() -> SignedDataVerifier:
+def get_apple_signed_data_verifier(environment: Environment | None = None) -> SignedDataVerifier:
     bundle_id = str(getattr(settings, 'APPLE_BUNDLE_ID', '')).strip()
     if not bundle_id:
         raise AppleIAPConfigurationError('APPLE_BUNDLE_ID is not configured.')
 
-    environment = _configured_environment()
+    environment = environment or _configured_environment()
     app_apple_id = getattr(settings, 'APPLE_APP_ID', None)
     if environment is Environment.PRODUCTION and not app_apple_id:
         raise AppleIAPConfigurationError(
@@ -179,12 +179,35 @@ def get_apple_signed_data_verifier() -> SignedDataVerifier:
     )
 
 
-def _decode_signed_transaction(signed_transaction: str) -> Any:
+def _account_environment(account_token: uuid.UUID) -> Environment:
+    # The choice is bound to an authenticated account, never an unsigned JWS claim.
+    if get_user_model().objects.filter(
+        apple_app_account_token=account_token, iap_environment='SANDBOX'
+    ).exists():
+        return Environment.SANDBOX
+    return _configured_environment()
+
+
+def _verify_store_payload(method: str, payload: str, environment=None) -> Any:
+    """Verify every signature; notifications may legitimately use either store."""
+    selected = environment or _configured_environment()
+    try:
+        return getattr(get_apple_signed_data_verifier(selected), method)(payload)
+    except VerificationException as exc:
+        # Only notifications use fallback. Purchases specify their account's
+        # environment, so sandbox receipts cannot credit a live account.
+        if (environment is None and selected is Environment.PRODUCTION
+                and exc.status is VerificationStatus.INVALID_ENVIRONMENT):
+            return getattr(get_apple_signed_data_verifier(Environment.SANDBOX), method)(payload)
+        raise
+
+
+def _decode_signed_transaction(signed_transaction: str, environment=None) -> Any:
     if not signed_transaction or len(signed_transaction) > 20000:
         raise AppleIAPVerificationError('Invalid signed transaction payload.')
     try:
-        return get_apple_signed_data_verifier().verify_and_decode_signed_transaction(
-            signed_transaction
+        return _verify_store_payload(
+            'verify_and_decode_signed_transaction', signed_transaction, environment
         )
     except VerificationException as exc:
         status = getattr(exc, 'status', None)
@@ -204,7 +227,10 @@ def verify_apple_transaction(
 ) -> VerifiedAppleTransaction:
     """Verify StoreKit 2 JWS and bind it to a product and authenticated user."""
 
-    decoded = _decode_signed_transaction(signed_transaction)
+    environment = _account_environment(expected_app_account_token)
+    decoded = _decode_signed_transaction(signed_transaction, environment)
+    if _enum_value(decoded.environment, decoded.rawEnvironment) != environment.value:
+        raise AppleIAPVerificationError('Apple transaction environment mismatch.')
 
     if decoded.transactionId is None or decoded.originalTransactionId is None:
         raise AppleIAPVerificationError('Apple transaction identifier is missing.')
@@ -253,6 +279,7 @@ def _existing_grant(
         or purchase.platform != 'apple'
         or purchase.product_id != verified.product_id
         or purchase.app_account_token != verified.app_account_token
+        or purchase.environment != verified.environment
     ):
         raise AppleIAPConflictError(
             'This Apple transaction belongs to another purchase.'
@@ -274,8 +301,15 @@ def grant_apple_purchase(user: Any, verified: VerifiedAppleTransaction) -> Apple
     paid_amount = product['krw']
     if verified.currency == 'KRW' and verified.price_milliunits is not None:
         paid_amount = verified.price_milliunits // 1000
+    if user.iap_environment == 'SANDBOX':
+        paid_amount = 0  # Sandbox price is a quote, not received money.
     fee_deducted_amount = int(paid_amount * (1 - STORE_FEE_RATE))
     User = get_user_model()
+
+    if verified.environment != _account_environment(user.apple_app_account_token).value:
+        raise AppleIAPVerificationError('Apple transaction environment mismatch.')
+    if verified.app_account_token != user.apple_app_account_token:
+        raise AppleIAPVerificationError('Apple app account token mismatch.')
 
     try:
         with transaction.atomic():
@@ -365,6 +399,7 @@ def _set_refund_target(
     if (
         purchase.product_id != verified.product_id
         or purchase.app_account_token != verified.app_account_token
+        or purchase.environment != verified.environment
     ):
         raise AppleIAPConflictError('Notification transaction does not match purchase.')
 
@@ -385,8 +420,8 @@ def process_apple_notification(signed_payload: str) -> AppleNotificationResult:
     if not signed_payload or len(signed_payload) > 50000:
         raise AppleIAPVerificationError('Invalid signed notification payload.')
     try:
-        decoded = get_apple_signed_data_verifier().verify_and_decode_notification(
-            signed_payload
+        decoded = _verify_store_payload(
+            'verify_and_decode_notification', signed_payload
         )
     except VerificationException as exc:
         status = getattr(exc, 'status', None)

@@ -7,7 +7,8 @@ from appstoreserverlibrary.models.InAppOwnershipType import InAppOwnershipType
 from appstoreserverlibrary.models.NotificationTypeV2 import NotificationTypeV2
 from appstoreserverlibrary.models.Type import Type
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from appstoreserverlibrary.signed_data_verifier import VerificationException, VerificationStatus
 
 from config.apps.cash.apple_iap import (
     AppleIAPConflictError,
@@ -15,6 +16,7 @@ from config.apps.cash.apple_iap import (
     grant_apple_purchase,
     process_apple_notification,
     verify_apple_transaction,
+    _verify_store_payload,
 )
 from config.apps.cash.models import AppStoreWebhookEvent, CashLot, PurchaseHistory
 from config.apps.cash.tests import verified_transaction
@@ -47,6 +49,62 @@ class AppleSignedTransactionTests(TestCase):
         }
         values.update(overrides)
         return SimpleNamespace(**values)
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap._decode_signed_transaction')
+    def test_live_account_rejects_sandbox_receipt(self, decode):
+        decode.return_value = self._decoded()
+        with self.assertRaises(AppleIAPVerificationError):
+            verify_apple_transaction('signed', expected_product_id='cash_1000_v2',
+                expected_app_account_token=self.user.apple_app_account_token)
+        self.assertEqual(decode.call_args.args[1], Environment.PRODUCTION)
+        with self.assertRaises(AppleIAPVerificationError):
+            grant_apple_purchase(self.user, verified_transaction(self.user))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 0)
+        self.assertFalse(PurchaseHistory.objects.exists())
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap._decode_signed_transaction')
+    def test_review_account_only_accepts_verified_sandbox(self, decode):
+        self.user.iap_environment = 'SANDBOX'
+        self.user.save(update_fields=['iap_environment'])
+        decode.return_value = self._decoded()
+        verified = verify_apple_transaction('signed', expected_product_id='cash_1000_v2',
+            expected_app_account_token=self.user.apple_app_account_token)
+        self.assertEqual(decode.call_args.args[1], Environment.SANDBOX)
+        grant = grant_apple_purchase(self.user, verified)
+        self.assertEqual(grant.purchase.paid_amount, 0)
+        self.assertEqual(grant.purchase.fee_deducted_amount, 0)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.cash, 1000)
+        decode.return_value = self._decoded(environment=Environment.PRODUCTION)
+        with self.assertRaises(AppleIAPVerificationError):
+            verify_apple_transaction('signed', expected_product_id='cash_1000_v2',
+                expected_app_account_token=self.user.apple_app_account_token)
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_notification_fallback_still_verifies_sandbox_signature(self, factory):
+        from unittest.mock import Mock
+        production, sandbox = Mock(), Mock()
+        production.verify_and_decode_notification.side_effect = VerificationException(
+            VerificationStatus.INVALID_ENVIRONMENT)
+        sandbox.verify_and_decode_notification.return_value = 'verified'
+        factory.side_effect = [production, sandbox]
+        self.assertEqual(_verify_store_payload('verify_and_decode_notification', 'signed'), 'verified')
+        self.assertEqual([c.args[0] for c in factory.call_args_list],
+            [Environment.PRODUCTION, Environment.SANDBOX])
+        sandbox.verify_and_decode_notification.assert_called_once_with('signed')
+
+    @override_settings(APPLE_IAP_ENVIRONMENT='PRODUCTION')
+    @patch('config.apps.cash.apple_iap.get_apple_signed_data_verifier')
+    def test_invalid_signature_does_not_trigger_environment_fallback(self, factory):
+        factory.return_value.verify_and_decode_notification.side_effect = VerificationException(
+            VerificationStatus.VERIFICATION_FAILURE)
+        with self.assertRaises(VerificationException):
+            _verify_store_payload('verify_and_decode_notification', 'forged')
+        factory.assert_called_once_with(Environment.PRODUCTION)
 
     @patch('config.apps.cash.apple_iap._decode_signed_transaction')
     def test_signed_transaction_is_bound_to_product_and_user(self, mock_decode):

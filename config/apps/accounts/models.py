@@ -79,6 +79,11 @@ class User(AbstractUser):
     region = models.CharField(max_length=50, blank=True)
     field = models.CharField(max_length=10, choices=field_choices, blank=True)
     cash = models.PositiveIntegerField(default=0)
+    # Server-managed account isolation: review/test wallets never accept live IAP.
+    iap_environment = models.CharField(
+        max_length=10, default='PRODUCTION', editable=False,
+        choices=[('PRODUCTION', 'Production'), ('SANDBOX', 'Sandbox')],
+    )
     # StoreKit appAccountToken. Apple returns this UUID in the signed transaction,
     # allowing the backend to bind an IAP transaction to the authenticated user.
     apple_app_account_token = models.UUIDField(

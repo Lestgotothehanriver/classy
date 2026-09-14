@@ -134,6 +134,7 @@ class InstructorMainAPIView(APIView):
         # 이번 달 총 캐시 계산
         this_month_cash = LectureRentalHistory.objects.filter(
             lecture__instructor=instructor,
+            is_sandbox=False,
             created_at__year=this_year,
             created_at__month=this_month,
             is_canceled=False

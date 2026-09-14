@@ -202,6 +202,7 @@ class InstructorSettlementRequestView(APIView):
                     lecture__instructor=instructor,
                     is_canceled=False,
                     is_settled=False,
+                    is_sandbox=False,
                     purchased_cash__gt=0,  # 무료/0캐시 대여는 정산 대상에서 제외
                 ).values_list('id', 'purchased_cash')
             )
@@ -261,6 +262,7 @@ class InstructorSettlementInfoView(APIView):
 
         total_revenue = LectureRentalHistory.objects.filter(
             lecture__instructor=instructor,
+            is_sandbox=False,
             is_canceled=False
         ).aggregate(
             total=Coalesce(Sum('purchased_cash'), 0)
@@ -275,6 +277,7 @@ class InstructorSettlementInfoView(APIView):
         
         settleable_revenue = LectureRentalHistory.objects.filter(
             lecture__instructor=instructor,
+            is_sandbox=False,
             is_canceled=False,
             is_settled=False
         ).aggregate(

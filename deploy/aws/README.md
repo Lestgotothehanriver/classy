@@ -81,9 +81,18 @@ recommended.
 - Existing Render admin/site deployments were not repointed or redeployed.
 - Apple App Store Server Notifications V2 endpoint:
   `https://api.classystudy.com/cash/webhook/apple/`.
-- Current Apple environment is `SANDBOX`. Switch to `PRODUCTION` for a verified
-  store release. Apple credentials were loaded successfully; no real purchase
-  or store notification delivery was tested.
+- Use `APPLE_IAP_ENVIRONMENT=PRODUCTION` for the AWS production service. Ordinary
+  accounts accept only production transactions. A dedicated Apple review account
+  can be provisioned server-side with `User.iap_environment='SANDBOX'`; the field
+  is not exposed for user editing. Such an account accepts only verified Apple
+  sandbox purchases, records no real payment proceeds, and cannot make Google
+  purchases. Its rentals retain an immutable sandbox flag and are excluded from
+  instructor revenue, settlement requests, and monthly revenue ranks. Do not
+  change the environment of accounts with existing purchases or balances.
+- The notification endpoint verifies both Apple environments and matches the
+  signed transaction environment to the stored purchase before applying refunds.
+  An invalid signature never triggers an environment fallback. Both production
+  and sandbox App Store notification URLs should point to the AWS endpoint.
 - Google Pub/Sub authenticated push endpoint and audience must both be
   `https://api.classystudy.com/cash/webhook/google/`. The AWS backend's audience
   setting is already prepared for this value. The external subscription has not

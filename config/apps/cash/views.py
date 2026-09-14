@@ -230,6 +230,11 @@ class PurchaseCashView(APIView):
             )
 
         if platform == 'google':
+            if request.user.iap_environment == 'SANDBOX':
+                return Response(
+                    {'error': 'This Apple review account cannot make Google purchases.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return self._purchase_google(
                 request,
                 product_id=product_id,

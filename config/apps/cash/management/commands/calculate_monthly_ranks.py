@@ -37,6 +37,7 @@ class Command(BaseCommand):
                     filter=Q(
                         lectures__rentals__created_at__year=target_year,
                         lectures__rentals__created_at__month=target_month,
+                        lectures__rentals__is_sandbox=False,
                         lectures__rentals__is_canceled=False
                     )
                 ), 0
