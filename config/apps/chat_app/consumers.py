@@ -106,6 +106,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # ────────────────────────── 수신 메시지 처리 ──────────────────────────
     async def receive(self, text_data=None, bytes_data=None):
+        if not await self.account_is_active():
+            await self.close(code=4001)
+            return
         logger.debug("[BACKEND_DEBUG_CHAT] receive - text_data: %s", text_data)
         data = json.loads(text_data or "{}")
 
@@ -170,6 +173,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "unread_count": read_result["unread_count"],
                 },
             )
+
+    async def account_deleted(self, event):
+        if event['user_id'] == self.user.pk:
+            await self.close(code=4001)
+
+    @database_sync_to_async
+    def account_is_active(self):
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.filter(pk=self.user.pk, is_active=True).exists()
 
     # ────────────────────────── DB I/O (sync → async) ──────────────────────────
 

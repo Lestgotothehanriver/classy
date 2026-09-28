@@ -109,9 +109,18 @@ class User(AbstractUser):
     is_banned = models.BooleanField(default=False)
     withdraw_reason = models.CharField(max_length=255, blank=True)
     withdraw_reason_detail = models.TextField(blank=True)  # 탈퇴 상세 사유
+    deleted_at = models.DateTimeField(null=True, blank=True, editable=False)
     # 마케팅 수신 동의 현재 상태(단일 진실값). 동의 '이력'은 UserConsent에 append 된다.
     # 발송 시스템은 이 플래그를 참조한다. (기본 미동의)
     marketing_opt_in = models.BooleanField(default=False)
+
+
+class DeletedAccountFile(models.Model):
+    """Durable outbox for removing a deleted account's objects from storage."""
+
+    name = models.CharField(max_length=1024, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveIntegerField(default=0)
 
 
 class UserConsent(models.Model):

@@ -66,6 +66,9 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data=None, bytes_data=None):
+        if not await self.account_is_active():
+            await self.close(code=4001)
+            return
         logger.debug("[BACKEND_DEBUG_NOTIFICATION] receive: %s", text_data)
         try:
             data = json.loads(text_data or "{}")
@@ -92,6 +95,15 @@ class NotificationConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error("*** [NotificationWS] receive error: %s ***", e)
+
+    async def account_deleted(self, event):
+        if event['user_id'] == self.user.pk:
+            await self.close(code=4001)
+
+    @database_sync_to_async
+    def account_is_active(self):
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.filter(pk=self.user.pk, is_active=True).exists()
 
     async def notification_new(self, event):
         logger.debug("[BACKEND_DEBUG_NOTIFICATION] notification_new: %s", event)

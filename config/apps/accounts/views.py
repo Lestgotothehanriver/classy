@@ -444,49 +444,15 @@ class LogoutAPIView(APIView):
         except:
             return Response({"error": "Failed to log out"}, status=400)
 
-# 회원 탈퇴 API Soft Delete 방식 (데이터는 사내 정책에 따라 일정 기간 남기고, 일단 비활성화, 일정기간 후에 완전 삭제)
 class WithdrawAPIView(APIView):
-    """
-    URL: /accounts/withdraw/
-
-    회원 탈퇴(Soft Delete)를 처리하는 API View입니다.
-
-    POST 요청 시 탈퇴 사유(reason, reason_detail)를 저장하고 계정 상태를 비활성화(is_active=False) 처리하며, FCM 디바이스 토큰 및 사용자의 인증 토큰을 파기합니다.
-
-    Request Body:
-        reason (str, optional): 탈퇴 사유.
-        reason_detail (str, optional): 탈퇴 상세 내용.
-
-    Returns:
-        Response: {
-            "message": "Account deactivated successfully"
-        }
-    """
+    """Erase credentials, profile and UGC; retain only required ledger evidence."""
 
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request):
-        user = request.user
-        # 탈퇴 사유 저장
-        reason = request.data.get('reason', '')
-        reason_detail = request.data.get('reason_detail', '')
-        user.withdraw_reason = reason
-        user.withdraw_reason_detail = reason_detail
-        # 계정 비활성화
-        user.is_active = False
-        user.save(update_fields=['is_active', 'withdraw_reason', 'withdraw_reason_detail'])
-        # FCM 토큰 비활성화
-        try:
-            from config.apps.notification.models import DeviceToken
-            DeviceToken.objects.filter(user=user).update(is_active=False)
-        except Exception as e:
-            logger.warning(f"*** [Withdraw] FCM token deactivation failed: {e} ***")
-        # 인증 토큰 삭제
-        try:
-            user.auth_token.delete()
-        except Token.DoesNotExist:
-            pass
-        return Response({"message": "Account deactivated successfully"}, status=200)
+        from .deletion import delete_account
+        delete_account(request.user.pk)
+        return Response({"message": "Account deleted successfully"}, status=200)
 
 
 class CheckPhoneAPIView(APIView):
