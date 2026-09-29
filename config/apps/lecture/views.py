@@ -257,7 +257,7 @@ class LectureListAPIView(generics.ListAPIView):
     Returns:
         Response: List[LectureListSerializer] 데이터
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     serializer_class = LectureListSerializer
 
     def get_queryset(self):

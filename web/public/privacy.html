@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>클래씨 개인정보처리방침</title>
+<style>
+  :root {
+    --ink: #1c1c1e;
+    --sub: #55565c;
+    --line: #e4e4e7;
+    --accent: #2f5fd8;
+    --bg: #ffffff;
+    --panel: #f7f7f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+      "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    line-height: 1.75;
+    font-size: 16px;
+    word-break: keep-all;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+  header.doc-head {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    background: rgba(47, 95, 216, 0.08);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+  .meta {
+    color: var(--sub);
+    font-size: 14px;
+  }
+  .intro {
+    color: var(--sub);
+    font-size: 15px;
+    margin-top: 18px;
+  }
+  nav.toc {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 44px;
+  }
+  nav.toc p {
+    margin: 0 0 10px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--sub);
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 18px;
+    columns: 2;
+    -webkit-columns: 2;
+    column-gap: 24px;
+    font-size: 14px;
+  }
+  nav.toc li { margin-bottom: 6px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  section.article {
+    margin-bottom: 40px;
+    scroll-margin-top: 24px;
+  }
+  section.article h2 {
+    font-size: 18px;
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  section.article h3 {
+    font-size: 15.5px;
+    margin: 22px 0 8px;
+  }
+  section.article p {
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+  .bullet {
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .bullet-body {
+    margin: 0 0 14px;
+    color: var(--sub);
+    font-size: 15px;
+  }
+  ul.plain {
+    margin: 0 0 14px;
+    padding-left: 20px;
+  }
+  ul.plain li { margin-bottom: 6px; color: var(--sub); font-size: 15px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 14px;
+  }
+  caption {
+    text-align: left;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 15px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    vertical-align: top;
+    text-align: left;
+  }
+  th {
+    background: var(--panel);
+    font-weight: 600;
+    width: 22%;
+  }
+
+  .notice-box {
+    background: #fff7e6;
+    border: 1px solid #f0d999;
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 14px;
+    color: #6b5100;
+    margin: 8px 0 18px;
+  }
+  .contact-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .contact-card dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    row-gap: 6px;
+    font-size: 15px;
+  }
+  .contact-card dt { color: var(--sub); }
+  .contact-card dd { margin: 0; }
+
+  footer.doc-foot {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--sub);
+    font-size: 13px;
+  }
+
+  a.top {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--sub);
+    text-decoration: none;
+  }
+  a.top:hover { color: var(--accent); }
+
+  @media (max-width: 520px) {
+    .wrap { padding: 36px 18px 72px; }
+    nav.toc ol { columns: 1; }
+    .contact-card dl { grid-template-columns: 76px 1fr; }
+  }
+</style>
+<style>
+  /* 앱 인앱 WebView 임베드(?embed=1): 웹 자체 헤더/목차를 숨겨 네이티브처럼 표시 */
+  html.embed header.doc-head,
+  html.embed nav.toc { display: none !important; }
+  html.embed .wrap { padding-top: 24px; }
+</style>
+<script>
+  (function () {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.has('embed') && params.get('embed') !== '0') {
+        document.documentElement.classList.add('embed');
+      }
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc-head">
+    <span class="eyebrow">클래씨 (Classy)</span>
+    <h1>개인정보처리방침</h1>
+    <div class="meta">시행일 2026년 1월 1일&nbsp;·&nbsp;주식회사 클래씨</div>
+    <p class="intro">
+      주식회사 클래씨(이하 “회사”)는 정보주체의 자유와 권리 보호를 위해 「개인정보 보호법」 및 관계 법령이 정한 바를 준수하여 적법하게 개인정보를 처리하고 안전하게 관리하고 있습니다.
+      이에 「개인정보 보호법」 제30조에 따라 정보주체에게 개인정보의 처리와 보호에 관한 절차 및 기준을 안내하고, 이와 관련한 고충을 신속하고 원활하게 처리할 수 있도록 하기 위하여 다음과 같이 개인정보처리방침을 수립·공개합니다.
+    </p>
+  </header>
+
+  <nav class="toc" aria-label="목차">
+    <p>목차</p>
+    <ol>
+      <li><a href="#s1">개인정보의 처리목적</a></li>
+      <li><a href="#s2">처리하는 개인정보의 항목</a></li>
+      <li><a href="#s3">개인정보의 처리 및 보유 기간</a></li>
+      <li><a href="#s4">개인정보의 파기 절차 및 방법</a></li>
+      <li><a href="#s5">개인정보의 제3자 제공에 관한 사항</a></li>
+      <li><a href="#s6">개인정보 처리업무의 위탁에 관한 사항</a></li>
+      <li><a href="#s7">개인정보의 안전성 확보조치에 관한 사항</a></li>
+      <li><a href="#s8">개인정보 자동수집 장치의 설치·운영 및 거부</a></li>
+      <li><a href="#s9">정보주체와 법정대리인의 권리·의무 및 행사방법</a></li>
+      <li><a href="#s10">기타 개인정보에 관하여 회원이 알아야 할 사항</a></li>
+      <li><a href="#s11">개인정보보호책임자</a></li>
+      <li><a href="#s12">개인정보처리방침의 변경에 관한 사항</a></li>
+    </ol>
+  </nav>
+
+  <section class="article" id="s1">
+    <h2>1. 개인정보의 처리목적</h2>
+    <p>회사는 다음의 목적을 위하여 개인정보를 처리합니다. 처리하고 있는 개인정보는 다음의 목적 외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 「개인정보 보호법」 제18조에 따라 별도의 동의를 받는 등 필요한 조치를 이행할 예정입니다.</p>
+
+    <p class="bullet">○ 회원 가입 및 관리</p>
+    <p class="bullet-body">회원 가입 의사 확인, 서비스 이용에 따른 본인확인, 회원 식별, 이용약관을 위반하거나 성실히 수행하지 않은 회원(이하 “불량회원”)의 부정 이용방지와 비인가 사용방지, 안전상의 예방 및 대응 조치, 가입 및 가입횟수 제한, 분쟁 조정을 위한 기록 보존, 14세 미만 아동의 개인정보 처리 시 법정대리인의 동의 여부 확인, 고충처리 등 민원처리, 고지사항 전달 목적으로 개인정보를 처리합니다.</p>
+
+    <p class="bullet">○ 서비스 제공에 관한 계약 이행 및 서비스 제공</p>
+    <p class="bullet-body">콘텐츠 제공, 특정 맞춤 서비스 제공, 본인인증, 계약내용 관련 통지, 우편발송, 구매 및 요금 결제, 요금추심, 혜택제공, 현금 환급 목적으로 개인정보를 처리합니다.</p>
+
+    <p class="bullet">○ 신규 서비스 개발 및 마케팅, 광고</p>
+    <p class="bullet-body">신규 서비스 개발 및 특화, 이벤트 및 광고성 정보 제공 및 참여기회 제공, 인구통계학적 특성에 따른 서비스 제공 및 광고 게재, 접속 빈도 파악, 회원의 서비스 이용에 대한 통계, 서비스의 유효성 확인을 목적으로 개인정보를 처리합니다.</p>
+  </section>
+
+  <section class="article" id="s2">
+    <h2>2. 처리하는 개인정보의 항목</h2>
+    <p>회사는 다음의 개인정보 항목을 정보주체의 동의를 받아 처리하고 있습니다.</p>
+
+    <h3>가. 학생 회원</h3>
+    <p class="bullet">○ 필수 수집 항목</p>
+    <p class="bullet-body">아이디, 닉네임, 이름, 성별, 생년월일 및 연령, 이동전화번호, 거주지역, 회사에서 신원확인 목적으로 추가 요청하는 얼굴 이미지 정보 등이 포함된 공적 증명자료(*불량회원 식별 및 회원의 보호 및 안전 조치를 위한 목적으로 회사가 추가 확인을 진행하고자 하는 경우에 한함), 본인 또는 법정대리인 여부 확인 / 외국인 신분의 확인 / 개명 이력 확인 / 그 밖에 신원·신분 확인 목적으로 필요 시 회사가 요청하는 신원 및 신분관계 관련 공적 확인 서류(관련 자료 내 개인정보 처리 목적과 무관한 정보는 가림 처리 후 최소한의 범위에서만 추가 수집함)</p>
+    <p class="bullet">○ 선택 수집 항목</p>
+    <p class="bullet-body">계좌번호(페이백 혜택 지급 시), 추가 프로필 작성 시 수집되는 학력 관련 정보, 기타 학생/학부모 회원이 첨부하는 사진, 자녀 PASS 인증 관련 정보, 클래씨 서비스를 이용하기 위해 정보주체가 직접 결정하여 입력하는 기타 프로필 정보, 회사의 서비스 제공 과정상 필요 시 회원이 직접 제공하는 정보</p>
+
+    <h3>나. 선생님 회원</h3>
+    <p class="bullet">○ 필수 수집 항목</p>
+    <p class="bullet-body">아이디, 닉네임, 이름, 성별, 생년월일 및 연령, 이동전화번호, 학력 정보(학교명, 학번, 졸업/재학 여부 등), 회사에서 신원확인 목적으로 추가 요청하는 얼굴 이미지 정보 등이 포함된 공적 증명자료(*불량회원 식별 및 회원의 보호 및 안전 조치를 위한 목적으로 회사가 추가 확인을 진행하고자 하는 경우에 한함), 본인 또는 법정대리인 여부 확인 / 외국인 신분의 확인 / 개명 이력 확인 / 그 밖에 신원·신분 확인 목적으로 필요 시 회사가 요청하는 신원 및 신분관계 관련 공적 확인 서류(관련 자료 내 개인정보 처리 목적과 무관한 정보는 가림 처리 후 최소한의 범위에서만 추가 수집함), 카드형 학생증 이미지(카드형 학생증을 통해 학력인증을 진행하는 경우에 한하며, 유효기간은 연도 확인을 원칙으로 하고 유효기간의 연도가 당해 연도와 동일한 경우에만 월 정보를 추가로 확인합니다)</p>
+    <p class="bullet">○ 선택 수집 항목</p>
+    <p class="bullet-body">과외 영업 인증 서류[재학증명서(고유식별정보 제외), 개인과외교습자 신고증명서(교습자 주소 관련 정보 제외), 사업자등록증, 통신판매업 신고증], 계좌번호(이용요금 환불 또는 지인보상 이벤트 혜택 지급 시 등), 사업자등록번호 및 이메일 주소(비용증빙자료 등 발급 시), 출신 중학교, 출신 고등학교, 고교 성적, 합격 유형, 합격 수기 등 클래씨 서비스를 이용하기 위해 정보주체가 직접 결정하여 입력하는 기타 프로필 정보, 회사의 서비스 제공 과정상 필요 시 회원이 직접 제공하는 정보</p>
+
+    <h3>다. 기타</h3>
+    <p>회사는 모든 회원들에 대하여 안정된 서비스 제공을 위해 아래의 항목들에 대해서도 추가로 수집할 수 있습니다.</p>
+    <p class="bullet">○ 앱 이용 기록</p>
+    <p class="bullet-body">단말기 정보(OS, 디바이스 아이디, 폰 기종, 단말기 모델명), 방문 일시, 서비스 이용 기록</p>
+    <p class="bullet">○ 부정사용 기록</p>
+    <p class="bullet-body">부정사용 및 경고 이력, 접속 IP 정보</p>
+    <p class="bullet">○ 환급 정보</p>
+    <p class="bullet-body">포인트 현금 환급 및 페이백 혜택을 위한 최소한의 정보</p>
+    <p class="bullet">○ 결제기록</p>
+    <p class="bullet-body">승인번호, 은행/카드사 코드, 이동전화번호, 이용 이동통신사, 은행명, 계좌번호</p>
+    <p class="bullet">○ 개인정보 수집방법</p>
+    <p class="bullet-body">클래씨 웹사이트, 모바일 웹/앱, 서면양식, 카카오톡 등 메신저 상담, 이메일, 이벤트 응모, 배송 요청, 협력회사로부터 공동 제휴 및 협력을 통한 정보 수집, 생성정보 수집 툴을 통한 정보 수집</p>
+  </section>
+
+  <section class="article" id="s3">
+    <h2>3. 개인정보의 처리 및 보유 기간</h2>
+    <p>회사는 법령에 따른 개인정보 보유·이용 기간 또는 정보주체로부터 개인정보를 수집 시에 동의받은 개인정보 보유·이용 기간 내에서 개인정보를 처리·보유합니다.</p>
+    <p>회사는 개인정보 보유기간의 경과, 개인정보의 수집 및 이용 목적의 달성, 회원 탈퇴 등 개인정보가 불필요하게 되었을 경우 해당 개인정보를 지체 없이 파기합니다. 단, 관련 법령에 따라 개인정보를 일정 기간 보관해야 하는 경우에는 해당 기간 동안 보관하며, 그 외에도 분쟁 해결, 부정 이용 방지 등을 위하여 관련 법령 및 회사 정책에 따라 일정 기간 개인정보를 보관할 수 있습니다.</p>
+    <p>회원 탈퇴 후에도 관계 법령의 규정에 의하여 보존할 필요가 있는 경우 회사는 아래와 같이 일정 기간 동안 회원정보를 보관합니다.</p>
+    <ul class="plain">
+      <li>표시·광고에 관한 기록: 6개월 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
+      <li>계약 또는 청약철회 등에 관한 기록: 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
+      <li>대금결제 및 재화 등의 공급에 관한 기록: 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
+      <li>소비자의 불만 또는 분쟁처리에 관한 기록: 3년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
+      <li>신용정보의 수집·처리 및 이용 등에 관한 기록: 3년 (신용정보의 이용 및 보호에 관한 법률)</li>
+      <li>통신비밀보호법에 따른 통신사실확인자료: 3개월 (통신비밀보호법)</li>
+      <li>국세기본법에 따른 장부 및 증빙서류: 5년 (국세기본법)</li>
+      <li>전자금융거래에 관한 기록: 5년 (전자금융거래법)</li>
+      <li>웹사이트 로그 기록 자료: 3개월 (통신비밀보호법)</li>
+    </ul>
+    <p>회원이 개인정보의 보존을 직접 요청한 경우 또는 회사가 개별적으로 동의를 받은 경우에는 해당 요청 또는 동의를 얻은 항목 및 기간에 한하여 해당 기간 동안 개인정보를 보유합니다.</p>
+    <p>정보주체로부터 동의받은 개인정보 보유기간이 경과하거나 처리목적이 달성되었음에도 불구하고 다른 법령에 따라 개인정보를 계속 보존하여야 하는 경우에는, 해당 개인정보를 별도의 데이터베이스(DB)로 옮기거나 보관장소를 달리하여 보존합니다.</p>
+  </section>
+
+  <section class="article" id="s4">
+    <h2>4. 개인정보의 파기 절차 및 방법</h2>
+    <p>회사는 파기 사유가 발생한 개인정보를 선정하고, 회사의 개인정보 보호 책임자의 승인을 받아 개인정보를 파기합니다.</p>
+    <p>회사는 전자적 파일 형태로 기록·저장된 개인정보는 기록을 재생할 수 없도록 파기하며, 종이 문서에 기록·저장된 개인정보는 분쇄기로 분쇄하거나 소각하여 파기합니다.</p>
+  </section>
+
+  <section class="article" id="s5">
+    <h2>5. 개인정보의 제3자 제공에 관한 사항</h2>
+    <p>회사는 원칙적으로 정보주체의 개인정보를 외부에 제공하지 않습니다. 다만 다음의 경우에는 예외로 합니다.</p>
+    <ul class="plain">
+      <li>정보주체가 사전에 동의한 경우</li>
+      <li>법령의 규정에 의거하거나 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우</li>
+    </ul>
+
+    <table>
+      <caption>가. 학생 회원</caption>
+      <tbody>
+        <tr><th>제공받는 자</th><td>선생님 회원</td></tr>
+        <tr><th>항목</th><td>성별, 거주지역, 연령, 닉네임 및 학생 회원이 직접 입력한 기타 프로필 정보, 강의 수강 여부 및 강의 이용 기록</td></tr>
+        <tr><th>이용·제공 목적</th><td>강의 콘텐츠 제공 및 이용 관리, 과외 중개 등 서비스 제공(과외 계약 체결 중개 및 이를 위한 정보 제공, 과외 계약 체결 여부 확인, 과외 문의 상담을 위함), 강의 콘텐츠 제공, 수강 관리, 강의 관련 서비스 제공</td></tr>
+        <tr><th>보유 및 이용기간</th><td>목적 달성 시까지</td></tr>
+      </tbody>
+    </table>
+
+    <table>
+      <caption>나. 선생님 회원</caption>
+      <tbody>
+        <tr><th>제공받는 자</th><td>학생 회원</td></tr>
+        <tr><th>항목</th><td>성별, 학력정보(학교명, 학번, 졸업/재학 여부 등), 거주지역, 연령, 닉네임, 선생님 회원이 직접 입력한 기타 프로필 정보</td></tr>
+        <tr><th>이용·제공 목적</th><td>강의 콘텐츠 제공 및 이용 관리, 과외 중개 등 서비스 제공(과외 계약 체결 중개 및 이를 위한 정보 제공, 과외 계약 체결 여부 확인, 과외 문의 상담을 위함), 강의 콘텐츠 제공, 수강 관리, 강의 관련 서비스 제공</td></tr>
+        <tr><th>보유 및 이용기간</th><td>목적 달성 시까지</td></tr>
+      </tbody>
+    </table>
+
+    <p>회사는 회원의 개인정보를 타 회원 등 제3자에게 공유할 필요가 있는 경우에는 제공받는 자, 제공 목적, 제공 정보 항목, 보유 및 이용기간 등을 회원에게 고지하여 동의를 구한 뒤 제공합니다. 다만 관련 법령에 따르는 경우는 예외로 할 수 있습니다.</p>
+  </section>
+
+  <section class="article" id="s6">
+    <h2>6. 개인정보 처리업무의 위탁에 관한 사항</h2>
+  
+    <p>
+      회사는 서비스 제공을 위하여 필요한 경우 개인정보 처리업무를 외부 전문업체에 위탁하고 있으며,
+      위탁계약 체결 시 관련 법령에 따라 개인정보가 안전하게 관리될 수 있도록 필요한 사항을 규정하고 있습니다.
+    </p>
+  
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>수탁자</th>
+            <th>위탁 업무</th>
+            <th>처리하는 개인정보</th>
+            <th>보유 및 이용 기간</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Google LLC (Firebase)</td>
+            <td>푸시 알림 발송 및 앱 오류 분석</td>
+            <td>기기 토큰, 앱 오류 정보, 기기 및 앱 정보</td>
+            <td>회원 탈퇴 또는 위탁계약 종료 시까지</td>
+          </tr>
+          <tr>
+            <td>주식회사 솔라피</td>
+            <td>회원가입, 비밀번호 재설정 등 SMS 인증번호 발송</td>
+            <td>휴대전화번호, 인증 메시지 내용</td>
+            <td>위탁 목적 달성 또는 위탁계약 종료 시까지</td>
+          </tr>
+          <tr>
+            <td>Amazon Web Services, Inc.</td>
+            <td>서비스 파일 저장 및 제공</td>
+            <td>회원이 업로드한 프로필 이미지, 강의·채팅 및 인증 관련 파일</td>
+            <td>회원 탈퇴, 파일 삭제 또는 위탁계약 종료 시까지</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  
+    <p>
+      회사는 수탁자가 개인정보를 위탁 목적 외로 처리하지 않도록 관리·감독하며,
+      위탁 업무 또는 수탁자가 변경되는 경우 본 개인정보처리방침을 통하여 공개합니다.
+    </p>
+  </section>
+
+  <section class="article" id="s7">
+    <h2>7. 개인정보의 안전성 확보조치에 관한 사항</h2>
+    <p>회사는 개인정보의 안전성 확보를 위해 다음과 같은 조치를 취하고 있습니다.</p>
+    <p class="bullet">○ 관리적 조치</p>
+    <p class="bullet-body">내부 관리계획 수립·시행</p>
+    <p class="bullet">○ 기술적 조치</p>
+    <p class="bullet-body">개인정보처리시스템에 대한 접근 권한의 관리, 접근통제시스템 설치 및 기타 관련 보호 조치, 개인정보의 암호화, 접속기록의 보관 및 점검, 보안프로그램 설치 및 갱신, 개인정보처리시스템의 취약점 점검 및 보완</p>
+    <p class="bullet">○ 물리적 조치</p>
+    <p class="bullet-body">개인정보를 보관하고 있는 물리적 보관장소에 대한 접근통제</p>
+  </section>
+
+  <section class="article" id="s8">
+    <h2>8. 개인정보 자동수집 장치의 설치·운영 및 거부에 관한 사항</h2>
+    <p>회사는 로그인 상태 유지, 이용 형태 분석, 서비스 개선 및 정보주체에게 개별적인 서비스와 편의를 제공하기 위해 이용정보를 저장하고 수시로 불러오는 ‘쿠키(cookie)’를 사용합니다. 쿠키는 웹사이트 운영에 이용되는 서버(http)가 정보주체의 브라우저에 보내는 소량의 정보로서 정보주체의 컴퓨터 또는 모바일에 저장되며, 웹사이트 접속 시 정보주체의 브라우저에서 서버로 자동 전송됩니다.</p>
+    <p>이용자는 웹브라우저의 옵션 설정을 통해 모든 쿠키를 허용하거나, 쿠키를 저장할 때마다 확인을 거치도록 하거나, 모든 쿠키의 저장을 거부할 수 있습니다. 단, 쿠키 설치를 거부할 경우 일부 서비스 이용에 어려움이 있을 수 있습니다.</p>
+  </section>
+
+  <section class="article" id="s9">
+    <h2>9. 정보주체와 법정대리인의 권리·의무 및 행사방법에 관한 사항</h2>
+    <p>가. 정보주체와 법정대리인은 언제든지 회사에 대해 다음 각 호의 사항에 관하여 개인정보 열람·정정·삭제·처리정지 및 동의 철회 등을 요구할 수 있습니다.</p>
+    <ul class="plain">
+      <li>회사가 보유하고 있는 이용자의 개인정보</li>
+      <li>회사가 이용자의 개인정보를 이용하거나 제3자에게 제공한 내역</li>
+      <li>회사에게 개인정보수집·이용·제공 등의 동의를 한 내역</li>
+    </ul>
+    <p>나. 회원의 개인정보 조회, 수정을 위해서는 직접 모바일 앱 또는 웹의 ‘프로필 수정’을 통해 수정하시거나, 고객센터 또는 담당자에게 이메일 등을 통해 신청을, 가입해지(동의철회)를 위해서는 모바일 앱 상 “탈퇴하기” 온라인 신청 또는 회사가 정하는 탈퇴 신청 양식에 따른 고객센터 이메일 문의를 통하여 계약 해지 및 탈퇴가 가능합니다.</p>
+    <p>다. 회원이 개인정보의 오류에 대한 정정을 요청하신 경우에는 정정을 완료하기 전까지 해당 개인정보를 이용 또는 제공하지 않습니다. 또한 잘못된 개인정보를 제3자에게 이미 제공한 경우에는 정정 처리결과를 제3자에게 지체 없이 통지하여 정정이 이루어지도록 하겠습니다.</p>
+    <p>라. 회사는 정보주체 혹은 법정대리인의 요청에 의해 해지 또는 삭제된 개인정보를 개인정보처리방침에 명시된 바에 따라 처리하고 그 외의 용도로 열람 또는 이용할 수 없도록 처리하고 있습니다.</p>
+    <p>마. 회사는 만 14세 미만 아동의 개인정보를 수집하는 상황이 발생할 경우, 법정대리인의 동의를 받는 등 관련 법령에 따른 조치를 이행합니다.</p>
+    <p>바. 회사는 자녀 PASS 인증 서비스를 제공하기 위하여 학부모 회원으로부터 자녀의 정보를 수집합니다. 학부모 회원은 자녀의 정보제공 동의를 받아 회사에 자녀의 정보를 제공할 수 있습니다.</p>
+  </section>
+
+  <section class="article" id="s10">
+    <h2>10. 기타 개인정보에 관하여 회원이 알아야 할 사항</h2>
+    <p>가. 정보주체는 자신의 개인정보를 최신의 상태로 정확하게 입력하고 유지하여야 하며, 부정확한 정보 입력으로 인하여 발생하는 문제에 대한 책임은 정보주체 본인에게 있습니다. 회사는 정보주체가 입력한 개인정보가 부정확하다고 확인되는 경우 정정 또는 보완을 요청할 수 있으며, 필요한 경우 서비스 이용을 제한할 수 있습니다.</p>
+    <p>나. 정보주체가 타인의 개인정보를 도용하거나 허위정보를 입력한 경우 회사는 관련 법령 및 회사 정책에 따라 회원자격 제한 또는 상실 등의 조치를 취할 수 있으며, 관계 법령에 따라 책임을 부담할 수 있습니다.</p>
+  </section>
+
+  <section class="article" id="s11">
+    <h2>11. 개인정보보호책임자</h2>
+    <p>정보주체는 회사의 서비스를 이용하면서 발생한 모든 개인정보보호 관련 문의, 불만처리, 피해구제 등에 관한 사항을 개인정보보호책임자 및 고객센터에 문의할 수 있습니다. 회사는 정보주체의 문의에 대하여 지체 없이 답변 및 처리하도록 하겠습니다.</p>
+    <div class="contact-card">
+      <dl>
+        <dt>담당자명</dt><dd>우해강</dd>
+        <dt>전화번호</dt><dd>010-8259-5284</dd>
+        <dt>이메일</dt><dd>classycompany@classystudy.com</dd>
+	<dt>소재지</dt><dd>경기도 양주시 옥정동로7다길 74, 6층 6116호 (옥정동)</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="article" id="s12">
+    <h2>12. 개인정보처리방침의 변경에 관한 사항</h2>
+    <p>회사는 관련 법령, 정책 또는 서비스의 변경 사항을 반영하기 위하여 본 개인정보처리방침을 변경할 수 있습니다. 회사가 개인정보처리방침을 변경하는 경우에는 시행일 최소 7일 전에 모바일 앱 내 공지사항 등을 통해 변경 내용 및 시행일을 공지합니다.</p>
+    <p>현 개인정보처리방침은 <strong>2026년 1월 1일</strong>부터 시행됩니다.</p>
+    <p>변경 전의 개인정보처리방침은 본 문서 하단 ‘이전 개인정보처리방침’에서 확인하실 수 있습니다.</p>
+  </section>
+
+  <footer class="doc-foot">
+    본 페이지는 주식회사 클래씨 개인정보처리방침의 게시용 웹페이지입니다.
+    <br><a class="top" href="#top">맨 위로 ↑</a>
+  </footer>
+
+</div>
+</body>
+</html>
