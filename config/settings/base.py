@@ -309,3 +309,8 @@ LOGGING = {
 SOLAPI_API_KEY = os.environ.get("SOLAPI_API_KEY")
 SOLAPI_API_SECRET = os.environ.get("SOLAPI_API_SECRET")
 SOLAPI_SENDER = os.environ.get("SOLAPI_SENDER")
+
+# Optional, explicitly documented App Review signup fixtures. Disabled by default.
+# These numbers must belong only to synthetic sandbox accounts, never customers.
+APP_REVIEW_SIGNUP_PHONES = tuple(filter(None, os.environ.get("APP_REVIEW_SIGNUP_PHONES", "").split(",")))
+APP_REVIEW_SIGNUP_CODE = os.environ.get("APP_REVIEW_SIGNUP_CODE", "")

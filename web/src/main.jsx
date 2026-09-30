@@ -424,7 +424,7 @@ function Detail({ kind, id, onClose }) {
             )}
             <p className="form-note">
               보유 캐시는 기존 계정과 연동됩니다. 마이페이지의 캐시 관리에서
-              이용 내역과 쿠폰을 확인하세요.
+              캐시 잔액과 이용 내역을 확인하세요.
             </p>
             <Comments id={id} />
           </>

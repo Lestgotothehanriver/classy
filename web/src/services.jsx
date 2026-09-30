@@ -107,21 +107,6 @@ function Cash() {
           충전한 캐시는 같은 계정에서 함께 사용할 수 있습니다.
         </p>
       </section>
-      <ActionForm
-        title="쿠폰 등록"
-        path="/cash/coupons/redeem/"
-        submit="쿠폰 적용"
-        onDone={async (_, f) => {
-          await refreshUser();
-          f.reset();
-          history.reload();
-        }}
-      >
-        <label>
-          쿠폰 코드
-          <input name="code" required maxLength={50} />
-        </label>
-      </ActionForm>
       <section className="service-section">
         <div className="actions">
           <Btn

@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from .models import Student, Instructor, Subject
 from .consent import record_consent
+from .review_signup import review_signup_code
 from config.apps.pending.models import PendingInstructor, File
 from config.apps.notification.models import DeviceToken
 
@@ -88,9 +89,11 @@ class StudentSignupSerializer(serializers.Serializer):
 
         # AbstractUser 기본 username이 필요할 가능성이 높아서 안전하게 만들어줌
         username = email
+        review_fixture = review_signup_code(validated_data.get("phone")) is not None
 
         user = User.objects.create_user(
             username=username,
+            iap_environment="SANDBOX" if review_fixture else "PRODUCTION",
             email=email,
             password=password,
             first_name=first_name,
@@ -217,9 +220,11 @@ class InstructorSignupSerializer(serializers.Serializer):
         first_name = validated_data.get("first_name", "")
         last_name = validated_data.get("last_name", "")
         username = email
+        review_fixture = review_signup_code(validated_data.get("phone")) is not None
 
         user = User.objects.create_user(
             username=username,
+            iap_environment="SANDBOX" if review_fixture else "PRODUCTION",
             email=email,
             first_name=first_name,
             last_name=last_name,

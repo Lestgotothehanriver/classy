@@ -14,6 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.generics import GenericAPIView
 from .models import User
 from .uploads import replace_profile_image
+from .review_signup import review_signup_code
 from config.apps.pending.models import PendingInstructor
 from django.shortcuts import get_object_or_404
 from django.conf import settings
@@ -1120,9 +1121,10 @@ class SendAuthSMSAPIView(APIView):
         if not phone_number:
             return Response({"error": "전화번호가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
         
-        auth_code = str(random.randint(100000, 999999))
+        fixture_code = review_signup_code(phone_number)
+        auth_code = fixture_code or str(random.randint(100000, 999999))
         
-        if not send_auth_sms(phone_number, auth_code):
+        if not fixture_code and not send_auth_sms(phone_number, auth_code):
             return Response({"error": "인증번호 발송에 실패했습니다. 발송 정보를 확인해 주세요."}, status=status.HTTP_400_BAD_REQUEST)
         
         from .models import PhoneVerification

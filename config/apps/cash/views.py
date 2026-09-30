@@ -14,15 +14,14 @@ from django.utils import timezone
 from .serializers import (
     CashPurchaseSerializer,
     LectureRentalSerializer,
-    RedeemCouponSerializer,
 )
 from .consent import (
     current_cash_terms_version,
     has_current_cash_terms_consent,
     record_cash_terms_consent,
 )
-from .ledger import create_coupon_lot, debit_lots_for_rental
-from .models import Account, CashLot, Coupon, LectureRentalHistory, PurchaseHistory
+from .ledger import debit_lots_for_rental
+from .models import Account, CashLot, LectureRentalHistory, PurchaseHistory
 from .constants import GOOGLE_PRODUCT_CASH_MAP, PRODUCT_CASH_MAP
 from .apple_iap import (
     AppleIAPConfigurationError,
@@ -335,94 +334,14 @@ class PurchaseCashView(APIView):
 
 
 class RedeemCouponView(APIView):
-    """
-    URL: /cash/coupons/redeem/
+    """Retired endpoint kept to reject redemption from older installed builds."""
 
-    프로모션 '쿠폰(Coupon)' 코드를 입력받아 캐시를 충전해주는 API View입니다.
-
-    POST 요청 시 쿠폰 코드를 입력받아 활성화 여부, 기사용 여부, 만료 여부를 트랜잭션 하에서 원자적으로 검증합니다.
-    검증 결과 쿠폰이 유효한 경우 해당 쿠폰에 명시된 금액(cash_amount)만큼 유저에게 캐시를 즉시 적립하고 쿠폰 사용 내역을 갱신합니다.
-
-    Request Body:
-        code (str): 사용할 쿠폰 코드.
-
-    Returns:
-        Response: {
-            "message": "Coupon redeemed successfully.",
-            "redeemed_cash": int,
-            "remaining_cash": int
-        }
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = RedeemCouponSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        code = serializer.validated_data['code'].strip()
-        now = timezone.now()
-
-        try:
-            with transaction.atomic():
-                from django.contrib.auth import get_user_model
-
-                User = get_user_model()
-                user = User.objects.select_for_update().get(pk=request.user.pk)
-                coupon = Coupon.objects.select_for_update().filter(code=code).first()
-
-                if coupon is None:
-                    return Response(
-                        {"error": "Coupon not found."},
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
-
-                if not coupon.is_active:
-                    return Response(
-                        {"error": "Coupon is inactive."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                if coupon.redeemed_by_id is not None:
-                    return Response(
-                        {"error": "Coupon has already been redeemed."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                if coupon.expires_at and coupon.expires_at < now:
-                    return Response(
-                        {"error": "Coupon has expired."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                user.cash = F('cash') + coupon.cash_amount
-                user.save(update_fields=['cash'])
-                user.refresh_from_db()
-
-                coupon.redeemed_by = user
-                coupon.redeemed_at = now
-                coupon.save(update_fields=['redeemed_by', 'redeemed_at'])
-                create_coupon_lot(user=user, amount=coupon.cash_amount)
-
-        except Exception as e:
-            logger.exception(
-                "Coupon redemption failed. user=%s code=%s error=%s",
-                request.user.pk,
-                code,
-                e,
-            )
-            return Response(
-                {"error": "Internal server error while redeeming coupon."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
         return Response(
-            {
-                "message": "Coupon redeemed successfully.",
-                "redeemed_cash": coupon.cash_amount,
-                "remaining_cash": user.cash,
-            },
-            status=status.HTTP_200_OK,
+            {"error": "캐시 쿠폰은 더 이상 지원되지 않습니다. 인앱 결제를 이용해주세요."},
+            status=status.HTTP_410_GONE,
         )
 
 
