@@ -341,11 +341,14 @@ class InstructorUpdateSerializer(serializers.Serializer):
 
     요청 데이터 예시 (multipart/form-data 또는 application/json):
     {
-        "sex": "여성",
-        "birth_date": "1998-03-02",
-        "region": "울산 남구",
-        "instruction": "자기소개 수정",
-        "instructorsubject": [2, 4]   // 배열 or "[2,4]" 문자열 (보내면 전체 교체)
+      "sex": "여성",
+      "birth_date": "1998-03-02",
+      "region": "울산 남구",
+      "instruction": "자기소개 수정",
+      "university": "울산대학교",
+      "department": "컴퓨터공학과",
+      "student_number": "2018",
+      "instructorsubject": [2, 4]   // 배열 or "[2,4]" 문자열 (보내면 전체 교체)
     }
     """
 
@@ -355,6 +358,9 @@ class InstructorUpdateSerializer(serializers.Serializer):
 
     instruction = serializers.CharField(required=False, allow_blank=True)
     is_tutoring = serializers.BooleanField(required=False)
+    university = serializers.CharField(required=False, allow_blank=True)
+    department = serializers.CharField(required=False, allow_blank=True)
+    student_number = serializers.CharField(required=False, allow_blank=True)
 
     instructorsubject = serializers.ListField(
         child=serializers.IntegerField(),
@@ -398,7 +404,13 @@ class InstructorUpdateSerializer(serializers.Serializer):
 
         instructor = instance.instructor_profile
 
-        for field in ["instruction", "is_tutoring"]:
+        for field in [
+            "instruction",
+            "is_tutoring",
+            "university",
+            "department",
+            "student_number",
+        ]:
             if field in validated_data:
                 setattr(instructor, field, validated_data[field])
         instructor.save()
@@ -499,4 +511,3 @@ class InstructorRoleAddSerializer(serializers.Serializer):
             instructor_profile.subjects.set(subjects)
 
         return instructor_profile
-

@@ -40,6 +40,44 @@ class UserProfileEditPrefillTests(APITestCase):
         self.assertEqual(response.data["instruction"], "꼼꼼하게 지도합니다.")
         self.assertEqual(response.data["subjects"], [str(subject)])
 
+
+class InstructorAcademicInfoUpdateTests(APITestCase):
+    """강사 인증 학력 정보 수정 API를 검증한다."""
+
+    def setUp(self):
+        from config.apps.accounts.models import Instructor
+
+        self.user = User.objects.create_user(
+            username="academic-teacher@example.com",
+            email="academic-teacher@example.com",
+            user_name="academic_teacher",
+            password="pass1234",
+        )
+        self.instructor = Instructor.objects.create(
+            user=self.user,
+            university="기존대학교",
+            department="기존학과",
+            student_number="2020",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_patch_updates_university_department_and_student_number(self):
+        response = self.client.patch(
+            reverse("accounts:signup-instructor"),
+            {
+                "university": "수정대학교",
+                "department": "컴퓨터공학과",
+                "student_number": "2024",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.instructor.refresh_from_db()
+        self.assertEqual(self.instructor.university, "수정대학교")
+        self.assertEqual(self.instructor.department, "컴퓨터공학과")
+        self.assertEqual(self.instructor.student_number, "2024")
+
 class CheckEmailAPIViewTests(APITestCase):
     def setUp(self):
         self.url = reverse("accounts:check-email")

@@ -192,6 +192,7 @@ class InstructorSignupAPIView(GenericAPIView):
     Request Body (PUT/PATCH):
         university (str, optional): 대학교명.
         department (str, optional): 학과명.
+        student_number (str, optional): 학번.
 
     Returns:
         Response (POST): {
