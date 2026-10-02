@@ -26,5 +26,5 @@ media/
 .DS_Store
 
 # Secrets
-secret/
+secrets/
 
