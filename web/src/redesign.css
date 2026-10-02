@@ -325,10 +325,14 @@ textarea {
   border-top: 1px solid var(--line);
   display: flex;
   gap: 28px;
-  align-items: center;
+  align-items: flex-start;
   padding: 28px 0 32px;
   color: var(--muted);
   font-size: 12px;
+}
+.footer-identity {
+  flex: 0 0 auto;
+  padding-top: 1px;
 }
 .footer-brand {
   font-size: 16px;
@@ -336,14 +340,28 @@ textarea {
   letter-spacing: -0.4px;
   color: #5f646d;
 }
-.site-footer p {
-  font-size: 11px;
-  margin-top: 8px;
+.footer-details {
+  min-width: 0;
 }
 .site-footer nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 22px;
-  margin-left: 30px;
+}
+.footer-company-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 0;
+  max-width: 760px;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+.footer-company-info span:not(:last-child)::after {
+  content: "·";
+  margin: 0 8px;
+  color: var(--muted);
 }
 .site-footer a:hover {
   text-decoration: underline;
@@ -1908,20 +1926,24 @@ dialog.wide {
     margin: 0 20px;
   }
   .site-footer nav {
-    margin: 0;
     gap: 14px;
     font-size: 11px;
     flex-wrap: wrap;
   }
-  .site-footer > div {
+  .footer-details {
     width: 100%;
-    display: flex;
-    gap: 12px;
-    align-items: center;
   }
-  .site-footer p {
-    margin: 0;
+  .footer-company-info {
+    display: block;
     font-size: 10px;
+    line-height: 1.55;
+    margin-top: 10px;
+  }
+  .footer-company-info span {
+    display: block;
+  }
+  .footer-company-info span:not(:last-child)::after {
+    content: none;
   }
   .site-footer > small {
     width: 100%;

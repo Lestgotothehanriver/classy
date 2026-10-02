@@ -176,21 +176,40 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
         {children}
       </main>
       <footer className="site-footer">
-        <div>
+        <div className="footer-identity">
           <span className="footer-brand">CLASSY</span>
-          <p>주식회사 클래씨</p>
         </div>
-        <nav aria-label="서비스 안내">
-          <a href="/service-terms">이용약관</a>
-          <a href="/privacy">개인정보처리방침</a>
-          <a
-            href="https://pf.kakao.com/_YxhWxlX"
-            target="_blank"
-            rel="noreferrer"
-          >
-            고객센터
-          </a>
-        </nav>
+        <div className="footer-details">
+          <nav aria-label="서비스 안내">
+            <a href="/service-terms">이용약관</a>
+            <a href="/privacy">개인정보처리방침</a>
+            <a
+              href="https://pf.kakao.com/_YxhWxlX"
+              target="_blank"
+              rel="noreferrer"
+            >
+              고객센터
+            </a>
+          </nav>
+          <address className="footer-company-info">
+            <span>주식회사 클래씨</span>
+            <span>대표이사 우해강</span>
+            <span>사업자등록번호 471-86-03936</span>
+            <span>통신판매업 신고번호 2026-경기양주-1974</span>
+            <span>주소 경기도 양주시 옥정동로7다길 74, 6층 6116호 (옥정동)</span>
+            <span>대표 전화번호 010-8259-5284</span>
+            <span>
+              문의{" "}
+              <a
+                href="https://mail.google.com/mail/?view=cm&fs=1&to=classycompany%40classystudy.com"
+                target="_blank"
+                rel="noreferrer"
+              >
+                classycompany@classystudy.com
+              </a>
+            </span>
+          </address>
+        </div>
         <small>© {new Date().getFullYear()} CLASSY</small>
       </footer>
       <nav className="bottom-nav" aria-label="모바일 메뉴">
