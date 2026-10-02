@@ -2,6 +2,8 @@ import os
 import dj_database_url
 import environ
 from .base import *
+from dotenv import load_dotenv
+load_dotenv()
 
 env = environ.Env(
     DEBUG=(bool, False)
@@ -43,13 +45,13 @@ if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
 # Render will automatically inject DATABASE_URL into the environment.
 # dj_database_url will automatically use DATABASE_URL.
 DATABASES = {
-    'default': dj_database_url.config(
-        conn_max_age=600,
-        conn_health_checks=True,
+    "default": dj_database_url.config(
+        default=os.environ.get("DATABASE_URL")
     )
 }
 
-# Static files
+# Static 
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
