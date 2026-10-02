@@ -29,7 +29,6 @@ class MyRegistrationInputSerializer(serializers.Serializer):
         source="subject_ids",
         child=serializers.IntegerField(min_value=1),
         min_length=1,
-        max_length=3,
     )
     startDate = serializers.DateField(source="start_date")
     classType = serializers.ChoiceField(

@@ -699,16 +699,8 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
                     {'subjects': 'subject와 subjects는 동시에 보낼 수 없습니다.'}
                 )
             attrs['subject'] = subjects
-        if len(attrs.get('subject', [])) > 3:
-            raise serializers.ValidationError(
-                {'subject': '과외 성사당 과목은 최대 3개까지만 등록할 수 있습니다.'}
-            )
         return super().validate(attrs)
 
-    def validate_subject(self, value):
-        if value and len(value) > 3:
-            raise serializers.ValidationError("과외 성사당 과목은 최대 3개까지만 제한하여 등록할 수 있습니다.")
-        return value
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

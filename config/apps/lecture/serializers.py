@@ -134,11 +134,6 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         model = Lecture
         exclude = ["instructor", "likes", "view_count"]
 
-    def validate_subjects(self, value):
-        if len(value) > 3:
-            raise serializers.ValidationError("과목은 최대 3개까지만 선택할 수 있습니다.")
-        return value
-
     def validate_price(self, value):
         if value < 0:
             raise serializers.ValidationError("가격은 0 캐시 이상이어야 합니다.")

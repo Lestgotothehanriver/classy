@@ -23,7 +23,7 @@ load_dotenv(BASE_DIR.parent / '.env')
 # 과외 성사 수수료 수동 입금 계좌. Toss 가상계좌는 더 이상 사용하지 않습니다.
 TUTORING_PAYMENT_BANK = os.environ.get("TUTORING_PAYMENT_BANK", "우리은행")
 TUTORING_PAYMENT_ACCOUNT_NUMBER = os.environ.get(
-    "TUTORING_PAYMENT_ACCOUNT_NUMBER", "124411-0045778"
+    "TUTORING_PAYMENT_ACCOUNT_NUMBER", "1005-104-910766"
 )
 TUTORING_REGULAR_COMMISSION_RATE_BPS = int(
     os.environ.get(

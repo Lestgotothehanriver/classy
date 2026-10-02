@@ -949,7 +949,7 @@ class TutoringResourceAPITest(LikeSortingTestBase):
         self.assertEqual(data["subject"][1]["number"], self.subject2.number)
 
     def test_create_tutoring_resource_with_more_than_3_subjects(self):
-        """과목 3개 초과로 TutoringResource 생성 시 실패 (400 Bad Request)"""
+        """과목 3개 초과로 TutoringResource 생성이 가능하다."""
         payload = {
             "student": self.student1.id,
             "instructor": self.inst1.id,
@@ -958,9 +958,8 @@ class TutoringResourceAPITest(LikeSortingTestBase):
             "first_month_fee": 300000,
         }
         resp = self.client.post("/tutoring/resources/", data=payload, format="json")
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn("subject", resp.json())
-        self.assertEqual(resp.json()["subject"][0], "과외 성사당 과목은 최대 3개까지만 제한하여 등록할 수 있습니다.")
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(len(resp.json()["subject"]), 4)
 
 
 class StudentProposalRoomTest(LikeSortingTestBase):
