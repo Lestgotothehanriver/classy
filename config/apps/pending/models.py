@@ -25,9 +25,10 @@ class PendingInstructor(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "인증대기"
         VERIFIED = "VERIFIED", "인증완료"
+        RESUBMIT_REQUIRED = "RESUBMIT_REQUIRED", "재제출 필요"
         SUSPENDED = "SUSPENDED", "정지"
 
-    # 강사 상태 (인증대기/완료/정지)
+    # 강사 상태 (인증대기/완료/재제출 필요/정지)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
 
     # 반려 사유 (인증이 반려된 경우 입력 및 조회)

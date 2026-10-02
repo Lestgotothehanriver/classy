@@ -78,6 +78,45 @@ class InstructorAcademicInfoUpdateTests(APITestCase):
         self.assertEqual(self.instructor.department, "컴퓨터공학과")
         self.assertEqual(self.instructor.student_number, "2024")
 
+    def test_patch_after_verification_requires_document_resubmission(self):
+        from config.apps.pending.models import PendingInstructor
+
+        pending = PendingInstructor.objects.create(
+            instructor_profile=self.instructor,
+            status=PendingInstructor.Status.VERIFIED,
+        )
+
+        response = self.client.patch(
+            reverse("accounts:signup-instructor"),
+            {"department": "컴퓨터공학과"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        pending.refresh_from_db()
+        self.assertEqual(
+            pending.status,
+            PendingInstructor.Status.RESUBMIT_REQUIRED,
+        )
+
+    def test_patch_during_review_is_rejected(self):
+        from config.apps.pending.models import PendingInstructor
+
+        PendingInstructor.objects.create(
+            instructor_profile=self.instructor,
+            status=PendingInstructor.Status.PENDING,
+        )
+
+        response = self.client.patch(
+            reverse("accounts:signup-instructor"),
+            {"department": "컴퓨터공학과"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.instructor.refresh_from_db()
+        self.assertEqual(self.instructor.department, "기존학과")
+
 class CheckEmailAPIViewTests(APITestCase):
     def setUp(self):
         self.url = reverse("accounts:check-email")

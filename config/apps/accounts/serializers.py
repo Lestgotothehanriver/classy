@@ -404,6 +404,21 @@ class InstructorUpdateSerializer(serializers.Serializer):
 
         instructor = instance.instructor_profile
 
+        academic_fields = {"university", "department", "student_number"}
+        academic_info_changed = any(
+            field in validated_data and getattr(instructor, field) != validated_data[field]
+            for field in academic_fields
+        )
+        pending = getattr(instructor, "pending_info", None)
+        if (
+            academic_info_changed
+            and pending is not None
+            and pending.status == PendingInstructor.Status.PENDING
+        ):
+            raise serializers.ValidationError(
+                {"detail": "인증 서류 검토 중에는 학력 정보를 수정할 수 없습니다."}
+            )
+
         for field in [
             "instruction",
             "is_tutoring",
@@ -414,6 +429,26 @@ class InstructorUpdateSerializer(serializers.Serializer):
             if field in validated_data:
                 setattr(instructor, field, validated_data[field])
         instructor.save()
+
+        # 인증 완료 후 학력 정보가 바뀌면 기존 증빙 서류의 정보가 더 이상 일치하지
+        # 않을 수 있다. 활동 권한을 즉시 중단하고 새 증빙 서류 재제출을 요구한다.
+        if (
+            academic_info_changed
+            and pending is not None
+            and pending.status == PendingInstructor.Status.VERIFIED
+        ):
+            pending.status = PendingInstructor.Status.RESUBMIT_REQUIRED
+            pending.rejection_reason = "학력 정보가 수정되어 인증 서류를 다시 제출해주세요."
+            pending.reviewed_by = None
+            pending.reviewed_at = None
+            pending.save(
+                update_fields=[
+                    "status",
+                    "rejection_reason",
+                    "reviewed_by",
+                    "reviewed_at",
+                ]
+            )
 
         if subject_ids is not None:
             subjects = []

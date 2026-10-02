@@ -999,7 +999,7 @@ class UserDetailAPIView(APIView):
             "field": str,
             "birth_date": str,
             "profile_image": str,
-            "verification_status": "certified" | "pending" | "rejected" | None,
+            "verification_status": "certified" | "pending" | "resubmitRequired" | "rejected" | None,
             "subjects": List[str]
         }
     """
@@ -1012,7 +1012,12 @@ class UserDetailAPIView(APIView):
         role = 'instructor' if is_instructor else 'student'
         region_parts = user.region.split(' ') if user.region else ['', '']
 
-        _STATUS_MAP = {'PENDING': 'pending', 'VERIFIED': 'certified', 'SUSPENDED': 'rejected'}
+        _STATUS_MAP = {
+            'PENDING': 'pending',
+            'VERIFIED': 'certified',
+            'RESUBMIT_REQUIRED': 'resubmitRequired',
+            'SUSPENDED': 'rejected',
+        }
         verification_status = None
         subjects = []
 
