@@ -109,6 +109,19 @@ try {
   await requiredChecks.nth(1).check();
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
   await page.getByRole("heading", { name: "웹 회원님, 반가워요." }).waitFor();
+  await page.goto(origin + "/#lectures");
+  await page.getByRole("heading", { name: "실제 형식의 강의" }).waitFor();
+  const studentBrowseMenu = page.getByRole("navigation", {
+    name: "목록 메뉴",
+  });
+  assert.equal(
+    await studentBrowseMenu.getByRole("link", { name: "학생 찾기" }).count(),
+    0,
+  );
+  assert.equal(
+    await studentBrowseMenu.getByRole("link", { name: "선생님 찾기" }).count(),
+    1,
+  );
   const signup = writes.find((x) => x.path === "/accounts/signup/student/");
   assert.equal(signup.body.phone, "01012345678");
   assert.deepEqual(signup.body.studentsubject, [36]);
@@ -124,6 +137,23 @@ try {
   });
   await page.goto(origin+"/#upload");
   await page.reload();
+  await page.getByRole("heading", { name: "강사 스튜디오" }).waitFor();
+  await page.goto(origin + "/#lectures");
+  await page.getByRole("heading", { name: "실제 형식의 강의" }).waitFor();
+  const instructorBrowseMenu = page.getByRole("navigation", {
+    name: "목록 메뉴",
+  });
+  assert.equal(
+    await instructorBrowseMenu
+      .getByRole("link", { name: "선생님 찾기" })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await instructorBrowseMenu.getByRole("link", { name: "학생 찾기" }).count(),
+    1,
+  );
+  await page.goto(origin + "/#upload");
   await page.getByRole("heading", { name: "강사 스튜디오" }).waitFor();
   await page.getByLabel("강의 제목").fill("임시 저장 제목");
   await page.reload();

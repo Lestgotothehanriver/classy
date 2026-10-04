@@ -174,6 +174,7 @@ class NotificationReadAllAPIView(APIView):
     본인이 수신한 '모든 안 읽은 알림'을 일괄적으로 '읽음 처리(is_read=True)'하는 API View입니다.
 
     PATCH 요청 시 로그인한 사용자가 수신한 모든 읽지 않은 알림을 일괄적으로 읽음(is_read=True) 상태로 업데이트합니다.
+    `role=student` 또는 `role=instructor` 쿼리 파라미터를 전달하면 해당 역할 알림만 처리합니다.
 
     Returns:
         Response: {
@@ -184,9 +185,14 @@ class NotificationReadAllAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request):
-        updated = Notification.objects.filter(
+        notifications = Notification.objects.filter(
             user=request.user, is_read=False
-        ).update(is_read=True)
+        )
+        role = request.query_params.get("role")
+        if role in ("student", "instructor"):
+            notifications = notifications.filter(role=role)
+
+        updated = notifications.update(is_read=True)
         _broadcast_unread_counts(request.user)
         return Response({"updated": updated}, status=200)
 

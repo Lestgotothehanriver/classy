@@ -9,6 +9,7 @@ from config.apps.block.utils import get_blocked_user_ids
 from ..models import CommissionInvoice, TutoringRegistration, TutoringSubmission
 from ..registration_serializers import MyRegistrationInputSerializer
 from ..registration_services import (
+    RegistrationLockedError,
     RegistrationPermissionError,
     get_chat_room_for_user,
     save_my_registration,
@@ -105,12 +106,15 @@ class MyTutoringRegistrationView(APIView):
             context={"role": role},
         )
         serializer.is_valid(raise_exception=True)
-        result = save_my_registration(
-            chat_room_id,
-            request.user,
-            serializer.validated_data,
-            proof_files=proof_files,
-        )
+        try:
+            result = save_my_registration(
+                chat_room_id,
+                request.user,
+                serializer.validated_data,
+                proof_files=proof_files,
+            )
+        except RegistrationLockedError as exc:
+            raise ValidationError({"detail": str(exc)})
         if result is None:
             return Response(
                 {"detail": "채팅방을 찾을 수 없습니다."},

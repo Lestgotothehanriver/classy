@@ -26,6 +26,7 @@ import {
   Gate,
   Subjects,
   money,
+  RegionFields,
 } from "./shared";
 import { api, list } from "./api";
 
@@ -86,7 +87,7 @@ function Avatar({ src, name = "", size = "" }) {
 
 // ClassyDestination and HomeHeader: same five destinations and original SVGs.
 export function Shell({ page, activeRole, setActiveRole, children }) {
-  const { user, go, login } = useContext(Ctx);
+  const { user, go, login, unreadNotificationCount } = useContext(Ctx);
   const tutoring = user?.role === "instructor" ? "posts" : "teachers";
   const nav = [
     ["home", "홈", "home"],
@@ -149,11 +150,22 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
               </select>
             )}
             <button
-              className="icon-button"
-              aria-label="알림"
+              className="icon-button notification-button"
+              aria-label={
+                unreadNotificationCount > 0
+                  ? `알림, 읽지 않은 알림 ${unreadNotificationCount}개`
+                  : "알림"
+              }
               onClick={() => go("notifications")}
             >
               <Bell size={21} />
+              {unreadNotificationCount > 0 && (
+                <span className="notification-count" aria-hidden="true">
+                  {unreadNotificationCount > 99
+                    ? "99+"
+                    : unreadNotificationCount}
+                </span>
+              )}
             </button>
             {user ? (
               <button
@@ -395,7 +407,7 @@ export function HomePage() {
                         item={item}
                         kind={teacher ? "posts" : "teachers"}
                         onClick={() =>
-                          detail(teacher ? "posts" : "teachers", item.id)
+                          detail(teacher ? "posts" : "teachers", item.id, item)
                         }
                       />
                     ))}
@@ -493,7 +505,7 @@ export function HomePage() {
                       <button
                         className="mini-lecture"
                         key={item.id}
-                        onClick={() => detail("lectures", item.id)}
+                        onClick={() => detail("lectures", item.id, item)}
                       >
                         {item.thumbnail ? (
                           <img src={item.thumbnail} alt="" />
@@ -568,6 +580,11 @@ export function Catalog({ kind, mode }) {
   const isMine = ["learning", "saved", "expired", "saved-teachers"].includes(
     mode,
   );
+  const browseMenu = [
+    ["lectures", "강의 찾기"],
+    ...(user?.role === "instructor" ? [] : [["teachers", "선생님 찾기"]]),
+    ...(user?.role === "student" ? [] : [["posts", "학생 찾기"]]),
+  ];
   const endpoint =
     mode === "learning" && user?.role === "instructor"
       ? "/mypage/instructor/uploaded-lectures/"
@@ -611,11 +628,7 @@ export function Catalog({ kind, mode }) {
                 ["expired", "만료된 강의"],
                 ["saved-teachers", "찜한 선생님"],
               ]
-            : [
-                ["lectures", "강의 찾기"],
-                ["teachers", "선생님 찾기"],
-                ["posts", "학생 찾기"],
-              ]
+            : browseMenu
           ).map(([id, label]) => (
             <a key={id} href={"#" + id} className={mode === id ? "active" : ""}>
               {label}
@@ -778,7 +791,9 @@ export function Catalog({ kind, mode }) {
                       key={item.id}
                       item={item}
                       kind={kind}
-                      onClick={() => (user ? detail(kind, item.id) : login())}
+                      onClick={() =>
+                        user ? detail(kind, item.id, item) : login()
+                      }
                     />
                   ))}
                 </div>
@@ -1056,14 +1071,7 @@ export function Profile({ onLogout }) {
               이메일
               <input value={user.email || ""} readOnly />
             </label>
-            <label>
-              지역
-              <input
-                name="region"
-                defaultValue={user.region || ""}
-                placeholder="예: 서울 강남구"
-              />
-            </label>
+            <RegionFields label="지역" value={user.region || ""} />
             <label>
               관심 분야
               <input

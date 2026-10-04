@@ -1,6 +1,6 @@
 import React, { useContext, useState } from "react";
 import { api } from "./api";
-import { Ctx, Btn, Modal } from "./shared";
+import { AcademicFields, Ctx, Btn, Modal, RegionFields } from "./shared";
 
 // Mirrors SignupAccountView, SignupVerifyPhoneView and the role-specific surveys.
 export function Auth({ onClose, initial = "login" }) {
@@ -287,10 +287,7 @@ export function Auth({ onClose, initial = "login" }) {
                   </select>
                 </label>
               </div>
-              <label>
-                활동 지역
-                <input name="region" required placeholder="서울 강남구" />
-              </label>
+              <RegionFields required />
               <label>
                 관심 과목
                 <select name="subjects" multiple size={5}>
@@ -304,23 +301,7 @@ export function Auth({ onClose, initial = "login" }) {
               </label>
               {role === "instructor" && (
                 <>
-                  <label>
-                    학교
-                    <input name="university" required />
-                  </label>
-                  <label>
-                    학과
-                    <input name="department" required />
-                  </label>
-                  <label>
-                    입학 연도
-                    <input
-                      name="student_number"
-                      pattern="[0-9]{4}"
-                      placeholder="2024"
-                      required
-                    />
-                  </label>
+                  <AcademicFields />
                   <label>
                     선생님 소개
                     <textarea name="instruction" rows={3} />

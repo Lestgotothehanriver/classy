@@ -29,7 +29,6 @@ import {
   RefreshCw,
   LockKeyhole,
   LoaderCircle,
-  Plus,
   Check,
   Upload,
   Leaf,
@@ -38,12 +37,13 @@ import { api, list } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
 import { Services, ReportForm } from "./services";
-import { Registration } from "./contracts";
+import { Registration, registrationStatus } from "./contracts";
 import "./redesign.css";
 import {
   Ctx,
   money,
   date,
+  formatVideoDuration,
   useLoad,
   Btn,
   Empty,
@@ -61,6 +61,20 @@ import {
   endpoints,
   pageNames,
 } from "./design";
+
+const chatNotificationTypes = new Set([
+  "message",
+  "tutoring_request",
+  "tutoring_proposal",
+  "tutoring_accept",
+]);
+
+const contractNotificationTypes = new Set([
+  "tutoring_contract_confirmed",
+  "tutoring_contract_failed",
+  "tutoring_contract_mismatch",
+]);
+
 function App() {
   const uploadLock = useRef(false);
   const [activeRole, setActiveRole] = useState(
@@ -73,9 +87,14 @@ function App() {
   );
   const [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
+  const [pendingChatRoomId, setPendingChatRoomId] = useState(null);
   const pageRef = useRef(page);
   pageRef.current = page;
   const subjects = useLoad("/accounts/subjects/");
+  const unreadNotifications = useLoad(
+    user ? "/notification/unread-count/" : null,
+    [user?.id],
+  );
   const notify = (msg) => setToast(msg);
   function logoutLocal() {
     for (const key of ["classy_token", "classy_roles", "classy_role"])
@@ -129,9 +148,54 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const refresh = () => unreadNotifications.reload();
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [user?.id]);
   const go = (p) => {
     location.hash = p;
   };
+
+  function openNotificationTarget(notification) {
+    const targetRole = notification?.role;
+    const currentRole = activeRole || user?.role;
+
+    if (
+      ["student", "instructor"].includes(targetRole) &&
+      targetRole !== currentRole
+    ) {
+      setActiveRole(targetRole);
+      sessionStorage.setItem("classy_role", targetRole);
+    }
+
+    if (chatNotificationTypes.has(notification?.type)) {
+      const roomId = notification?.data?.room_id?.toString();
+      if (!roomId) return false;
+      setPendingChatRoomId(roomId);
+      go("chat");
+      return true;
+    }
+
+    if (contractNotificationTypes.has(notification?.type)) {
+      go("tutoring-manage");
+      return true;
+    }
+
+    if (notification?.type === "instructor_status") {
+      go("verification");
+      return true;
+    }
+
+    return false;
+  }
+
   async function logout() {
     if (uploadLock.current) {
       notify("강의 등록이 완료된 후 로그아웃해 주세요.");
@@ -148,6 +212,9 @@ function App() {
   const effectiveUser = user
     ? { ...user, role: activeRole || user.role }
     : null;
+  const unreadNotificationCount = Number(
+    unreadNotifications.data?.[effectiveUser?.role],
+  ) || 0;
   const context = {
     user: effectiveUser,
     setUser,
@@ -159,12 +226,15 @@ function App() {
       setToast("");
       setModal({ type: "login" });
     },
-    detail: (kind, id) => {
+    detail: (kind, id, item) => {
       setToast("");
-      setModal({ type: "detail", kind, id });
+      setModal({ type: "detail", kind, id, item });
     },
     refreshUser: () => api("/accounts/me/").then(setUser),
+    unreadNotificationCount,
+    refreshNotificationUnreadCount: unreadNotifications.reload,
     setRole: (role) => changeRole(role),
+    openNotificationTarget,
     signup: () => setModal({ type: "signup" }),
   };
   const changeRole = (role) => {
@@ -205,7 +275,7 @@ function App() {
               description="진행 중인 상담과 수업 이야기를 확인하세요."
             />
             <Gate>
-              <Chat />
+              <Chat initialRoomId={pendingChatRoomId} />
             </Gate>
           </>
         ) : ["upload", "studio"].includes(page) ? (
@@ -255,13 +325,14 @@ function App() {
         <Detail
           kind={modal.kind}
           id={modal.id}
+          item={modal.item}
           onClose={() => setModal(null)}
         />
       )}
     </Ctx.Provider>
   );
 }
-function Detail({ kind, id, onClose }) {
+function Detail({ kind, id, item, onClose }) {
   const { notify, user, refreshUser } = useContext(Ctx);
   const base = (endpoints[kind] || "/lectures/") + id + "/";
   const resource = useLoad(base);
@@ -269,8 +340,44 @@ function Detail({ kind, id, onClose }) {
     [video, setVideo] = useState(""),
     [liked, setLiked] = useState(null),
     [rented, setRented] = useState(false),
-    [rentConfirm, setRentConfirm] = useState(false);
+    [rentConfirm, setRentConfirm] = useState(false),
+    [postTab, setPostTab] = useState("info");
   const d = resource.data?.lecture_info || resource.data || {};
+  const isPost = kind === "posts";
+  const isTeacher = kind === "teachers";
+  const reviews = useLoad(
+    isPost && postTab === "reviews" && d.student?.id
+      ? `/tutoring/students/${d.student.id}/reviews/`
+      : null,
+    [isPost, postTab, d.student?.id],
+  );
+  const methodLabel =
+    d.method === "ONLINE" || d.method === "비대면"
+      ? "비대면"
+      : d.method === "OFFLINE" || d.method === "대면"
+        ? "대면"
+        : d.method || "상담 후 결정";
+  const textLabels = (values) =>
+    (Array.isArray(values) ? values : [])
+      .map((value) =>
+        typeof value === "object" ? value.label || value.name : value,
+      )
+      .filter(Boolean)
+      .join(", ");
+  const studentInfo = [
+    d.sex,
+    d.age != null ? `만 ${d.age}세` : "",
+    d.grade,
+    d.field,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const postAuthor =
+    item?.student_name || d.student_name || d.student?.user_name || "학생";
+  const postProfileImage =
+    item?.student_profile_image ||
+    d.student_profile_image ||
+    d.student?.profile_image;
   async function action(fn) {
     setBusy(true);
     try {
@@ -307,21 +414,58 @@ function Detail({ kind, id, onClose }) {
         ) : kind === "lectures" && d.thumbnail ? (
           <img className="detail-cover" src={d.thumbnail} alt="강의 썸네일" />
         ) : null}
-        <Subjects values={d.subjects} />
-        <h2 className="detail-title">
-          {d.title || d.user_name || d.instructor?.user_name || "수업 소개"}
-        </h2>
-        <p className="muted">
-          {[d.university, d.department, d.instructor?.user_name]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-        <p className="detail-text">
-          {d.content ||
-            d.instruction ||
-            d.situation ||
-            "등록된 상세 소개가 없습니다."}
-        </p>
+        {!isTeacher && isPost && (
+          <div className="post-detail-profile">
+            {postProfileImage ? (
+              <img src={postProfileImage} alt="" className="avatar" />
+            ) : (
+              <span className="avatar">{postAuthor.slice(0, 1)}</span>
+            )}
+            <div>
+              <b>{postAuthor}</b>
+              <p className="muted">
+                {[
+                  d.created_at ? date(d.created_at) : "",
+                  `조회 ${d.view_count || 0}회`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            {user?.role === "student" && (
+              <span
+                className={
+                  "post-status " + (d.is_active === false ? "closed" : "active")
+                }
+              >
+                {d.is_active === false ? "모집 마감" : "모집 중"}
+              </span>
+            )}
+          </div>
+        )}
+        {!isTeacher && (
+          <>
+            <Subjects values={d.subjects} />
+            <h2 className="detail-title">
+              {d.title || d.user_name || d.instructor?.user_name || "수업 소개"}
+            </h2>
+            {isPost ? null : (
+              <>
+                <p className="muted">
+                  {[d.university, d.department, d.instructor?.user_name]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                <p className="detail-text">
+                  {d.content ||
+                    d.instruction ||
+                    d.situation ||
+                    "등록된 상세 소개가 없습니다."}
+                </p>
+              </>
+            )}
+          </>
+        )}
         {kind === "lectures" ? (
           <>
             <div className="detail-facts">
@@ -337,9 +481,7 @@ function Detail({ kind, id, onClose }) {
               <span>
                 강의 길이
                 <strong>
-                  {d.video_duration
-                    ? Math.ceil(d.video_duration / 60) + "분"
-                    : "확인 중"}
+                  {formatVideoDuration(d.video_duration) || "확인 중"}
                 </strong>
               </span>
             </div>
@@ -428,17 +570,109 @@ function Detail({ kind, id, onClose }) {
             </p>
             <Comments id={id} />
           </>
+        ) : isPost ? (
+          <>
+            <div
+              className="registration-tabs detail-tabs"
+              role="tablist"
+              aria-label="학생 모집 공고 상세"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={postTab === "info"}
+                className={postTab === "info" ? "active" : ""}
+                onClick={() => setPostTab("info")}
+              >
+                과외 공고
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={postTab === "reviews"}
+                className={postTab === "reviews" ? "active" : ""}
+                onClick={() => setPostTab("reviews")}
+              >
+                과외 리뷰
+              </button>
+            </div>
+            {postTab === "info" ? (
+              <dl className="class-info-list post-detail-list">
+                <div>
+                  <dt>학생 정보</dt>
+                  <dd>{studentInfo || "정보 미입력"}</dd>
+                </div>
+                <div>
+                  <dt>수업 과목</dt>
+                  <dd>{textLabels(d.subjects) || "협의"}</dd>
+                </div>
+                <div>
+                  <dt>수업 방식</dt>
+                  <dd>{methodLabel}</dd>
+                </div>
+                <div>
+                  <dt>지역</dt>
+                  <dd>{textLabels(d.regions) || "협의"}</dd>
+                </div>
+                <div>
+                  <dt>수업료</dt>
+                  <dd>{d.cost ? `${money(d.cost)}원` : "협의"}</dd>
+                </div>
+                <div>
+                  <dt>수업 일정</dt>
+                  <dd>{d.schedule || "협의 가능"}</dd>
+                </div>
+                {d.situation && (
+                  <div>
+                    <dt>학생 상황</dt>
+                    <dd>{d.situation}</dd>
+                  </div>
+                )}
+                {d.etc && (
+                  <div>
+                    <dt>기타</dt>
+                    <dd>{d.etc}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <State resource={reviews}>
+                {list(reviews.data).length ? (
+                  <div className="review-list">
+                    {list(reviews.data).map((review) => (
+                      <article className="comment" key={review.id}>
+                        <b>
+                          {review.instructor_nickname ||
+                            review.instructor_label ||
+                            "선생님"}
+                          {review.rating ? ` · ${review.rating}점` : ""}
+                        </b>
+                        <p>{review.comment}</p>
+                        {review.created_at && (
+                          <small className="muted">{date(review.created_at)}</small>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">등록된 과외 리뷰가 없습니다.</p>
+                )}
+              </State>
+            )}
+            <Proposal kind={kind} id={id} onClose={onClose} />
+          </>
+        ) : isTeacher ? (
+          <>
+            <TeacherProfile id={id} teacher={d} item={item} />
+            <Proposal kind={kind} id={id} onClose={onClose} />
+          </>
         ) : (
           <>
             <div className="detail-facts">
               <span>
                 수업 방식
                 <strong>
-                  {d.method === "ONLINE"
-                    ? "온라인"
-                    : d.method === "OFFLINE"
-                      ? "대면"
-                      : "상담 후 결정"}
+                  {methodLabel}
                 </strong>
               </span>
               <span>
@@ -451,7 +685,6 @@ function Detail({ kind, id, onClose }) {
                 일정<strong>{d.schedule || "협의 가능"}</strong>
               </span>
             </div>
-            {kind === "teachers" && <TeacherInfo id={id} />}
             <Proposal kind={kind} id={id} onClose={onClose} />
           </>
         )}
@@ -578,41 +811,293 @@ function Proposal({ kind, id, onClose }) {
     </div>
   );
 }
-function TeacherInfo({ id }) {
-  const info = useLoad(`/tutoring/instructors/${id}/info/`),
-    reviews = useLoad(`/tutoring/instructors/${id}/reviews/`);
+function TeacherProfile({ id, teacher, item }) {
+  const { user, notify, detail } = useContext(Ctx);
+  const [tab, setTab] = useState("lectures");
+  const info = useLoad(`/tutoring/instructors/${id}/info/`);
+  const reviews = useLoad(`/tutoring/instructors/${id}/reviews/`);
+  const lectures = useLoad(`/lectures/?instructor=${id}`);
+  const profile = { ...(item || {}), ...(teacher || {}) };
+  const [liked, setLiked] = useState(Boolean(profile.is_liked));
+  const [likeCount, setLikeCount] = useState(Number(profile.like_count || 0));
+
+  useEffect(() => {
+    setLiked(Boolean(profile.is_liked));
+    setLikeCount(Number(profile.like_count || 0));
+  }, [profile.id, profile.is_liked, profile.like_count]);
+
+  const textLabels = (values) =>
+    (Array.isArray(values) ? values : [])
+      .map((value) =>
+        typeof value === "object" ? value.label || value.name : value,
+      )
+      .filter(Boolean)
+      .join(", ");
+  const birthDate = profile.birth_date ? new Date(profile.birth_date) : null;
+  const today = new Date();
+  const age =
+    birthDate && !Number.isNaN(birthDate.valueOf())
+      ? Math.max(
+          0,
+          today.getFullYear() -
+            birthDate.getFullYear() -
+            (today.getMonth() < birthDate.getMonth() ||
+            (today.getMonth() === birthDate.getMonth() &&
+              today.getDate() < birthDate.getDate())
+              ? 1
+              : 0),
+        )
+      : null;
+  const methodLabel = (method) =>
+    method === "ONLINE" || method === "비대면"
+      ? "비대면"
+      : method === "OFFLINE" || method === "대면"
+        ? "대면"
+        : method || "협의";
+  const infoData = info.data || {};
+  const reviewRows = list(reviews.data);
+  const ratingAverage = (field) => {
+    const scores = reviewRows
+      .map((review) => Number(review[field]))
+      .filter((score) => Number.isFinite(score));
+    return scores.length
+      ? scores.reduce((total, score) => total + score, 0) / scores.length
+      : 0;
+  };
+  const professional = ratingAverage("professionalism");
+  const teaching = ratingAverage("teaching_skill");
+  const punctuality = ratingAverage("punctuality");
+  const averageRating = reviewRows.length
+    ? (professional + teaching + punctuality) / 3
+    : Number(infoData.avg_rating || profile.average_rate || 0);
+  const studentNumber = profile.student_number
+    ? `${String(profile.student_number).slice(2)}학번`
+    : "";
+
+  async function toggleLike() {
+    try {
+      const result = await api(`/tutoring/instructors/${id}/like/`, {
+        method: "POST",
+      });
+      const next = result.is_liked ?? !liked;
+      setLiked(next);
+      setLikeCount((count) => Math.max(0, count + (next ? 1 : -1)));
+    } catch (error) {
+      notify(error.message);
+    }
+  }
+
   return (
-    <>
+    <section className="teacher-profile-detail">
+      <div className="teacher-profile-header">
+        {profile.profile_image ? (
+          <img src={profile.profile_image} alt="" className="avatar profile-avatar" />
+        ) : (
+          <span className="avatar profile-avatar">
+            {(profile.user_name || "선").slice(0, 1)}
+          </span>
+        )}
+        <div className="teacher-profile-identity">
+          <h2>
+            {profile.user_name || "선생님"}
+            {profile.is_certified && <ShieldCheck size={17} aria-label="인증된 선생님" />}
+          </h2>
+          <p>{[profile.university, profile.department, studentNumber].filter(Boolean).join(" · ")}</p>
+        </div>
+        {user?.role === "student" && (
+          <button
+            type="button"
+            className={"teacher-profile-like " + (liked ? "liked" : "")}
+            aria-label={liked ? "선생님 찜 취소" : "선생님 찜하기"}
+            onClick={toggleLike}
+          >
+            <Heart size={21} fill={liked ? "currentColor" : "none"} />
+            <small>{likeCount}</small>
+          </button>
+        )}
+      </div>
+      <div className="teacher-profile-meta">
+        {[profile.sex, age != null ? `만 ${age}세` : "", profile.region]
+          .filter(Boolean)
+          .join(" · ") || "정보 미입력"}
+      </div>
+      <Subjects values={profile.subjects} />
+      {profile.instruction && (
+        <p className="teacher-profile-introduction">
+          선생님 한 줄 소개: {profile.instruction}
+        </p>
+      )}
       <State resource={info}>
         {info.data && (
-          <div className="info-panel">
-            <h3>수업 안내</h3>
-            <p>
-              {info.data.instruction ||
-                info.data.etc ||
-                "선생님과 상담하며 수업을 정해 보세요."}
-            </p>
-            <p>
-              {info.data.cost_display || ""} {info.data.schedule || ""}{" "}
-              {info.data.location || ""}
-            </p>
-          </div>
-        )}
-      </State>
-      <h3>수강 후기</h3>
-      <State resource={reviews}>
-        {list(reviews.data).length ? (
-          list(reviews.data).map((r, i) => (
-            <div className="comment" key={r.id || i}>
-              <b>{r.student_name || r.user_name || "수강생"}</b>
-              <p>{r.comment || r.content || r.review}</p>
+          <section className="teacher-profile-stats">
+            <div>
+              <span>과외 상태</span>
+              <strong>{infoData.is_tutoring ? "모집 중" : "구하지 않음"}</strong>
             </div>
-          ))
-        ) : (
-          <p className="muted">아직 등록된 후기가 없어요.</p>
+            {infoData.is_tutoring && (
+              <>
+                <div>
+                  <span>클래씨에서 과외 구한 건 수</span>
+                  <strong>{infoData.tutoring_count ? `${infoData.tutoring_count}건` : "-"}</strong>
+                </div>
+                <div>
+                  <span>평균 수업료</span>
+                  <strong>{infoData.average_cost ? `${money(infoData.average_cost)}원` : "-"}</strong>
+                </div>
+                <div>
+                  <span>과외 리뷰 평점</span>
+                  <strong>{averageRating ? `${averageRating.toFixed(1)} (${reviewRows.length})` : "-"}</strong>
+                </div>
+                <div>
+                  <span>클래씨 랭킹</span>
+                  <strong>{infoData.current_rank ? `${infoData.current_rank}위` : "-"}</strong>
+                </div>
+              </>
+            )}
+          </section>
         )}
       </State>
-    </>
+      <div
+        className="registration-tabs detail-tabs"
+        role="tablist"
+        aria-label="선생님 프로필 상세"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "lectures"}
+          className={tab === "lectures" ? "active" : ""}
+          onClick={() => setTab("lectures")}
+        >
+          강의
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "info"}
+          className={tab === "info" ? "active" : ""}
+          onClick={() => setTab("info")}
+        >
+          과외 정보
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "reviews"}
+          className={tab === "reviews" ? "active" : ""}
+          onClick={() => setTab("reviews")}
+        >
+          과외 리뷰
+        </button>
+      </div>
+      {tab === "lectures" && (
+        <State resource={lectures}>
+          {list(lectures.data).length ? (
+            <div className="teacher-profile-lectures">
+              {list(lectures.data).map((lecture) => (
+                <button
+                  type="button"
+                  key={lecture.id}
+                  className="teacher-lecture-row"
+                  onClick={() => detail("lectures", lecture.id, lecture)}
+                >
+                  {lecture.thumbnail ? (
+                    <img src={lecture.thumbnail} alt="" />
+                  ) : (
+                    <span className="teacher-lecture-placeholder"><Play size={22} /></span>
+                  )}
+                  <span>
+                    <b>{lecture.title}</b>
+                    <small>
+                      조회 {lecture.view_count || 0}회 · 찜 {lecture.like_count || 0}
+                    </small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">강의가 아직 없어요.</p>
+          )}
+        </State>
+      )}
+      {tab === "info" && (
+        <State resource={info}>
+          {info.data && (
+            <dl className="class-info-list post-detail-list">
+              <div>
+                <dt>수업 과목</dt>
+                <dd>{textLabels(infoData.subjects) || "협의"}</dd>
+              </div>
+              <div>
+                <dt>수업 일정</dt>
+                <dd>{infoData.schedule || "일정 협의 필요"}</dd>
+              </div>
+              <div>
+                <dt>수업료</dt>
+                <dd>{infoData.cost != null ? `월 ${money(infoData.cost)}원 이하` : "협의 후 결정"}</dd>
+              </div>
+              <div>
+                <dt>수업 방식</dt>
+                <dd>{methodLabel(infoData.method)}</dd>
+              </div>
+              <div>
+                <dt>수업 가능 지역</dt>
+                <dd>{textLabels(infoData.regions) || infoData.location || "협의"}</dd>
+              </div>
+              {infoData.etc && (
+                <div>
+                  <dt>기타</dt>
+                  <dd>{infoData.etc}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </State>
+      )}
+      {tab === "reviews" && (
+        <State resource={reviews}>
+          {reviewRows.length ? (
+            <>
+              <section className="teacher-review-summary">
+                <b>{averageRating.toFixed(1)} / 5</b>
+                <span>({reviewRows.length})</span>
+                <div>
+                  <span>전문성 {professional.toFixed(1)}</span>
+                  <span>강의력 {teaching.toFixed(1)}</span>
+                  <span>시간 준수 {punctuality.toFixed(1)}</span>
+                </div>
+              </section>
+              <div className="review-list">
+                {reviewRows.map((review) => (
+                  <article className="comment teacher-review-card" key={review.id}>
+                    <div className="teacher-review-author">
+                      {review.student_profile_image ? (
+                        <img src={review.student_profile_image} alt="" className="avatar" />
+                      ) : (
+                        <span className="avatar">{(review.student_label || "학").slice(0, 1)}</span>
+                      )}
+                      <div>
+                        <b>{review.student_label || "학생"}</b>
+                        <small>{[review.class_type, review.created_at ? date(review.created_at) : ""].filter(Boolean).join(" · ")}</small>
+                      </div>
+                    </div>
+                    <Subjects values={review.subjects} />
+                    <p>{review.comment}</p>
+                    <div className="teacher-review-scores">
+                      <span>전문성 {review.professionalism}점</span>
+                      <span>강의력 {review.teaching_skill}점</span>
+                      <span>시간 준수 {review.punctuality}점</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="muted">아직 리뷰가 없어요.</p>
+          )}
+        </State>
+      )}
+    </section>
   );
 }
 function Comments({ id }) {
@@ -784,18 +1269,36 @@ function CommentRow({ comment: c, lecture, reload, reply = false }) {
 }
 function Notifications() {
   const [notificationPage, setNotificationPage] = useState(1);
-  const r = useLoad(`/notification/?page=${notificationPage}`);
-  const { notify } = useContext(Ctx);
+  const {
+    notify,
+    user,
+    openNotificationTarget,
+    refreshNotificationUnreadCount,
+  } = useContext(Ctx);
+  const r = useLoad(
+    `/notification/?page=${notificationPage}&role=${user.role}`,
+  );
+
+  async function openNotification(notification) {
+    try {
+      await api(`/notification/${notification.id}/read/`, { method: "PATCH" });
+      refreshNotificationUnreadCount();
+      if (!openNotificationTarget(notification)) r.reload();
+    } catch (e) {
+      notify(e.message);
+    }
+  }
+
   return (
     <>
       <div className="actions">
         <Btn
           onClick={async () => {
             try {
-              await api("/notification/read-all/", {
-                method: "POST",
-                body: {},
+              await api(`/notification/read-all/?role=${user.role}`, {
+                method: "PATCH",
               });
+              refreshNotificationUnreadCount();
               r.reload();
             } catch (e) {
               notify(e.message);
@@ -819,16 +1322,7 @@ function Notifications() {
                 <button
                   key={n.id}
                   className={"notification " + (n.is_read ? "read" : "")}
-                  onClick={async () => {
-                    try {
-                      await api(`/notification/${n.id}/read/`, {
-                        method: "POST",
-                      });
-                      r.reload();
-                    } catch (e) {
-                      notify(e.message);
-                    }
-                  }}
+                  onClick={() => openNotification(n)}
                 >
                   <Bell size={20} />
                   <span>
@@ -844,6 +1338,7 @@ function Notifications() {
                   onClick={async () => {
                     try {
                       await api(`/notification/${n.id}/`, { method: "DELETE" });
+                      refreshNotificationUnreadCount();
                       r.reload();
                     } catch (e) {
                       notify(e.message);
@@ -866,7 +1361,7 @@ function Notifications() {
     </>
   );
 }
-function Chat() {
+function Chat({ initialRoomId }) {
   const { user, notify } = useContext(Ctx);
   const rooms = useLoad("/chatrooms/?role=" + user.role);
   const [selected, setSelected] = useState(null),
@@ -874,10 +1369,32 @@ function Chat() {
     [error, setError] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
+  const registrationResource = useLoad(
+    selected ? `/tutoring/resources/chatrooms/${selected}/` : null,
+    [selected],
+    { keepDataOnReload: true },
+  );
+  const registrationData =
+    Number(registrationResource.data?.chatRoomId) === selected
+      ? registrationResource.data
+      : null;
+  const registrationComplete = registrationData
+    ? registrationStatus(registrationData).isComplete
+    : false;
   const end = useRef();
   const lastRead = useRef("");
-  const [attachments, setAttachments] = useState([]),
-    [registration, setRegistration] = useState(false);
+  const [registration, setRegistration] = useState(false);
+  useEffect(() => {
+    if (!initialRoomId) return;
+    const targetRoom = list(rooms.data).find(
+      (item) => String(item.id) === initialRoomId,
+    );
+    if (!targetRoom) return;
+
+    setSelected(targetRoom.id);
+    setText("");
+    setRegistration(false);
+  }, [initialRoomId, rooms.data]);
   useEffect(() => {
     if (!selected) return;
     let alive = true,
@@ -923,27 +1440,24 @@ function Chat() {
     };
   }, [selected, user.role]);
   useEffect(() => {
+    if (!selected || registration) return undefined;
+    const timer = window.setInterval(() => registrationResource.reload(), 10000);
+    return () => window.clearInterval(timer);
+  }, [selected, registration]);
+  useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
   }, [room?.messages?.length]);
   async function send(e) {
     e.preventDefault();
-    if ((!text.trim() && !attachments.length) || busy) return;
+    if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      let img_ids = [];
-      if (attachments.length) {
-        const body = new FormData();
-        attachments.forEach((f) => body.append("images", f));
-        const uploaded = await api("/images/", { method: "POST", body });
-        img_ids = uploaded.image_ids;
-      }
       const m = await api(`/chatrooms/${selected}/message/`, {
         method: "POST",
-        body: { text: text.trim(), ...(img_ids.length ? { img_ids } : {}) },
+        body: { text: text.trim() },
       });
       setRoom((r) => ({ ...r, messages: [...(r.messages || []), m] }));
       setText("");
-      setAttachments([]);
       rooms.reload();
     } catch (e) {
       notify(e.message);
@@ -964,7 +1478,7 @@ function Chat() {
                 onClick={() => {
                   setSelected(r.id);
                   setText("");
-                  setAttachments([]);
+                  setRegistration(false);
                 }}
               >
                 <span className="avatar">
@@ -1006,8 +1520,11 @@ function Chat() {
                     "대화"}
                 </b>
                 <div className="actions">
-                  <Btn disabled={!room} onClick={() => setRegistration(true)}>
-                    성사 등록
+                  <Btn
+                    disabled={!room || registrationResource.loading}
+                    onClick={() => setRegistration(true)}
+                  >
+                    {registrationComplete ? "수업 정보" : "성사 등록"}
                   </Btn>
                   <Btn
                     disabled={!room}
@@ -1141,28 +1658,6 @@ function Chat() {
                 <div ref={end} />
               </div>
               <form onSubmit={send} className="message-form">
-                <label className="chat-attach" title="이미지 첨부">
-                  +
-                  <input
-                    type="file"
-                    aria-label="대화 이미지 첨부"
-                    multiple
-                    accept="image/*"
-                    disabled={busy || !room}
-                    onChange={(e) => {
-                      const files = [...e.target.files];
-                      if (
-                        files.length > 5 ||
-                        files.some((f) => f.size > 10 * 1024 * 1024)
-                      ) {
-                        notify("이미지는 10MB 이하, 최대 5개까지 첨부하세요.");
-                        return;
-                      }
-                      setAttachments(files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
                 <input
                   aria-label="메시지"
                   placeholder="메시지를 입력하세요"
@@ -1173,36 +1668,26 @@ function Chat() {
                 />
                 <Btn
                   className="primary"
-                  disabled={
-                    busy || (!text.trim() && !attachments.length) || !room
-                  }
+                  disabled={busy || !text.trim() || !room}
                   aria-label="메시지 보내기"
                 >
                   <Send size={18} />
                 </Btn>
               </form>
-              {attachments.length > 0 && (
-                <div className="actions">
-                  {attachments.map((f, i) => (
-                    <button
-                      key={i}
-                      className="text-button"
-                      onClick={() =>
-                        setAttachments((a) => a.filter((_, n) => n !== i))
-                      }
-                    >
-                      {f.name} ×
-                    </button>
-                  ))}
-                </div>
-              )}
               <ReportForm source="chat" id={selected} />
             </>
           )}
         </div>
       </div>
       {registration && room && (
-        <Registration room={room} onClose={() => setRegistration(false)} />
+        <Registration
+          room={room}
+          onClose={() => {
+            setRegistration(false);
+            registrationResource.reload();
+          }}
+          onUpdated={registrationResource.reload}
+        />
       )}
     </>
   );

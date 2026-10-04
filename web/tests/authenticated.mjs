@@ -52,6 +52,7 @@ assert.deepEqual(writes.find(w=>w.path==='/cash/rentals/').body,{lecture_id:7});
 await page.keyboard.press('Escape');
 await page.getByRole('link',{name:'채팅',exact:true}).click();
 await page.getByRole('button',{name:/테스트 선생님/}).click();
+assert.equal(await page.getByLabel('대화 이미지 첨부').count(),0);
 await page.getByRole('textbox',{name:'메시지',exact:true}).fill('모의 전송');
 await page.getByRole('button',{name:'메시지 보내기',exact:true}).click();
 await page.getByText('모의 전송',{exact:true}).waitFor({timeout:7000}).catch(async e=>{console.log(JSON.stringify({writes,errors,text:await page.locator('body').innerText()}));await page.screenshot({path:'test-results/chat-error.png'});throw e;});

@@ -213,6 +213,39 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(registration.contract_status, "ACTIVE")
         self.assertEqual(Notification.objects.count(), 2)
 
+    def test_completed_registration_cannot_be_edited(self):
+        self.student_client.put(self.url, self.student_payload(), format="json")
+        self.instructor_client.put(
+            self.url,
+            self.instructor_payload(),
+            format="multipart",
+        )
+        resource = TutoringResource.objects.get()
+        confirm_fee_payment(
+            Mock(),
+            Mock(),
+            TutoringResource.objects.filter(pk=resource.pk),
+        )
+
+        response = self.student_client.put(
+            self.url,
+            self.student_payload(fee=600000),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["detail"],
+            "성사 등록 완료 후에는 수정할 수 없습니다.",
+        )
+        self.assertEqual(
+            TutoringSubmission.objects.get(
+                registration__chat_room=self.room,
+                role=TutoringSubmission.Role.STUDENT,
+            ).first_month_fee,
+            500000,
+        )
+
     def test_admin_exposes_submissions_payback_and_direct_payment_edit(self):
         self.student_client.put(self.url, self.student_payload(), format="json")
         self.instructor_client.put(

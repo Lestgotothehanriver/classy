@@ -288,7 +288,7 @@ function UploadForm({ onComplete, onBusy }) {
     draft.subjects.forEach((x) => body.append("subjects", x));
     body.append("video", video);
     body.append("thumbnail", thumbnail);
-    body.append("video_duration", String(Math.ceil(duration)));
+    body.append("video_duration", String(Math.floor(duration)));
     try {
       await uploadLecture(body, setProgress);
       localStorage.removeItem(key);

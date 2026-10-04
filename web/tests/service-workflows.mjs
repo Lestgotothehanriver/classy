@@ -21,9 +21,23 @@ const post = {
   regions: ["서울 강남구"],
   cost: 100000,
   method: "대면",
-  grade: "사회인",
+  grade: "고2",
   schedule: "토요일",
+  relative_time: "방금 전",
+  view_count: 7,
   is_active: true,
+};
+const postDetail = {
+  ...post,
+  subjects: [{ label: "미적분 I" }],
+  regions: [{ label: "서울 강남구" }],
+  sex: "여",
+  age: 17,
+  field: "이과",
+  situation: "내신 수학을 보완하고 싶어요.",
+  etc: "고등 수학 지도 경험이 있는 선생님을 원해요.",
+  created_at: "2026-10-04T09:00:00+09:00",
+  student: { id: 1 },
 };
 const room = {
   id: 4,
@@ -31,6 +45,29 @@ const room = {
   student: 1,
   opponent_info: { user_id: 2, user_name: "테스트 선생님" },
   messages: [],
+};
+let registrationComplete = false;
+const completedRegistration = {
+  chatRoomId: 4,
+  subject: "미적분 I",
+  startDate: "2026-10-01",
+  contractStatus: "ACTIVE",
+  studentSubmitted: true,
+  instructorSubmitted: true,
+  mySubmission: {
+    classType: "REGULAR",
+    firstMonthFee: 100000,
+  },
+};
+const tutoringResource = {
+  id: 9,
+  instructor: 2,
+  student: 1,
+  instructor_user_name: "테스트 선생님",
+  class_type: "정규 수업",
+  start_date: "2026-10-01",
+  fee_payment_status: "AWAITING_CONFIRMATION",
+  contract_status: "REGISTERED",
 };
 await page.route("**/api/**", async (route) => {
   const req = route.request(),
@@ -50,14 +87,29 @@ await page.route("**/api/**", async (route) => {
   else if (p === "/accounts/profile-check/")
     d = { available_roles: [{ role: "student" }] };
   else if (p === "/tutoring/my-posts/") d = [post];
+  else if (p === "/tutoring/posts/11/") d = postDetail;
+  else if (p === "/tutoring/students/1/reviews/")
+    d = [
+      {
+        id: 3,
+        instructor_nickname: "수학 선생님",
+        rating: 5,
+        comment: "성실하게 수업에 참여했어요.",
+        created_at: "2026-10-03T09:00:00+09:00",
+      },
+    ];
+  else if (p === "/tutoring/resources/") d = [tutoringResource];
   else if (p === "/chatrooms/") d = [room];
   else if (p === "/chatrooms/4/") d = room;
   else if (p === "/tutoring/resources/chatrooms/4/")
-    d = {
-      student: { id: 1 },
-      instructor: { id: 2 },
-      contractStatus: "COLLECTING",
-    };
+    d = registrationComplete
+      ? completedRegistration
+      : {
+          chatRoomId: 4,
+          student: { id: 1 },
+          instructor: { id: 2 },
+          contractStatus: "COLLECTING",
+        };
   await route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -66,6 +118,20 @@ await page.route("**/api/**", async (route) => {
 });
 try {
   await page.goto("http://127.0.0.1:4173/#tutoring-manage");
+  await page.getByText("관리자 확인 중", { exact: true }).waitFor();
+  await page
+    .getByRole("tab", { name: "성사 등록 진행 중", exact: true })
+    .click();
+  await page.getByText("관리자 확인 중", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: "전체", exact: true }).click();
+  await page.getByRole("button", { name: /나의 모집글/ }).click();
+  await page.getByText("학생 정보", { exact: true }).waitFor();
+  await page.getByText("여 · 만 17세 · 고2 · 이과", { exact: true }).waitFor();
+  await page.getByText("서울 강남구", { exact: true }).waitFor();
+  await page.getByText("고등 수학 지도 경험이 있는 선생님을 원해요.").waitFor();
+  await page.getByRole("tab", { name: "과외 리뷰", exact: true }).click();
+  await page.getByText("수학 선생님 · 5점", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "수정", exact: true }).click();
   assert.deepEqual(
     await page
@@ -123,6 +189,22 @@ try {
   assert.deepEqual(registration.body.subjectIds, [36]);
   assert.equal(registration.body.paybackAccount.bankCode, "국민은행");
   assert.equal(registration.body.firstMonthFee, 100000);
+  registrationComplete = true;
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "수업 정보", exact: true }).waitFor();
+  await page.getByRole("button", { name: "수업 정보", exact: true }).click();
+  await page.getByText("수업 과목", { exact: true }).waitFor();
+  await page.getByText("미적분 I", { exact: true }).waitFor();
+  await page.getByText("수업 시작일", { exact: true }).waitFor();
+  await page.getByText("2026.10.01", { exact: true }).waitFor();
+  await page.getByText("수업 형태", { exact: true }).waitFor();
+  await page.getByText("정규 수업", { exact: true }).waitFor();
+  await page.getByText("총 수업료", { exact: true }).waitFor();
+  await page.getByText("100,000원", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "성사 등록 제출", exact: true }).count(),
+    0,
+  );
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(

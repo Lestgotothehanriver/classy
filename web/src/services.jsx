@@ -1,6 +1,18 @@
 import React, { useContext, useState } from "react";
 import { api, list } from "./api";
-import { Ctx, Btn, Empty, State, useLoad, money, date, Modal } from "./shared";
+import {
+  Ctx,
+  Btn,
+  Empty,
+  State,
+  useLoad,
+  money,
+  date,
+  Modal,
+  Subjects,
+  AcademicFields,
+  BANKS,
+} from "./shared";
 import { PageHeading, pageNames } from "./design";
 import regions from "./regions.json";
 import { ClassHistory } from "./contracts";
@@ -196,6 +208,11 @@ function Cash() {
 function Settlement() {
   const resource = useLoad("/mypage/instructor/settlement-info/"),
     d = resource.data || {};
+  const currentBank = d.account_info?.bank || "";
+  const bankOptions =
+    currentBank && !BANKS.includes(currentBank)
+      ? [currentBank, ...BANKS]
+      : BANKS;
   return (
     <State resource={resource}>
       <section className="service-section">
@@ -220,8 +237,20 @@ function Settlement() {
         onDone={resource.reload}
         key={JSON.stringify(d.account_info)}
       >
+        <label>
+          은행
+          <select name="bank" defaultValue={currentBank} required>
+            <option value="" disabled>
+              은행을 선택해주세요
+            </option>
+            {bankOptions.map((bank) => (
+              <option key={bank} value={bank}>
+                {bank}
+              </option>
+            ))}
+          </select>
+        </label>
         {[
-          ["bank", "은행"],
           ["account_number", "계좌번호"],
           ["account_holder", "예금주"],
         ].map(([name, label]) => (
@@ -251,28 +280,88 @@ function Settlement() {
 function Verification() {
   const resource = useLoad("/pending/"),
     d = resource.data || {};
+  const [editing, setEditing] = useState(false);
+  const statusCode = d.status || "NOT_SUBMITTED";
   const status = {
     VERIFIED: "인증 완료",
     PENDING: "심사 중",
+    RESUBMIT_REQUIRED: "재제출 필요",
+    SUSPENDED: "보완 필요",
     REJECTED: "보완 필요",
     NOT_SUBMITTED: "미제출",
   };
+  const canEditAcademicInfo = statusCode !== "PENDING";
+  const canSubmitDocuments = !["VERIFIED", "PENDING"].includes(statusCode);
+  const currentStudentNumber = String(d.student_number || "");
+
   return (
     <State resource={resource}>
       <section className="service-section">
-        <h2>{status[d.status] || "인증 서류를 제출해 주세요"}</h2>
-        <p>
-          {d.university} {d.field}
-        </p>
+        <h2>{status[statusCode] || "인증 서류를 제출해 주세요"}</h2>
+        <h3>선생님 학력 정보</h3>
+        <dl className="class-info-list">
+          <div>
+            <dt>학교</dt>
+            <dd>{d.university || "미입력"}</dd>
+          </div>
+          <div>
+            <dt>학과/전공</dt>
+            <dd>{d.field || "미입력"}</dd>
+          </div>
+          <div>
+            <dt>입학연도</dt>
+            <dd>{currentStudentNumber ? `${currentStudentNumber}년` : "미입력"}</dd>
+          </div>
+        </dl>
+        {canEditAcademicInfo ? (
+          <Btn type="button" onClick={() => setEditing((value) => !value)}>
+            {editing ? "수정 취소" : "학력 정보 수정"}
+          </Btn>
+        ) : (
+          <p className="form-note">
+            인증 서류 검토 중에는 학력 정보를 수정할 수 없습니다.
+          </p>
+        )}
         {d.rejection_reason && <p className="error">{d.rejection_reason}</p>}
       </section>
-      {!["VERIFIED", "PENDING"].includes(d.status) && (
+      {editing && (
+        <ActionForm
+          title="학교 정보 수정"
+          path="/accounts/signup/instructor/"
+          method="PATCH"
+          submit="저장"
+          transform={(form) => ({
+            university: form.get("university").trim(),
+            department: form.get("department").trim(),
+            student_number: form.get("student_number").trim(),
+          })}
+          onDone={() => {
+            setEditing(false);
+            resource.reload();
+          }}
+        >
+          <AcademicFields
+            university={d.university || ""}
+            department={d.field || ""}
+            studentNumber={currentStudentNumber}
+          />
+          {statusCode === "VERIFIED" && (
+            <p className="form-note">
+              인증 완료 후 학력 정보를 변경하면 인증 서류를 다시 제출해야 합니다.
+            </p>
+          )}
+        </ActionForm>
+      )}
+      {canSubmitDocuments && (
         <ActionForm
           title="학력 인증 서류"
           path={d.exists ? "/pending/upload/" : "/pending/"}
           multipart
           submit={d.exists ? "서류 다시 제출" : "인증 신청"}
-          onDone={resource.reload}
+          onDone={() => {
+            setEditing(false);
+            resource.reload();
+          }}
         >
           <label>
             재학·졸업 등 증빙 서류
@@ -369,18 +458,7 @@ function Account({ onLogout }) {
           >
             {missing === "instructor" && (
               <>
-                <label>
-                  학교
-                  <input name="university" required />
-                </label>
-                <label>
-                  학과
-                  <input name="department" required />
-                </label>
-                <label>
-                  입학 연도
-                  <input name="student_number" pattern="[0-9]{4}" required />
-                </label>
+                <AcademicFields />
                 <label>
                   소개
                   <textarea name="instruction" />
@@ -452,12 +530,13 @@ function Support() {
 }
 
 function Tutoring() {
-  const { user, subjects, notify } = useContext(Ctx),
+  const { user, subjects, notify, detail } = useContext(Ctx),
     teacher = user.role === "instructor";
   const resource = useLoad(
     teacher ? "/tutoring/instructor-info/mine/" : "/tutoring/my-posts/",
   );
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState(null),
+    [postTab, setPostTab] = useState("active");
   const rows = teacher
     ? resource.data
       ? [resource.data]
@@ -466,6 +545,11 @@ function Tutoring() {
   const base = teacher
     ? "/tutoring/instructor-info/"
     : "/tutoring/posts/write/";
+  const visibleRows = teacher
+    ? rows
+    : rows.filter((post) =>
+        postTab === "active" ? post.is_active !== false : post.is_active === false,
+      );
   return (
     <State resource={resource}>
       <section className="service-section">
@@ -475,14 +559,56 @@ function Tutoring() {
             {teacher ? "소개 작성·수정" : "새 모집 공고"}
           </Btn>
         </div>
-        {rows.map((x) => (
+        {!teacher && (
+          <div
+            className="registration-tabs"
+            role="tablist"
+            aria-label="모집 공고 상태"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={postTab === "active"}
+              className={postTab === "active" ? "active" : ""}
+              onClick={() => setPostTab("active")}
+            >
+              모집 중
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={postTab === "closed"}
+              className={postTab === "closed" ? "active" : ""}
+              onClick={() => setPostTab("closed")}
+            >
+              마감
+            </button>
+          </div>
+        )}
+        {visibleRows.map((x) => (
           <article className="history-row" key={x.id}>
-            <div>
+            <button
+              type="button"
+              className="post-management-card"
+              onClick={() =>
+                detail(teacher ? "teachers" : "posts", x.id, x)
+              }
+            >
               <b>{x.title || "과외 소개"}</b>
-              <p className="muted">
-                {x.schedule} · {money(x.cost)}원
-              </p>
-            </div>
+              {teacher ? (
+                <p className="muted">
+                  {x.schedule} · {money(x.cost)}원
+                </p>
+              ) : (
+                <>
+                  <Subjects values={x.subjects} />
+                  <p className="muted">
+                    조회 {x.view_count || 0}회 ·{" "}
+                    {x.relative_time || date(x.created_at)}
+                  </p>
+                </>
+              )}
+            </button>
             <div className="actions">
               <Btn onClick={() => setEditing(x)}>수정</Btn>
               {!teacher && (
@@ -518,7 +644,15 @@ function Tutoring() {
             </div>
           </article>
         ))}
-        {!rows.length && <p className="muted">작성한 글이 없습니다.</p>}
+        {!visibleRows.length && (
+          <p className="muted">
+            {teacher
+              ? "작성한 글이 없습니다."
+              : postTab === "active"
+                ? "모집 중인 공고가 없습니다."
+                : "마감된 공고가 없습니다."}
+          </p>
+        )}
       </section>
       {editing && (
         <ActionForm

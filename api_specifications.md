@@ -187,7 +187,7 @@
 | 읽은 알림 일괄 삭제 | `DELETE` | `/notification/` | 없음 | 수신된 알림 중 이미 읽음 처리(`is_read=True`)된 모든 알림을 목록에서 삭제합니다. |
 | 안 읽은 알림 수 조회 | `GET` | `/notification/unread-count/` | 없음 | 본인의 역할별(학생/강사) 아직 읽지 않은 알림 카운트 수를 반환합니다. (뱃지용) |
 | 특정 알림 읽음 처리 | `PATCH` | `/notification/<int:pk>/read/` | **[Path]**<br>- `pk` (int, 알림 ID) | 지정한 단일 알림을 읽음(`is_read=True`) 상태로 전환하고 변경된 정보를 반환합니다. |
-| 모든 알림 일괄 읽음 | `PATCH` | `/notification/read-all/` | 없음 | 본인이 수신한 전체 미독 알림을 일괄 읽음 처리합니다. |
+| 모든 알림 일괄 읽음 | `PATCH` | `/notification/read-all/` | **[Query]**<br>- `role` ('student'/'instructor', 선택) | 본인이 수신한 전체 미독 알림을 일괄 읽음 처리합니다. 역할을 지정하면 해당 역할 알림만 처리합니다. |
 | FCM 디바이스 토큰 조회 | `GET` | `/device-token/` | 없음 | FCM 푸시 전송용으로 등록된 본인의 최신 디바이스 토큰 및 알림 종류별 동의 여부를 확인합니다. |
 | FCM 디바이스 토큰 등록 | `POST` | `/device-token/` | **[Body (JSON)]**<br>- `token` (str, 필수)<br>- `platform` (str, 선택)<br>- `is_active` (bool, 선택)<br>- `is_chat_active` (bool, 선택) | 새 FCM 디바이스 토큰을 계정에 맵핑하며, 중복된 다른 유저의 토큰 맵핑은 자동 삭제합니다. |
 | FCM 알림 상태 토글 | `PUT` | `/device-token/` | **[Body (JSON)]** (선택)<br>- `is_active` (bool)<br>- `is_chat_active` (bool) | 전체 푸시 알림 수신 상태(`is_active`) 또는 채팅 알림 수신 상태(`is_chat_active`)를 명시적으로 전달받아 수정하거나 토글합니다. |

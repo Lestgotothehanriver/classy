@@ -73,7 +73,8 @@ def extract_video_duration_seconds(video_file) -> int | None:
     if duration <= 0:
         return None
 
-    return round(duration)
+    # Flutter의 Duration.inSeconds 및 웹의 Math.floor와 동일하게 소수점은 버린다.
+    return int(duration)
 
 
 def probe_video_codecs(video_file) -> dict[str, str | None]:

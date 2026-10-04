@@ -1,18 +1,75 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { api, list } from "./api";
-import { Ctx, Modal, Btn, State, Empty, useLoad, money, date } from "./shared";
+import { BANKS, Ctx, Modal, Btn, State, Empty, useLoad, money, date } from "./shared";
 import { ActionForm } from "./services";
 
-export function Registration({ room, onClose }) {
+export function registrationStatus(data = {}) {
+  const contractStatus = String(
+    data.contractStatus ?? data.contract_status ?? "",
+  ).toUpperCase();
+  const paymentStatus = String(
+    data.payment?.status ??
+      data.feePaymentStatus ??
+      data.fee_payment_status ??
+      data.paymentStatus ??
+      data.payment_status ??
+      "",
+  ).toUpperCase();
+
+  if (["FAILED", "REJECTED", "DECLINED"].includes(paymentStatus)) {
+    return { label: "입금 확인 반려", tone: "rejected", isComplete: false };
+  }
+  if (contractStatus === "ACTIVE") {
+    return { label: "성사 등록 완료", tone: "complete", isComplete: true };
+  }
+  if (
+    contractStatus === "REGISTERED" ||
+    [
+      "PAID",
+      "AWAITING_PAYMENT",
+      "AWAITING_CONFIRMATION",
+      "PENDING",
+      "SUBMITTED",
+    ].includes(paymentStatus)
+  ) {
+    return { label: "관리자 확인 중", tone: "pending", isComplete: false };
+  }
+  return { label: "입금 확인 전", tone: "pending", isComplete: false };
+}
+
+export function Registration({ room, onClose, onUpdated }) {
   const { user, subjects, notify } = useContext(Ctx),
     base = `/tutoring/resources/chatrooms/${room.id}/`;
-  const resource = useLoad(base),
+  const resource = useLoad(base, [], { keepDataOnReload: true }),
     d = resource.data || {},
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const teacher = d.instructor?.id === user.id;
+  const currentStatus = registrationStatus(d);
+  const submission = d.mySubmission || {};
+  const classType =
+    submission.classType === "SHORT_TERM" ? "단기 수업" : "정규 수업";
+  const startDate = d.startDate
+    ? String(d.startDate).replaceAll("-", ".")
+    : "날짜 미정";
+  const subject = Array.isArray(d.subject)
+    ? d.subject.join(", ")
+    : d.subject || "과목 미정";
+  const shouldPoll =
+    (d.studentSubmitted || d.instructorSubmitted) &&
+    !currentStatus.isComplete &&
+    currentStatus.tone !== "rejected";
+  useEffect(() => {
+    if (!shouldPoll) return undefined;
+    const timer = window.setInterval(() => resource.reload(), 10000);
+    return () => window.clearInterval(timer);
+  }, [base, shouldPoll]);
   async function submit(e) {
     e.preventDefault();
+    if (currentStatus.isComplete) {
+      setError("성사 등록이 완료되어 수정할 수 없습니다.");
+      return;
+    }
     const f = new FormData(e.currentTarget),
       ids = f.getAll("subjectIds").map(Number);
     if (ids.length > 3) {
@@ -53,6 +110,7 @@ export function Registration({ room, onClose }) {
     try {
       await api(base + "my-registration/", { method: "PUT", body: payload });
       resource.reload();
+      onUpdated?.();
       notify("과외 성사 등록을 제출했습니다.");
     } catch (e) {
       setError(e.message);
@@ -60,22 +118,25 @@ export function Registration({ room, onClose }) {
       setBusy(false);
     }
   }
-  const status = {
-    COLLECTING: "양측 정보 수집 중",
-    ACTIVE: "진행 중",
-    AWAITING_PAYMENT: "수수료 입금 대기",
-    PENDING: "확인 대기",
-    PAID: "입금 확인 완료",
-    MISMATCHED: "조건 불일치",
-  };
   return (
-    <Modal title="과외 성사 등록" onClose={onClose} wide>
+    <Modal
+      title={currentStatus.isComplete ? "수업 정보" : "과외 성사 등록"}
+      onClose={onClose}
+      wide
+    >
       <State resource={resource}>
-        <p>
-          {status[d.contractStatus] || "등록 확인 중"} · 학생{" "}
+        <p className="registration-summary">
+          <span className={"registration-status " + currentStatus.tone}>
+            {currentStatus.label}
+          </span>{" "}
+          · 학생{" "}
           {d.studentSubmitted ? "제출 완료" : "미제출"} · 선생님{" "}
           {d.instructorSubmitted ? "제출 완료" : "미제출"}
         </p>
+        {shouldPoll && <p className="muted">상태를 자동으로 확인하고 있어요.</p>}
+        {currentStatus.isComplete && (
+          <p className="muted">성사 등록이 완료되어 수정할 수 없습니다.</p>
+        )}
         {d.attributeValidationStatus === "MISMATCHED" && (
           <p className="error">
             서로 제출한 과목·시작일이 다릅니다. 상대방과 확인한 뒤 다시 제출해
@@ -90,13 +151,41 @@ export function Registration({ room, onClose }) {
             </p>
             <p>
               {money(d.payment.amount)}원 ·{" "}
-              {status[d.payment.status] || "처리 중"}
+              {currentStatus.label}
             </p>
             <small>입금 확인은 운영 검토 후 반영됩니다.</small>
           </section>
         )}
-        <form className="form" onSubmit={submit}>
-          <fieldset className="form-fields" disabled={busy}>
+        {currentStatus.isComplete && (
+          <section className="info-panel">
+            <h3>수업 정보</h3>
+            <dl className="class-info-list">
+              <div>
+                <dt>수업 과목</dt>
+                <dd>{subject}</dd>
+              </div>
+              <div>
+                <dt>수업 시작일</dt>
+                <dd>{startDate}</dd>
+              </div>
+              <div>
+                <dt>수업 형태</dt>
+                <dd>{classType}</dd>
+              </div>
+              <div>
+                <dt>총 수업료</dt>
+                <dd>
+                  {submission.firstMonthFee == null
+                    ? "협의"
+                    : `${money(submission.firstMonthFee)}원`}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )}
+        {!currentStatus.isComplete && (
+          <form className="form" onSubmit={submit}>
+            <fieldset className="form-fields" disabled={busy}>
             <label>
               과목 (최대 3개)
               <select name="subjectIds" multiple size={5} required>
@@ -152,21 +241,14 @@ export function Registration({ room, onClose }) {
               <>
                 <label>
                   페이백 은행
-                  <select name="bankCode" required>
-                    {[
-                      "국민은행",
-                      "신한은행",
-                      "우리은행",
-                      "하나은행",
-                      "농협은행",
-                      "기업은행",
-                      "카카오뱅크",
-                      "토스뱅크",
-                      "케이뱅크",
-                      "새마을금고",
-                      "우체국",
-                    ].map((x) => (
-                      <option key={x}>{x}</option>
+                  <select name="bankCode" required defaultValue="">
+                    <option value="" disabled>
+                      은행을 선택해주세요
+                    </option>
+                    {BANKS.map((bank) => (
+                      <option key={bank} value={bank}>
+                        {bank}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -190,51 +272,95 @@ export function Registration({ room, onClose }) {
                 {error}
               </p>
             )}
-            <Btn className="primary" disabled={busy}>
-              성사 등록 제출
-            </Btn>
-          </fieldset>
-        </form>
+              <Btn className="primary" disabled={busy}>
+                성사 등록 제출
+              </Btn>
+            </fieldset>
+          </form>
+        )}
       </State>
     </Modal>
   );
 }
+
 export function ClassHistory() {
   const { user, notify } = useContext(Ctx),
     [page, setPage] = useState(1),
+    [tab, setTab] = useState("all"),
     [edit, setEdit] = useState(null);
   const r = useLoad(`/tutoring/resources/?role=${user.role}&page=${page}`),
     teacher = user.role === "instructor";
   const base =
     "/tutoring/reviews/" + (teacher ? "student" : "instructor") + "/";
+  const resources = list(r.data);
+  const visibleResources =
+    tab === "progress"
+      ? resources.filter((resource) => {
+          const status = registrationStatus(resource);
+          return !status.isComplete && status.tone !== "rejected";
+        })
+      : resources;
   return (
     <section className="service-section">
-      <h2>성사된 과외 · 수업 후기</h2>
+      <h2>나의 과외</h2>
+      <div className="registration-controls">
+        <div className="registration-tabs" role="tablist" aria-label="과외 상태">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "all"}
+            className={tab === "all" ? "active" : ""}
+            onClick={() => setTab("all")}
+          >
+            전체
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "progress"}
+            className={tab === "progress" ? "active" : ""}
+            onClick={() => setTab("progress")}
+          >
+            성사 등록 진행 중
+          </button>
+        </div>
+        <Btn type="button" onClick={r.reload}>
+          새로고침
+        </Btn>
+      </div>
       <State resource={r}>
-        {list(r.data).map((x) => (
-          <article key={x.id} className="history-row">
-            <div>
-              <b>
-                {x.counterpart?.nickname ||
-                  x.student_user_name ||
-                  x.instructor_user_name ||
-                  "과외 수업"}
-              </b>
-              <p>
-                {date(x.start_date)} · {x.class_type || "협의 중"}
-              </p>
-              <p className="muted">{x.my_review?.comment}</p>
-            </div>
-            {x.fee_payment_status === "PAID" && (
-              <Btn onClick={() => setEdit(x)}>
-                {x.my_review ? "후기 수정" : "후기 작성"}
-              </Btn>
-            )}
-          </article>
-        ))}
-        {!list(r.data).length && (
+        {visibleResources.map((x) => {
+          const status = registrationStatus(x);
+          return (
+            <article key={x.id} className="history-row">
+              <div>
+                <b>
+                  {x.counterpart?.nickname ||
+                    x.student_user_name ||
+                    x.instructor_user_name ||
+                    "과외 수업"}
+                </b>
+                <p>
+                  {date(x.start_date)} · {x.class_type || "협의 중"}
+                </p>
+                <span className={"registration-status " + status.tone}>
+                  {status.label}
+                </span>
+                <p className="muted">{x.my_review?.comment}</p>
+              </div>
+              {status.isComplete && (
+                <Btn onClick={() => setEdit(x)}>
+                  {x.my_review ? "후기 수정" : "후기 작성"}
+                </Btn>
+              )}
+            </article>
+          );
+        })}
+        {!visibleResources.length && (
           <p className="muted">
-            성사 등록은 상담 채팅방에서 시작할 수 있습니다.
+            {tab === "progress"
+              ? "진행 중인 성사 등록이 없습니다."
+              : "성사 등록은 상담 채팅방에서 시작할 수 있습니다."}
           </p>
         )}
         <div className="actions">

@@ -1,4 +1,6 @@
 from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,9 +12,25 @@ from rest_framework.test import APIClient
 from config.apps.accounts.models import Instructor
 from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
+from config.apps.lecture.utils import extract_video_duration_seconds
 
 
 User = get_user_model()
+
+
+class LectureDurationExtractionTests(TestCase):
+    """ffprobe 결과가 앱·웹과 같은 초 단위 버림 규칙을 따르는지 검증합니다."""
+
+    def test_fractional_duration_is_truncated_to_seconds(self):
+        """9.9초 영상은 플레이어 표기와 동일하게 9초로 저장합니다."""
+        with (
+            patch("config.apps.lecture.utils.shutil.which", return_value="ffprobe"),
+            patch(
+                "config.apps.lecture.utils.subprocess.run",
+                return_value=SimpleNamespace(stdout="9.9\n"),
+            ),
+        ):
+            self.assertEqual(extract_video_duration_seconds("video.mp4"), 9)
 
 
 class LectureCommentPermissionTests(TestCase):

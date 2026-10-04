@@ -24,6 +24,12 @@ class RegistrationPermissionError(Exception):
     pass
 
 
+class RegistrationLockedError(Exception):
+    """성사 등록 완료 후 참가자가 제출값을 다시 바꾸려 할 때 발생한다."""
+
+    pass
+
+
 def participant_role(chat_room, user):
     if chat_room.student.user_id == user.id:
         return TutoringSubmission.Role.STUDENT
@@ -309,6 +315,9 @@ def save_my_registration(
                 },
             )
         )
+        if registration.contract_status == TutoringRegistration.ContractStatus.ACTIVE:
+            raise RegistrationLockedError("성사 등록 완료 후에는 수정할 수 없습니다.")
+
         registration.subject = validated_data["subject"]
         registration.start_date = validated_data["start_date"]
 
