@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 
 from django.core.files import File
@@ -41,31 +42,53 @@ def resolve_video_path(video_file) -> str | None:
     return None
 
 
-def extract_video_duration_seconds(video_file) -> int | None:
-    video_path = resolve_video_path(video_file)
-    if not video_path:
-        return None
+@contextmanager
+def materialize_video_path(video_file):
+    """Yield a local path for uploads and storage-backed FieldFiles alike."""
+    existing_path = resolve_video_path(video_file)
+    if existing_path:
+        yield existing_path
+        return
 
+    suffix = Path(getattr(video_file, "name", "lecture.mp4")).suffix or ".mp4"
+    temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    temp_path = Path(temp_file.name)
+    try:
+        with temp_file:
+            opener = getattr(video_file, "open", None)
+            if callable(opener):
+                opener("rb")
+            shutil.copyfileobj(video_file, temp_file)
+        yield str(temp_path)
+    finally:
+        closer = getattr(video_file, "close", None)
+        if callable(closer):
+            closer()
+        temp_path.unlink(missing_ok=True)
+
+
+def extract_video_duration_seconds(video_file) -> int | None:
     ffprobe_path = shutil.which("ffprobe")
     if not ffprobe_path:
         return None
 
     try:
-        result = subprocess.run(
-            [
-                ffprobe_path,
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=nokey=1:noprint_wrappers=1",
-                video_path,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        with materialize_video_path(video_file) as video_path:
+            result = subprocess.run(
+                [
+                    ffprobe_path,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=nokey=1:noprint_wrappers=1",
+                    video_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
         duration = float(result.stdout.strip())
     except (OSError, ValueError, subprocess.CalledProcessError):
         return None
@@ -75,6 +98,59 @@ def extract_video_duration_seconds(video_file) -> int | None:
 
     # Flutter의 Duration.inSeconds 및 웹의 Math.floor와 동일하게 소수점은 버린다.
     return int(duration)
+
+
+def calculate_sample_preview_duration_seconds(video_duration: int) -> int:
+    """Return the policy duration for a paid lecture sample preview."""
+    if video_duration <= 0:
+        raise ValueError("영상 길이를 확인할 수 없습니다.")
+    if video_duration < 5 * 60:
+        return max(1, int(video_duration * 0.2))
+    return 60
+
+
+def create_sample_preview(video_file, preview_duration: int) -> tuple[File, Callable[[], None]]:
+    """Create an exact H.264/AAC MP4 preview from the start of [video_file].
+
+    The returned cleanup callback must run after Django storage has consumed the
+    file. A processing failure is intentional: a paid lecture must never be
+    published without its required sample preview.
+    """
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path or preview_duration <= 0:
+        raise ValueError("미리보기 영상을 생성할 수 없습니다.")
+
+    source_name = Path(getattr(video_file, "name", "lecture.mp4")).stem
+    temp_file = tempfile.NamedTemporaryFile(
+        suffix=".mp4", prefix=f"{source_name}-sample-", delete=False
+    )
+    temp_path = Path(temp_file.name)
+    temp_file.close()
+    try:
+        with materialize_video_path(video_file) as video_path:
+            subprocess.run(
+                [
+                    ffmpeg_path, "-y", "-i", video_path, "-t", str(preview_duration),
+                    "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264",
+                    "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                    str(temp_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        temp_path.unlink(missing_ok=True)
+        raise ValueError("미리보기 영상을 생성할 수 없습니다.") from exc
+
+    preview = File(temp_path.open("rb"), name=f"{source_name}-sample.mp4")
+
+    def cleanup() -> None:
+        preview.close()
+        temp_path.unlink(missing_ok=True)
+
+    return preview, cleanup
 
 
 def probe_video_codecs(video_file) -> dict[str, str | None]:

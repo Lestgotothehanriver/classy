@@ -20,6 +20,7 @@ from .serializers import (
     LectureDetailSerializer,
     LecturePreviewSerializer,
     LectureRecommendSerializer,
+    LectureSamplePreviewSerializer,
     LectureStreamSerializer,
     LectureWriteSerializer,
     CommentSerializer,
@@ -433,6 +434,33 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
         return Response(serializer.data)
 
 
+class LectureSamplePreviewAPIView(generics.RetrieveAPIView):
+    """Return the generated free sample clip for one active paid lecture."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LectureSamplePreviewSerializer
+    queryset = Lecture.objects.filter(
+        is_active=True,
+        is_delete=False,
+        admin_blocked_at__isnull=True,
+        is_preview=False,
+        price__gt=0,
+    )
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        blocked_user_ids = get_blocked_user_ids(self.request.user)
+        if blocked_user_ids:
+            qs = qs.exclude(instructor__user_id__in=blocked_user_ids)
+        return qs
+
+    def retrieve(self, request, *args, **kwargs):
+        lecture = self.get_object()
+        if not lecture.sample_preview or lecture.sample_preview_duration <= 0:
+            return Response({"detail": "미리보기 영상을 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(lecture).data)
+
+
 # ════════════════════════════════════════════════════════════════════
 # 4) Lecture Detail View
 # ════════════════════════════════════════════════════════════════════
@@ -548,6 +576,14 @@ class LectureDetailAPIView(APIView):
             "lecture_info": lecture_data,
             "rental_status": rental_status,
             "preview_video": preview_data,
+            "sample_preview": (
+                {"duration_seconds": lecture.sample_preview_duration}
+                if lecture.price > 0
+                and not lecture.is_preview
+                and lecture.sample_preview
+                and lecture.sample_preview_duration > 0
+                else None
+            ),
             "recommended": recommended_data,
         })
 

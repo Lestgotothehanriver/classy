@@ -5,6 +5,7 @@ from .views import (
     LectureViewSet,
     LectureListAPIView,
     LectureStreamAPIView,
+    LectureSamplePreviewAPIView,
     LectureDetailAPIView,
     CommentListCreateAPIView,
     CommentUpdateDeleteAPIView,
@@ -30,6 +31,7 @@ urlpatterns = [
 
     # ── 강의 스트리밍 ──────────────────────────────────────────
     path("<int:pk>/stream/", LectureStreamAPIView.as_view(), name="lecture-stream"),
+    path("<int:pk>/preview/", LectureSamplePreviewAPIView.as_view(), name="lecture-sample-preview"),
 
     # ── 강의 좋아요 ──────────────────────────────────────────
     path("<int:pk>/like/", LectureLikeAPIView.as_view(), name="lecture-like"),

@@ -1,9 +1,15 @@
 from rest_framework import serializers
 from django.db.models import Count
+from django.core.files.storage import default_storage
 
 from config.apps.accounts.models import Subject, Instructor
 from .models import Lecture, Comment, SearchHistory
-from .utils import extract_video_duration_seconds, transcode_video_for_mobile_playback
+from .utils import (
+    calculate_sample_preview_duration_seconds,
+    create_sample_preview,
+    extract_video_duration_seconds,
+    transcode_video_for_mobile_playback,
+)
 from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
 
 
@@ -53,7 +59,7 @@ class LectureListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        exclude = ["video"]
+        exclude = ["video", "sample_preview", "sample_preview_duration"]
 
 
 class LectureStreamSerializer(serializers.ModelSerializer):
@@ -73,6 +79,24 @@ class LectureStreamSerializer(serializers.ModelSerializer):
         return get_absolute_media_url(obj.video, request)
 
 
+class LectureSamplePreviewSerializer(serializers.ModelSerializer):
+    """A generated, lecture-specific free sample clip for a paid lecture."""
+
+    video = serializers.SerializerMethodField()
+    duration_seconds = serializers.IntegerField(source="sample_preview_duration", read_only=True)
+
+    class Meta:
+        model = Lecture
+        fields = ["id", "title", "video", "duration_seconds"]
+
+    def get_video(self, obj):
+        if not obj.sample_preview:
+            return ""
+        request = self.context.get("request")
+        from config.apps.common.utils import get_absolute_media_url
+        return get_absolute_media_url(obj.sample_preview, request)
+
+
 class LectureDetailSerializer(serializers.ModelSerializer):
     """강의 상세 — video 제외 (스트리밍 URL은 /stream/ 엔드포인트에서만 제공)."""
     like_count = serializers.SerializerMethodField()
@@ -84,7 +108,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        exclude = ["video"]
+        exclude = ["video", "sample_preview", "sample_preview_duration"]
 
     def get_like_count(self, obj):
         return obj.likes.count()
@@ -119,7 +143,7 @@ class LectureRecommendSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        exclude = ["video"]
+        exclude = ["video", "sample_preview", "sample_preview_duration"]
 
 
 class LectureWriteSerializer(serializers.ModelSerializer):
@@ -132,7 +156,10 @@ class LectureWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        exclude = ["instructor", "likes", "view_count"]
+        exclude = [
+            "instructor", "likes", "view_count", "sample_preview",
+            "sample_preview_duration",
+        ]
 
     def validate_price(self, value):
         if value < 0:
@@ -145,13 +172,29 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         return LECTURE_RENTAL_DAYS
 
     def _populate_video_duration(self, validated_data):
-        current_duration = validated_data.get("video_duration", 0) or 0
-        if current_duration > 0:
-            return
-
+        # 클라이언트가 보낸 길이는 UI 표시용일 뿐, 유료 프리뷰 정책은 서버가
+        # 실제 파일로 확정한 길이를 반드시 사용한다.
         inferred_duration = extract_video_duration_seconds(validated_data.get("video"))
-        if inferred_duration is not None:
-            validated_data["video_duration"] = inferred_duration
+        if inferred_duration is None:
+            raise serializers.ValidationError({"video": "영상 길이를 확인할 수 없습니다."})
+        validated_data["video_duration"] = inferred_duration
+
+    def _prepare_sample_preview(
+        self, validated_data, *, source_video=None, price=None, is_preview=None
+    ):
+        is_paid_regular_lecture = (
+            (validated_data.get("price", 0) if price is None else price) > 0
+            and not (validated_data.get("is_preview", False) if is_preview is None else is_preview)
+        )
+        if not is_paid_regular_lecture:
+            return None
+        duration = calculate_sample_preview_duration_seconds(validated_data["video_duration"])
+        preview, cleanup = create_sample_preview(
+            source_video or validated_data["video"], duration
+        )
+        validated_data["sample_preview"] = preview
+        validated_data["sample_preview_duration"] = duration
+        return cleanup
 
     def _prepare_video_for_playback(self, validated_data):
         video = validated_data.get("video")
@@ -165,26 +208,64 @@ class LectureWriteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         subjects_data = validated_data.pop("subjects", None)
         cleanup = self._prepare_video_for_playback(validated_data)
+        preview_cleanup = None
         try:
             self._populate_video_duration(validated_data)
+            preview_cleanup = self._prepare_sample_preview(validated_data)
             instance = super().create(validated_data)
             if subjects_data is not None:
                 _sync_subjects(instance.subjects, subjects_data)
             return instance
         finally:
+            if preview_cleanup:
+                preview_cleanup()
             if cleanup:
                 cleanup()
 
     def update(self, instance, validated_data):
+        old_sample_preview_name = instance.sample_preview.name if instance.sample_preview else ""
         subjects_data = validated_data.pop("subjects", None)
         cleanup = self._prepare_video_for_playback(validated_data)
+        preview_cleanup = None
         try:
-            self._populate_video_duration(validated_data)
+            if "video" in validated_data:
+                self._populate_video_duration(validated_data)
+            next_price = validated_data.get("price", instance.price)
+            next_is_preview = validated_data.get("is_preview", instance.is_preview)
+            needs_sample = next_price > 0 and not next_is_preview
+            if needs_sample and "video" in validated_data:
+                preview_cleanup = self._prepare_sample_preview(
+                    validated_data, price=next_price, is_preview=next_is_preview
+                )
+            elif needs_sample and not instance.sample_preview:
+                inferred_duration = extract_video_duration_seconds(instance.video)
+                if inferred_duration is None:
+                    raise serializers.ValidationError({"video": "영상 길이를 확인할 수 없습니다."})
+                validated_data["video_duration"] = inferred_duration
+                preview_cleanup = self._prepare_sample_preview(
+                    validated_data,
+                    source_video=instance.video,
+                    price=next_price,
+                    is_preview=next_is_preview,
+                )
+            elif not needs_sample:
+                validated_data["sample_preview"] = None
+                validated_data["sample_preview_duration"] = 0
             instance = super().update(instance, validated_data)
+            new_sample_preview_name = (
+                instance.sample_preview.name if instance.sample_preview else ""
+            )
+            if (
+                old_sample_preview_name
+                and old_sample_preview_name != new_sample_preview_name
+            ):
+                default_storage.delete(old_sample_preview_name)
             if subjects_data is not None:
                 _sync_subjects(instance.subjects, subjects_data)
             return instance
         finally:
+            if preview_cleanup:
+                preview_cleanup()
             if cleanup:
                 cleanup()
 

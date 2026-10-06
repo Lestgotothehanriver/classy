@@ -13,6 +13,7 @@ from config.apps.accounts.models import Instructor
 from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
 from config.apps.lecture.utils import extract_video_duration_seconds
+from config.apps.lecture.utils import calculate_sample_preview_duration_seconds
 
 
 User = get_user_model()
@@ -31,6 +32,68 @@ class LectureDurationExtractionTests(TestCase):
             ),
         ):
             self.assertEqual(extract_video_duration_seconds("video.mp4"), 9)
+
+    def test_paid_sample_preview_duration_policy(self):
+        self.assertEqual(calculate_sample_preview_duration_seconds(4), 1)
+        self.assertEqual(calculate_sample_preview_duration_seconds(299), 59)
+        self.assertEqual(calculate_sample_preview_duration_seconds(300), 60)
+
+
+class LectureSamplePreviewApiTests(TestCase):
+    """A-specific samples must not replace ordinary preview lectures."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create_user(username="sample-owner", user_name="sample-owner")
+        self.student = User.objects.create_user(username="sample-student", user_name="sample-student")
+        self.instructor = Instructor.objects.create(user=self.owner, university="Test")
+        self.paid = Lecture.objects.create(
+            instructor=self.instructor,
+            title="Paid A",
+            price=1000,
+            sample_preview="lectures/sample_previews/a-sample.mp4",
+            sample_preview_duration=60,
+        )
+        self.ordinary_preview = Lecture.objects.create(
+            instructor=self.instructor,
+            title="Ordinary B",
+            price=0,
+            is_preview=True,
+        )
+
+    def test_detail_exposes_only_sample_metadata_and_keeps_ordinary_preview(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(reverse("lecture-detail", args=[self.paid.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["sample_preview"], {"duration_seconds": 60})
+        self.assertEqual(response.data["preview_video"]["id"], self.ordinary_preview.id)
+        self.assertNotIn("sample_preview", response.data["lecture_info"])
+
+    def test_sample_preview_endpoint_requires_authentication_and_returns_a_clip(self):
+        url = reverse("lecture-sample-preview", args=[self.paid.id])
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_401_UNAUTHORIZED)
+        self.client.force_authenticate(self.student)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.paid.id)
+        self.assertEqual(response.data["duration_seconds"], 60)
+
+    def test_sample_preview_endpoint_returns_404_when_a_paid_lecture_has_no_clip(self):
+        self.paid.sample_preview = None
+        self.paid.sample_preview_duration = 0
+        self.paid.save(update_fields=["sample_preview", "sample_preview_duration"])
+        self.client.force_authenticate(self.student)
+
+        response = self.client.get(
+            reverse("lecture-sample-preview", args=[self.paid.id])
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_ordinary_preview_stays_in_the_lecture_list(self):
+        response = self.client.get(reverse("lecture-list"))
+        self.assertIn(self.ordinary_preview.id, [item["id"] for item in response.data["results"]])
+        self.assertNotIn("sample_preview", response.data["results"][0])
 
 
 class LectureCommentPermissionTests(TestCase):

@@ -32,6 +32,12 @@ class Lecture(models.Model):
     """
     video = models.FileField(upload_to="lectures/videos/")
     video_duration = models.PositiveIntegerField(default=0)
+    # 유료 강의 원본에서 생성되는 A 전용 무료 미리보기 클립이다.
+    # 일반 프리뷰 강의(is_preview)와 달리 독립 Lecture 레코드를 만들지 않는다.
+    sample_preview = models.FileField(
+        upload_to="lectures/sample_previews/", null=True, blank=True
+    )
+    sample_preview_duration = models.PositiveIntegerField(default=0)
     thumbnail = models.ImageField(upload_to="lectures/thumbnails/")
     title = models.CharField(max_length=255)
     subjects = models.ManyToManyField(Subject, blank=True, related_name="lectures")

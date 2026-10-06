@@ -522,10 +522,16 @@ function Detail({ kind, id, item, onClose }) {
                   </Btn>
                 )}
             </div>
-            {resource.data?.preview_video?.video && (
+            {resource.data?.sample_preview && Number(d.price) > 0 && (
               <Btn
                 className="full"
-                onClick={() => setVideo(resource.data.preview_video.video)}
+                disabled={busy}
+                onClick={() =>
+                  action(async () => {
+                    const preview = await api(base + "preview/");
+                    setVideo(preview.video);
+                  })
+                }
               >
                 무료 미리보기 재생
               </Btn>
