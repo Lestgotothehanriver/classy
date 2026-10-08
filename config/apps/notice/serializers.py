@@ -30,7 +30,7 @@ class NoticeDetailSerializer(NoticeListSerializer):
 
 
 class NoticeExposureSerializer(NoticeListSerializer):
-    """홈 배너와 긴급 모달에 필요한 공지 응답입니다."""
+    """홈 배너와 앱 공지 모달에 필요한 공지 응답입니다."""
 
     class Meta(NoticeListSerializer.Meta):
         fields = NoticeListSerializer.Meta.fields + ["exposure_ends_at", "banner_order"]

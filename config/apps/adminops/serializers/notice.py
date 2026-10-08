@@ -1,7 +1,5 @@
 from io import BytesIO
 
-from django.core.files.images import get_image_dimensions
-from django.utils import timezone
 from PIL import Image
 from rest_framework import serializers
 
@@ -110,10 +108,10 @@ class AdminNoticeSerializer(serializers.ModelSerializer):
             if exposure_type == Notice.ExposureType.HOME_BANNER:
                 if not has_image:
                     raise serializers.ValidationError({"banner_image": "홈 배너에는 이미지가 필요합니다."})
-                if banner_order is None or not 1 <= banner_order <= 3:
-                    raise serializers.ValidationError({"banner_order": "배너 순서는 1~3 중 하나여야 합니다."})
+                if banner_order is None or not 1 <= banner_order <= 5:
+                    raise serializers.ValidationError({"banner_order": "배너 순서는 1~5 중 하나여야 합니다."})
             elif banner_order is not None:
-                raise serializers.ValidationError({"banner_order": "긴급 모달에는 배너 순서를 설정할 수 없습니다."})
+                raise serializers.ValidationError({"banner_order": "목록 공지에는 배너 순서를 설정할 수 없습니다."})
 
             overlaps = Notice.objects.filter(
                 status=Notice.PublicationStatus.PUBLISHED,
@@ -123,10 +121,8 @@ class AdminNoticeSerializer(serializers.ModelSerializer):
             )
             if instance:
                 overlaps = overlaps.exclude(pk=instance.pk)
-            if exposure_type == Notice.ExposureType.HOME_BANNER and overlaps.count() >= 3:
-                raise serializers.ValidationError("같은 기간에 노출할 홈 배너는 최대 3개입니다.")
-            if exposure_type == Notice.ExposureType.EMERGENCY_MODAL and overlaps.exists():
-                raise serializers.ValidationError("같은 기간에 노출할 긴급 모달은 하나만 설정할 수 있습니다.")
+            if exposure_type == Notice.ExposureType.HOME_BANNER and overlaps.count() >= 5:
+                raise serializers.ValidationError("같은 기간에 노출할 홈 배너는 최대 5개입니다.")
         return attrs
 
     def update(self, instance, validated_data):

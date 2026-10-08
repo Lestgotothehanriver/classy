@@ -28,7 +28,7 @@ class NoticeDetailView(RetrieveAPIView):
 
 
 class NoticeExposureView(APIView):
-    """GET /notices/exposure/ - 현재 홈에 추가 노출할 공지를 반환합니다."""
+    """GET /notices/exposure/ - 현재 공지 모달 캐러셀 항목을 반환합니다."""
 
     permission_classes = [AllowAny]
 
@@ -39,19 +39,15 @@ class NoticeExposureView(APIView):
         active = Notice.public_queryset(now).filter(exposure_ends_at__gt=now)
         banners = active.filter(
             exposure_type=Notice.ExposureType.HOME_BANNER
-        ).order_by("banner_order", "-publish_at", "-id")[:3]
-        modal = active.filter(
-            exposure_type=Notice.ExposureType.EMERGENCY_MODAL
-        ).order_by("-publish_at", "-id").first()
+        ).order_by("banner_order", "-publish_at", "-id")[:5]
+        carousel_items = list(banners)
         return Response(
             {
                 "banners": NoticeExposureSerializer(
                     banners, many=True, context={"request": request}
                 ).data,
-                "modal": (
-                    NoticeExposureSerializer(modal, context={"request": request}).data
-                    if modal
-                    else None
-                ),
+                "carousel": NoticeExposureSerializer(
+                    carousel_items, many=True, context={"request": request}
+                ).data,
             }
         )

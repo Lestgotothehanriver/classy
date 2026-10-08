@@ -582,29 +582,34 @@ function HomeNoticeExposure() {
   const { go } = useContext(Ctx);
   const exposure = useLoad("/notices/exposure/");
   const [index, setIndex] = useState(0);
-  const [modal, setModal] = useState(null);
+  const [modalNotices, setModalNotices] = useState([]);
+  const [modalIndex, setModalIndex] = useState(0);
   const banners = list(exposure.data?.banners);
+  const carousel = list(exposure.data?.carousel);
 
   useEffect(() => {
-    const nextModal = exposure.data?.modal;
-    if (!nextModal) return;
-    const hiddenUntil = Number(
-      localStorage.getItem(`classy_notice_hidden_${nextModal.id}`) || 0,
-    );
-    if (hiddenUntil <= Date.now()) setModal(nextModal);
-  }, [exposure.data?.modal?.id]);
+    const visibleNotices = carousel.filter((notice) => {
+      const hiddenUntil = Number(
+        localStorage.getItem(`classy_notice_hidden_${notice.id}`) || 0,
+      );
+      return hiddenUntil <= Date.now();
+    });
+    setModalNotices(visibleNotices);
+    setModalIndex(0);
+  }, [exposure.data?.carousel]);
 
   useEffect(() => {
     if (index >= banners.length) setIndex(0);
   }, [banners.length, index]);
 
+  const modal = modalNotices[modalIndex];
   const dismiss = () => {
     if (modal)
       localStorage.setItem(
         `classy_notice_hidden_${modal.id}`,
         String(kstMidnightTimestamp()),
       );
-    setModal(null);
+    setModalNotices([]);
   };
   const banner = banners[index];
   return (
@@ -649,6 +654,25 @@ function HomeNoticeExposure() {
             {modal.banner_image && <img src={modal.banner_image} alt="" />}
             <h3>{modal.title}</h3>
             <p>{modal.summary}</p>
+            {modalNotices.length > 1 && (
+              <div className="notice-carousel-controls">
+                <button
+                  type="button"
+                  aria-label="이전 공지"
+                  onClick={() => setModalIndex((modalIndex - 1 + modalNotices.length) % modalNotices.length)}
+                >
+                  ‹
+                </button>
+                <span>{modalIndex + 1} / {modalNotices.length}</span>
+                <button
+                  type="button"
+                  aria-label="다음 공지"
+                  onClick={() => setModalIndex((modalIndex + 1) % modalNotices.length)}
+                >
+                  ›
+                </button>
+              </div>
+            )}
             <div className="modal-actions">
               <Btn onClick={dismiss}>오늘 하루 보지 않기</Btn>
               <Btn

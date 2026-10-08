@@ -13,8 +13,7 @@ class Notice(models.Model):
 
     class ExposureType(models.TextChoices):
         LIST = "LIST", "목록만"
-        HOME_BANNER = "HOME_BANNER", "홈 배너"
-        EMERGENCY_MODAL = "EMERGENCY_MODAL", "긴급 모달"
+        HOME_BANNER = "HOME_BANNER", "홈 배너 · 앱 공지 모달"
 
     title = models.CharField(max_length=200)
     summary = models.CharField(max_length=300)

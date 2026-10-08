@@ -114,7 +114,7 @@ class NoticeAPITests(APITestCase):
         )
         self.assertEqual(invalid_ratio.status_code, 400)
 
-        for order in range(1, 4):
+        for order in range(1, 6):
             self.create_published(
                 exposure_type=Notice.ExposureType.HOME_BANNER,
                 exposure_ends_at=timezone.now() + timedelta(days=1),
@@ -125,7 +125,7 @@ class NoticeAPITests(APITestCase):
             self.payload(
                 exposure_type=Notice.ExposureType.HOME_BANNER,
                 exposure_ends_at=(timezone.now() + timedelta(hours=12)).isoformat(),
-                banner_order=1,
+                banner_order=5,
                 banner_image=banner_file(),
             ),
             format="multipart",
@@ -159,7 +159,9 @@ class NoticeAPITests(APITestCase):
         self.assertEqual(listing.status_code, 200)
         self.assertEqual({row["id"] for row in listing.data["results"]}, {published.id, active_banner.id, Notice.objects.get(title="종료 배너").id})
         self.assertEqual(self.client.get(f"/notices/{published.id}/").status_code, 200)
-        self.assertEqual(self.client.get("/notices/exposure/").data["banners"][0]["id"], active_banner.id)
+        exposure = self.client.get("/notices/exposure/").data
+        self.assertEqual(exposure["banners"][0]["id"], active_banner.id)
+        self.assertEqual(exposure["carousel"][0]["id"], active_banner.id)
 
     def test_unpublish_hides_public_notice_and_records_log(self):
         self.as_admin()

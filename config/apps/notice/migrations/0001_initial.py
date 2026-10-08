@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 ("banner_image", models.ImageField(blank=True, null=True, upload_to="notices/banners/")),
                 ("status", models.CharField(choices=[("DRAFT", "초안"), ("PUBLISHED", "게시"), ("UNPUBLISHED", "게시 중단")], db_index=True, default="DRAFT", max_length=16)),
                 ("publish_at", models.DateTimeField(blank=True, db_index=True, null=True)),
-                ("exposure_type", models.CharField(choices=[("LIST", "목록만"), ("HOME_BANNER", "홈 배너"), ("EMERGENCY_MODAL", "긴급 모달")], db_index=True, default="LIST", max_length=20)),
+                ("exposure_type", models.CharField(choices=[("LIST", "목록만"), ("HOME_BANNER", "홈 배너 · 앱 공지 모달")], db_index=True, default="LIST", max_length=20)),
                 ("exposure_ends_at", models.DateTimeField(blank=True, db_index=True, null=True)),
                 ("banner_order", models.PositiveSmallIntegerField(blank=True, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
