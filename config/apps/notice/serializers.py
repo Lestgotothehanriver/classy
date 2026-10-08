@@ -8,7 +8,9 @@ from .models import Notice
 class NoticeListSerializer(serializers.ModelSerializer):
     """사용자용 공지 목록 응답입니다."""
 
-    banner_image = AbsoluteImageField(read_only=True)
+    home_banner_image = AbsoluteImageField(read_only=True)
+    mobile_image = AbsoluteImageField(read_only=True)
+    banner_image = AbsoluteImageField(source="home_banner_image", read_only=True)
 
     class Meta:
         model = Notice
@@ -16,6 +18,8 @@ class NoticeListSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "summary",
+            "home_banner_image",
+            "mobile_image",
             "banner_image",
             "publish_at",
             "exposure_type",

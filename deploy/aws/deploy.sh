@@ -105,7 +105,21 @@ export DJANGO_SETTINGS_MODULE=config.settings.aws
 
 sudo systemctl restart classy
 systemctl is-active classy nginx redis-server
-curl -fsS https://api.classystudy.com/healthz/
+
+# Nginx can return 502 briefly while the freshly restarted ASGI workers start.
+for attempt in $(seq 1 30); do
+  if curl -fsS --max-time 10 https://api.classystudy.com/healthz/ >/dev/null 2>&1; then
+    curl -fsS --max-time 10 https://api.classystudy.com/healthz/
+    exit 0
+  fi
+
+  if [ "$attempt" -eq 30 ]; then
+    echo "API health check did not succeed within 60 seconds." >&2
+    exit 1
+  fi
+
+  sleep 2
+done
 REMOTE
 }
 

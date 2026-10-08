@@ -13,13 +13,16 @@ class Notice(models.Model):
 
     class ExposureType(models.TextChoices):
         LIST = "LIST", "목록만"
-        HOME_BANNER = "HOME_BANNER", "홈 배너 · 앱 공지 모달"
+        HOME_BANNER = "HOME_BANNER", "홈 배너 · 앱 공지"
 
     title = models.CharField(max_length=200)
     summary = models.CharField(max_length=300)
     content = models.TextField()
-    banner_image = models.ImageField(
-        upload_to="notices/banners/", blank=True, null=True
+    home_banner_image = models.ImageField(
+        upload_to="notices/home_banners/", blank=True, null=True
+    )
+    mobile_image = models.ImageField(
+        upload_to="notices/mobile/", blank=True, null=True
     )
     status = models.CharField(
         max_length=16,

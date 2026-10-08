@@ -580,6 +580,7 @@ function openNotice(go, id) {
 
 function HomeNoticeExposure() {
   const { go } = useContext(Ctx);
+  const dismissalKey = "classy_notice_modal_hidden_until";
   const exposure = useLoad("/notices/exposure/");
   const [index, setIndex] = useState(0);
   const [modalNotices, setModalNotices] = useState([]);
@@ -588,13 +589,8 @@ function HomeNoticeExposure() {
   const carousel = list(exposure.data?.carousel);
 
   useEffect(() => {
-    const visibleNotices = carousel.filter((notice) => {
-      const hiddenUntil = Number(
-        localStorage.getItem(`classy_notice_hidden_${notice.id}`) || 0,
-      );
-      return hiddenUntil <= Date.now();
-    });
-    setModalNotices(visibleNotices);
+    const hiddenUntil = Number(localStorage.getItem(dismissalKey) || 0);
+    setModalNotices(hiddenUntil > Date.now() ? [] : carousel);
     setModalIndex(0);
   }, [exposure.data?.carousel]);
 
@@ -604,13 +600,10 @@ function HomeNoticeExposure() {
 
   const modal = modalNotices[modalIndex];
   const dismiss = () => {
-    if (modal)
-      localStorage.setItem(
-        `classy_notice_hidden_${modal.id}`,
-        String(kstMidnightTimestamp()),
-      );
+    localStorage.setItem(dismissalKey, String(kstMidnightTimestamp()));
     setModalNotices([]);
   };
+  const closeModal = () => setModalNotices([]);
   const banner = banners[index];
   return (
     <>
@@ -621,7 +614,7 @@ function HomeNoticeExposure() {
             className="notice-banner"
             onClick={() => openNotice(go, banner.id)}
           >
-            {banner.banner_image && <img src={banner.banner_image} alt="" />}
+            {(banner.home_banner_image || banner.banner_image) && <img src={banner.home_banner_image || banner.banner_image} alt="" />}
             <span className="notice-banner-copy">
               <strong>{banner.title}</strong>
               <small>{banner.summary}</small>
@@ -649,11 +642,20 @@ function HomeNoticeExposure() {
         </section>
       )}
       {modal && (
-        <Modal title="긴급 공지" onClose={dismiss}>
+        <Modal title="공지사항" onClose={closeModal}>
           <section className="notice-modal-content">
-            {modal.banner_image && <img src={modal.banner_image} alt="" />}
-            <h3>{modal.title}</h3>
-            <p>{modal.summary}</p>
+            <button
+              type="button"
+              className="notice-modal-link"
+              onClick={() => {
+                closeModal();
+                openNotice(go, modal.id);
+              }}
+            >
+              {(modal.mobile_image || modal.home_banner_image || modal.banner_image) && <img src={modal.mobile_image || modal.home_banner_image || modal.banner_image} alt="" />}
+              <h3>{modal.title}</h3>
+              <p>{modal.summary}</p>
+            </button>
             {modalNotices.length > 1 && (
               <div className="notice-carousel-controls">
                 <button
@@ -673,17 +675,9 @@ function HomeNoticeExposure() {
                 </button>
               </div>
             )}
-            <div className="modal-actions">
+            <div className="modal-actions notice-modal-actions">
               <Btn onClick={dismiss}>오늘 하루 보지 않기</Btn>
-              <Btn
-                className="primary"
-                onClick={() => {
-                  dismiss();
-                  openNotice(go, modal.id);
-                }}
-              >
-                자세히 보기
-              </Btn>
+              <Btn className="primary" onClick={closeModal}>확인</Btn>
             </div>
           </section>
         </Modal>
@@ -716,7 +710,7 @@ export function NoticePage() {
               <button className="text-button" onClick={closeDetail}>← 목록으로</button>
               <h2>{detail.data.title}</h2>
               <time>{new Date(detail.data.publish_at).toLocaleDateString("ko-KR")}</time>
-              {detail.data.banner_image && <img src={detail.data.banner_image} alt="" />}
+              {(detail.data.home_banner_image || detail.data.banner_image) && <img src={detail.data.home_banner_image || detail.data.banner_image} alt="" />}
               <p>{detail.data.content}</p>
             </section>
           )}

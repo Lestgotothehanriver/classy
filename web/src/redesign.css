@@ -2843,10 +2843,15 @@ progress {
 .notice-list-item time { flex-shrink: 0; font-size: 13px; }
 .notice-detail-page { max-width: 760px; padding: 8px 0 52px; }
 .notice-detail-page h2 { margin: 18px 0 8px; font-size: 28px; }
-.notice-detail-page > img, .notice-modal-content > img { width: 100%; aspect-ratio: 3 / 1; margin-top: 24px; object-fit: cover; border-radius: 10px; }
+.notice-detail-page > img { width: 100%; aspect-ratio: 3 / 1; margin-top: 24px; object-fit: cover; border-radius: 10px; }
+.notice-modal-link { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.notice-modal-link > img { width: 100%; aspect-ratio: 16 / 9; margin-top: 4px; object-fit: cover; border-radius: 10px; }
+.notice-modal-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 10px; }
 .notice-detail-page p { margin-top: 28px; white-space: pre-wrap; line-height: 1.8; }
-.notice-modal-content h3 { margin: 18px 0 8px; }
-.notice-modal-content p { line-height: 1.7; white-space: pre-wrap; }
+.notice-modal-link h3 { margin: 18px 0 8px; }
+.notice-modal-link p { line-height: 1.7; white-space: pre-wrap; }
+.notice-modal-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-top: 20px; }
+.notice-modal-actions .btn { width: 100%; }
 @media (max-width: 640px) {
   .notice-banner { min-height: 128px; padding: 18px; border-radius: 12px; }
   .notice-banner { min-height: 0; padding: 0; }

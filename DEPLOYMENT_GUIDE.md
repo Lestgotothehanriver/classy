@@ -65,7 +65,7 @@ bash deploy/aws/deploy.sh api
 bash deploy/aws/deploy.sh all
 ```
 
-`web`은 새 릴리스 폴더를 만든 뒤 `current` 링크를 원자적으로 교체하며 Django와 Nginx를 재시작하지 않는다. `api`는 `.env`, 미디어 파일, DB, 가상환경, 빌드 산출물을 제외하고 업로드한 후 의존성 설치, `check --deploy`, `migrate`, `seed_reference_data`, `collectstatic`, `classy` 재시작, 상태 및 헬스체크를 수행한다.
+`web`은 새 릴리스 폴더를 만든 뒤 `current` 링크를 원자적으로 교체하며 Django와 Nginx를 재시작하지 않는다. `api`는 `.env`, 미디어 파일, DB, 가상환경, 빌드 산출물을 제외하고 업로드한 후 의존성 설치, `check --deploy`, `migrate`, `seed_reference_data`, `collectstatic`, `classy` 재시작을 수행한다. 재시작 직후 Uvicorn 워커가 기동될 때 Nginx가 일시적으로 `502`를 응답할 수 있으므로, 헬스체크는 최대 60초 동안 재시도한다.
 
 SSH 별칭이 `classy-aws`가 아닌 경우에만 다음처럼 실행한다.
 
