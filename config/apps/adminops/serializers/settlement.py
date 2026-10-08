@@ -81,15 +81,17 @@ class SettlementListSerializer(serializers.ModelSerializer):
 
 
 class SettlementDetailSerializer(SettlementListSerializer):
-    """상세 화면용. 강사 이메일·계좌 정보(전체)·연결 대여 내역을 포함합니다."""
+    """상세 화면용. 강사 연락처·계좌 정보(전체)·연결 대여 내역을 포함합니다."""
 
     email = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
     account_info = serializers.SerializerMethodField()
     rentals = serializers.SerializerMethodField()
 
     class Meta(SettlementListSerializer.Meta):
         fields = SettlementListSerializer.Meta.fields + [
             "email",
+            "phone",
             "account_info",
             "payment_reference",
             "admin_note",
@@ -98,6 +100,9 @@ class SettlementDetailSerializer(SettlementListSerializer):
 
     def get_email(self, obj: SettlementRecord) -> str:
         return self._user(obj).email
+
+    def get_phone(self, obj: SettlementRecord) -> str:
+        return self._user(obj).phone
 
     def get_account_info(self, obj: SettlementRecord):
         """강사 정산 계좌 정보(전체). 실제 송금용이라 마스킹하지 않습니다."""

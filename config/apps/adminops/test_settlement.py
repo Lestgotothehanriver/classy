@@ -49,6 +49,8 @@ class SettlementAPITests(APITestCase):
         self.admin_token = Token.objects.create(user=self.admin)
 
         self.teacher = make_user("teacher@example.com", first="선생", last="김")
+        self.teacher.phone = "010-1234-5678"
+        self.teacher.save(update_fields=["phone"])
         self.instructor = Instructor.objects.create(
             user=self.teacher,
             university="서울대학교",
@@ -129,6 +131,7 @@ class SettlementAPITests(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["account_info"]["account_number"], "110-123-456789")
         self.assertEqual(res.data["account_info"]["bank"], "신한은행")
+        self.assertEqual(res.data["phone"], "010-1234-5678")
         self.assertEqual(len(res.data["rentals"]), 2)
 
     # ── 완료 ──────────────────────────────────────────────────────────────
