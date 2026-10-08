@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AdminLoginAPIView,
     AdminMeAPIView,
+    OperationsDashboardView,
     InstructorVerificationApproveView,
     InstructorVerificationDetailView,
     InstructorVerificationDocumentView,
@@ -40,6 +41,12 @@ app_name = "adminops"
 urlpatterns = [
     path("auth/login/", AdminLoginAPIView.as_view(), name="admin-login"),
     path("auth/me/", AdminMeAPIView.as_view(), name="admin-me"),
+    # 운영 대시보드
+    path(
+        "dashboard/operations/",
+        OperationsDashboardView.as_view(),
+        name="dashboard-operations",
+    ),
     # 공지사항 관리
     path("notices/", AdminNoticeListCreateView.as_view(), name="notice-list-create"),
     path("notices/<int:pk>/", AdminNoticeDetailView.as_view(), name="notice-detail"),

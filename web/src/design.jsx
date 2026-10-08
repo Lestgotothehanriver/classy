@@ -581,6 +581,7 @@ function openNotice(go, id) {
 function HomeNoticeExposure() {
   const { go } = useContext(Ctx);
   const dismissalKey = "classy_notice_modal_hidden_until";
+  const sessionDismissalKey = "classy_notice_modal_session_hidden";
   const exposure = useLoad("/notices/exposure/");
   const [index, setIndex] = useState(0);
   const [modalNotices, setModalNotices] = useState([]);
@@ -590,7 +591,8 @@ function HomeNoticeExposure() {
 
   useEffect(() => {
     const hiddenUntil = Number(localStorage.getItem(dismissalKey) || 0);
-    setModalNotices(hiddenUntil > Date.now() ? [] : carousel);
+    const hiddenForSession = sessionStorage.getItem(sessionDismissalKey) === "true";
+    setModalNotices(hiddenUntil > Date.now() || hiddenForSession ? [] : carousel);
     setModalIndex(0);
   }, [exposure.data?.carousel]);
 
@@ -601,9 +603,13 @@ function HomeNoticeExposure() {
   const modal = modalNotices[modalIndex];
   const dismiss = () => {
     localStorage.setItem(dismissalKey, String(kstMidnightTimestamp()));
+    sessionStorage.setItem(sessionDismissalKey, "true");
     setModalNotices([]);
   };
-  const closeModal = () => setModalNotices([]);
+  const closeModal = () => {
+    sessionStorage.setItem(sessionDismissalKey, "true");
+    setModalNotices([]);
+  };
   const banner = banners[index];
   return (
     <>

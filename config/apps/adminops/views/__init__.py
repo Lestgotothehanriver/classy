@@ -1,4 +1,5 @@
 from .auth import AdminLoginAPIView, AdminMeAPIView
+from .dashboard import OperationsDashboardView
 from .notice import AdminNoticeDetailView, AdminNoticeListCreateView, AdminNoticeUnpublishView
 from .instructor_verification import (
     InstructorVerificationApproveView,
@@ -39,6 +40,7 @@ from .report import (
 __all__ = [
     "AdminLoginAPIView",
     "AdminMeAPIView",
+    "OperationsDashboardView",
     "InstructorVerificationListView",
     "InstructorVerificationSummaryView",
     "InstructorVerificationDetailView",
