@@ -30,6 +30,9 @@ from .views import (
     ReportInReviewView,
     ReportEvidenceView,
     LectureReviewStreamView,
+    AdminNoticeDetailView,
+    AdminNoticeListCreateView,
+    AdminNoticeUnpublishView,
 )
 
 app_name = "adminops"
@@ -37,6 +40,10 @@ app_name = "adminops"
 urlpatterns = [
     path("auth/login/", AdminLoginAPIView.as_view(), name="admin-login"),
     path("auth/me/", AdminMeAPIView.as_view(), name="admin-me"),
+    # 공지사항 관리
+    path("notices/", AdminNoticeListCreateView.as_view(), name="notice-list-create"),
+    path("notices/<int:pk>/", AdminNoticeDetailView.as_view(), name="notice-detail"),
+    path("notices/<int:pk>/unpublish/", AdminNoticeUnpublishView.as_view(), name="notice-unpublish"),
     # 학력 인증 관리
     path(
         "instructor-verifications/",

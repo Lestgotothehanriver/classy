@@ -56,6 +56,7 @@ import {
   Shell,
   PageHeading,
   HomePage,
+  NoticePage,
   Catalog,
   Profile,
   endpoints,
@@ -82,9 +83,10 @@ function App() {
   );
   const [user, setUser] = useState(null),
     [ready, setReady] = useState(false);
-  const [page, setPage] = useState(
-    pageNames[location.hash.slice(1)] ? location.hash.slice(1) : "home",
-  );
+  const [page, setPage] = useState(() => {
+    const root = location.hash.slice(1).split("/")[0];
+    return pageNames[root] ? root : "home";
+  });
   const [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
   const [pendingChatRoomId, setPendingChatRoomId] = useState(null);
@@ -131,7 +133,7 @@ function App() {
         notify("강의 등록이 완료될 때까지 기다려 주세요.");
         return;
       }
-      const next = location.hash.slice(1);
+      const next = location.hash.slice(1).split("/")[0];
       setPage(pageNames[next] ? next : "home");
       setModal(null);
       window.scrollTo(0, 0);
@@ -261,6 +263,8 @@ function App() {
           <Gate>
             <Profile onLogout={logout} />
           </Gate>
+        ) : page === "notices" ? (
+          <NoticePage />
         ) : page === "notifications" ? (
           <>
             <PageHeading title="알림" />

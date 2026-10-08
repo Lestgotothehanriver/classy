@@ -1,4 +1,5 @@
 from .auth import AdminLoginAPIView, AdminMeAPIView
+from .notice import AdminNoticeDetailView, AdminNoticeListCreateView, AdminNoticeUnpublishView
 from .instructor_verification import (
     InstructorVerificationApproveView,
     InstructorVerificationDetailView,

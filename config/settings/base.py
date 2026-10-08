@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "config.apps.lecture",
     "config.apps.main",
     "config.apps.notification",
+    "config.apps.notice",
     "config.apps.tutoring",
     "config.apps.report",
     "config.apps.mypage",

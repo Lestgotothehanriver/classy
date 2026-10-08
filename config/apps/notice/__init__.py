@@ -1,0 +1,1 @@
+"""Classy public notice domain."""

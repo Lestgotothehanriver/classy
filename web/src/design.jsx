@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   ArrowRight,
   ChevronRight,
@@ -24,6 +24,7 @@ import {
   State,
   Empty,
   Gate,
+  Modal,
   Subjects,
   money,
   RegionFields,
@@ -59,6 +60,7 @@ export const pageNames = {
   account: "계정 관리",
   "tutoring-manage": "나의 과외 관리",
   support: "고객지원",
+  notices: "공지사항",
 };
 export function AppIcon({ name, selected = false }) {
   return (
@@ -195,6 +197,7 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
           <nav aria-label="서비스 안내">
             <a href="/service-terms">이용약관</a>
             <a href="/privacy">개인정보처리방침</a>
+            <button type="button" className="footer-link" onClick={() => go("notices")}>공지사항</button>
             <a
               href="https://pf.kakao.com/_YxhWxlX"
               target="_blank"
@@ -282,6 +285,7 @@ export function HomePage() {
             : "필요한 강의를 골라 듣고, 나에게 맞는 과외 선생님을 만나보세요."
         }
       />
+      <HomeNoticeExposure />
       <div className="home-layout">
         <div className="home-main">
           <section className="home-actions" aria-label="빠른 메뉴">
@@ -557,6 +561,167 @@ export function HomePage() {
           </section>
         </aside>
       </div>
+    </>
+  );
+}
+
+function kstMidnightTimestamp() {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return (
+    Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate() + 1) -
+    9 * 60 * 60 * 1000
+  );
+}
+
+function openNotice(go, id) {
+  go(`notices/${id}`);
+}
+
+function HomeNoticeExposure() {
+  const { go } = useContext(Ctx);
+  const exposure = useLoad("/notices/exposure/");
+  const [index, setIndex] = useState(0);
+  const [modal, setModal] = useState(null);
+  const banners = list(exposure.data?.banners);
+
+  useEffect(() => {
+    const nextModal = exposure.data?.modal;
+    if (!nextModal) return;
+    const hiddenUntil = Number(
+      localStorage.getItem(`classy_notice_hidden_${nextModal.id}`) || 0,
+    );
+    if (hiddenUntil <= Date.now()) setModal(nextModal);
+  }, [exposure.data?.modal?.id]);
+
+  useEffect(() => {
+    if (index >= banners.length) setIndex(0);
+  }, [banners.length, index]);
+
+  const dismiss = () => {
+    if (modal)
+      localStorage.setItem(
+        `classy_notice_hidden_${modal.id}`,
+        String(kstMidnightTimestamp()),
+      );
+    setModal(null);
+  };
+  const banner = banners[index];
+  return (
+    <>
+      {banner && (
+        <section className="notice-carousel" aria-label="주요 공지사항">
+          <button
+            type="button"
+            className="notice-banner"
+            onClick={() => openNotice(go, banner.id)}
+          >
+            {banner.banner_image && <img src={banner.banner_image} alt="" />}
+            <span className="notice-banner-copy">
+              <strong>{banner.title}</strong>
+              <small>{banner.summary}</small>
+            </span>
+          </button>
+          {banners.length > 1 && (
+            <div className="notice-carousel-controls">
+              <button
+                type="button"
+                aria-label="이전 공지"
+                onClick={() => setIndex((index - 1 + banners.length) % banners.length)}
+              >
+                ‹
+              </button>
+              <span>{index + 1} / {banners.length}</span>
+              <button
+                type="button"
+                aria-label="다음 공지"
+                onClick={() => setIndex((index + 1) % banners.length)}
+              >
+                ›
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+      {modal && (
+        <Modal title="긴급 공지" onClose={dismiss}>
+          <section className="notice-modal-content">
+            {modal.banner_image && <img src={modal.banner_image} alt="" />}
+            <h3>{modal.title}</h3>
+            <p>{modal.summary}</p>
+            <div className="modal-actions">
+              <Btn onClick={dismiss}>오늘 하루 보지 않기</Btn>
+              <Btn
+                className="primary"
+                onClick={() => {
+                  dismiss();
+                  openNotice(go, modal.id);
+                }}
+              >
+                자세히 보기
+              </Btn>
+            </div>
+          </section>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+export function NoticePage() {
+  const { go } = useContext(Ctx);
+  const parseNoticeId = () => Number(location.hash.slice(1).split("/")[1]) || null;
+  const [selectedId, setSelectedId] = useState(parseNoticeId);
+  const notices = useLoad("/notices/");
+  const detail = useLoad(selectedId ? `/notices/${selectedId}/` : null, [selectedId]);
+  useEffect(() => {
+    const syncHash = () => setSelectedId(parseNoticeId());
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+  const closeDetail = () => go("notices");
+  const select = (id) => go(`notices/${id}`);
+
+  if (selectedId)
+    return (
+      <>
+        <PageHeading title="공지사항" />
+        <State resource={detail}>
+          {detail.data && (
+            <section className="notice-detail-page">
+              <button className="text-button" onClick={closeDetail}>← 목록으로</button>
+              <h2>{detail.data.title}</h2>
+              <time>{new Date(detail.data.publish_at).toLocaleDateString("ko-KR")}</time>
+              {detail.data.banner_image && <img src={detail.data.banner_image} alt="" />}
+              <p>{detail.data.content}</p>
+            </section>
+          )}
+        </State>
+      </>
+    );
+
+  return (
+    <>
+      <PageHeading title="공지사항" description="CLASSY의 새로운 소식과 운영 안내를 확인하세요." />
+      <State resource={notices}>
+        {notices.data && (
+          <section className="notice-list-page">
+            {list(notices.data).length ? (
+              list(notices.data).map((notice) => (
+                <button
+                  type="button"
+                  className="notice-list-item"
+                  key={notice.id}
+                  onClick={() => select(notice.id)}
+                >
+                  <span><strong>{notice.title}</strong><small>{notice.summary}</small></span>
+                  <time>{new Date(notice.publish_at).toLocaleDateString("ko-KR")}</time>
+                </button>
+              ))
+            ) : <Empty title="등록된 공지사항이 없어요" />}
+          </section>
+        )}
+      </State>
     </>
   );
 }
@@ -1022,6 +1187,7 @@ export function Profile({ onLogout }) {
                 ["tutoring-manage", "나의 과외 관리"],
                 ["account", "계정 관리"],
                 ["support", "고객지원"],
+                ["notices", "공지사항"],
               ])
               .map(([id, label]) => (
                 <button key={id} onClick={() => go(id)}>

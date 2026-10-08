@@ -43,6 +43,7 @@ urlpatterns = [
     path("device-token/", DeviceTokenAPIView.as_view()),
     path("", include("config.apps.chat_app.urls")),
     path("notification/", include("config.apps.notification.urls")),
+    path("notices/", include("config.apps.notice.urls")),
 ]
 
 if settings.DEBUG:
