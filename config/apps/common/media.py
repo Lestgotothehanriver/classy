@@ -20,7 +20,7 @@ def _file_iterator(file_obj, start: int, length: int, chunk_size: int = 8192):
 
 # 학력 인증 문서 등 민감 파일이 저장되는 경로. 직접 접근을 차단하고
 # 슈퍼관리자 전용 스트리밍 엔드포인트로만 열람하도록 합니다.
-PROTECTED_MEDIA_PREFIXES = ("files/",)
+PROTECTED_MEDIA_PREFIXES = ("files/", "support/")
 PROFILE_IMAGE_PREFIX = "profile_images/"
 PROFILE_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 

@@ -11,6 +11,21 @@ from config.apps.tutoring.models import TutoringRegistration
 from .models import SupportEvent, SupportMessage, SupportTicket
 
 
+USER_EVENT_TYPES = ("ticket.created", "ticket.reopened")
+STATUS_LABELS = {
+    SupportTicket.Status.RECEIVED: "접수됨",
+    SupportTicket.Status.IN_PROGRESS: "처리 중",
+    SupportTicket.Status.WAITING_FOR_USER: "추가 정보 필요",
+    SupportTicket.Status.RESOLVED: "처리 완료",
+    SupportTicket.Status.CLOSED: "종결됨",
+}
+
+
+def status_label(status: str) -> str:
+    """사용자·운영 화면에 표시할 티켓 상태명을 반환합니다."""
+    return STATUS_LABELS.get(status, "접수됨")
+
+
 def display_name(user) -> str:
     """삭제 후에도 표시할 수 있는 현재 사용자 표시 이름을 반환합니다."""
     return f"{user.last_name}{user.first_name}".strip() or user.user_name or user.username
@@ -65,6 +80,46 @@ def related_summary(ticket: SupportTicket) -> dict | None:
     return None
 
 
+def ticket_context(user) -> dict:
+    """문의 유형별로 사용자가 선택할 수 있는 검증 대상만 반환합니다."""
+    purchases = PurchaseHistory.objects.filter(user=user).order_by("-created_at", "-pk")[:100]
+    registrations = (
+        TutoringRegistration.objects.filter(student=user)
+        | TutoringRegistration.objects.filter(instructor=user)
+    ).order_by("-updated_at", "-pk")[:100]
+    verifications = PendingInstructor.objects.filter(
+        instructor_profile__user=user
+    ).order_by("-applied_at", "-pk")[:20]
+    return {
+        "purchases": [
+            {
+                "id": purchase.pk,
+                "label": f"{purchase.purchased_cash:,} 캐시 충전",
+                "created_at": purchase.created_at,
+            }
+            for purchase in purchases
+        ],
+        "tutoring_registrations": [
+            {
+                "id": registration.pk,
+                "label": registration.subject,
+                "updated_at": registration.updated_at,
+                "status": registration.get_contract_status_display(),
+            }
+            for registration in registrations
+        ],
+        "instructor_verifications": [
+            {
+                "id": verification.pk,
+                "label": verification.instructor_profile.university or "학력 인증 신청",
+                "applied_at": verification.applied_at,
+                "status": verification.get_status_display(),
+            }
+            for verification in verifications
+        ],
+    }
+
+
 def add_event(ticket, *, actor, event_type: str, payload: dict | None = None) -> None:
     """변경 이력을 보존합니다."""
     SupportEvent.objects.create(
@@ -74,6 +129,15 @@ def add_event(ticket, *, actor, event_type: str, payload: dict | None = None) ->
         event_type=event_type,
         payload=payload or {},
     )
+
+
+def mark_ticket_read(ticket: SupportTicket, *, user) -> SupportTicket:
+    """요청자가 확인한 시각을 기록해 운영자 답변 읽음 여부를 갱신합니다."""
+    if ticket.requester_id != user.id:
+        raise ValidationError("본인의 문의만 확인할 수 있습니다.")
+    ticket.last_user_read_at = timezone.now()
+    ticket.save(update_fields=["last_user_read_at", "updated_at"])
+    return ticket
 
 
 @transaction.atomic
@@ -125,7 +189,7 @@ def anonymize_user_tickets(user) -> None:
         if attachment.file:
             DeletedAccountFile.objects.get_or_create(name=attachment.file.name)
     ticket_attachment_queryset(tickets).delete()
-    tickets.update(requester=None, requester_name="탈퇴회원", requester_role="", assigned_to=None)
+    tickets.update(requester=None, requester_name="탈퇴회원", requester_role="")
 
 
 def ticket_attachment_queryset(tickets):

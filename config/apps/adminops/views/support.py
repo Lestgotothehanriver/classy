@@ -5,24 +5,24 @@ import os
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.apps.adminops.models import AdminActionLog
 from config.apps.notification.helpers import notify_support_ticket_update
-from config.apps.support.models import SupportAttachment, SupportMessage, SupportTicket
-from config.apps.support.services import add_event, display_name, transition
+from config.apps.support.models import SupportAttachment, SupportEvent, SupportMessage, SupportTicket
+from config.apps.support.services import USER_EVENT_TYPES, add_event, display_name, transition
 
 from ..permissions import IsSuperAdmin
 from ..serializers.support import (
     AdminNameChangeSerializer,
     AdminSupportTicketSerializer,
-    AdminTicketAssignSerializer,
     AdminTicketNoteSerializer,
     AdminTicketReplySerializer,
     AdminTicketStatusSerializer,
@@ -30,7 +30,15 @@ from ..serializers.support import (
 
 
 def _base_queryset():
-    return SupportTicket.objects.select_related("requester", "assigned_to").prefetch_related("messages__attachments", "events")
+    operator_events = (
+        SupportEvent.objects.filter(ticket_id=OuterRef("pk"), actor__isnull=False)
+        .exclude(event_type__in=USER_EVENT_TYPES)
+        .order_by("-created_at", "-pk")
+    )
+    return SupportTicket.objects.select_related("requester").prefetch_related("messages__attachments", "events").annotate(
+        last_operator_name=Subquery(operator_events.values("actor_name")[:1]),
+        last_operator_at=Subquery(operator_events.values("created_at")[:1]),
+    )
 
 
 def _request_id(request):
@@ -48,6 +56,25 @@ def _notify_requester(ticket, *, title: str, body: str) -> None:
         )
 
 
+def _status_notification(status: str) -> tuple[str, str] | None:
+    """사용자 확인이 필요한 상태 전이의 단일 푸시 문구를 반환합니다."""
+    messages = {
+        SupportTicket.Status.WAITING_FOR_USER: (
+            "추가 정보가 필요해요",
+            "내 문의에서 운영자 요청을 확인해 주세요.",
+        ),
+        SupportTicket.Status.RESOLVED: (
+            "1:1 문의가 해결 처리되었어요",
+            "내 문의에서 처리 내용을 확인해 주세요.",
+        ),
+        SupportTicket.Status.CLOSED: (
+            "1:1 문의가 종결되었어요",
+            "종결된 문의는 읽기 전용으로 보관됩니다.",
+        ),
+    }
+    return messages.get(status)
+
+
 class AdminSupportTicketListView(ListAPIView):
     """GET /admin-api/v1/inquiries/ - 운영 필터가 적용된 티켓 목록입니다."""
 
@@ -61,13 +88,17 @@ class AdminSupportTicketListView(ListAPIView):
             qs = qs.filter(status=params["status"])
         if params.get("ticket_type") in SupportTicket.TicketType.values:
             qs = qs.filter(ticket_type=params["ticket_type"])
-        if params.get("unassigned") == "true":
-            qs = qs.filter(assigned_to__isnull=True)
-        elif params.get("assignee_id", "").isdigit():
-            qs = qs.filter(assigned_to_id=int(params["assignee_id"]))
         if params.get("q"):
             q = params["q"].strip()
             qs = qs.filter(Q(title__icontains=q) | Q(requester_name__icontains=q) | Q(requester__user_name__icontains=q))
+        if params.get("operator_q"):
+            qs = qs.filter(events__actor_name__icontains=params["operator_q"].strip()).distinct()
+        created_from = parse_date(params.get("created_from", ""))
+        if created_from:
+            qs = qs.filter(created_at__date__gte=created_from)
+        created_to = parse_date(params.get("created_to", ""))
+        if created_to:
+            qs = qs.filter(created_at__date__lte=created_to)
         return qs.order_by("-updated_at", "-pk")
 
 
@@ -81,7 +112,6 @@ class AdminSupportTicketSummaryView(APIView):
         counts = {row["status"]: row["count"] for row in rows}
         return Response({
             "received": counts.get(SupportTicket.Status.RECEIVED, 0),
-            "unassigned": SupportTicket.objects.filter(assigned_to__isnull=True).exclude(status=SupportTicket.Status.CLOSED).count(),
             "in_progress": counts.get(SupportTicket.Status.IN_PROGRESS, 0),
             "waiting_for_user": counts.get(SupportTicket.Status.WAITING_FOR_USER, 0),
         })
@@ -122,7 +152,12 @@ class AdminSupportTicketReplyView(APIView):
             transition(ticket, actor=request.user, status=next_status)
         add_event(ticket, actor=request.user, event_type="ticket.public_reply", payload={"message_id": message.pk})
         AdminActionLog.record(admin=request.user, action="support.reply", target_type="SupportTicket", target_id=ticket.pk, request_id=_request_id(request))
-        _notify_requester(ticket, title="1:1 문의에 답변이 등록되었어요", body="내 문의에서 운영자 답변을 확인해 주세요.")
+        status_notification = _status_notification(ticket.status)
+        if status_notification:
+            title, body = status_notification
+        else:
+            title, body = "1:1 문의에 답변이 등록되었어요", "내 문의에서 운영자 답변을 확인해 주세요."
+        _notify_requester(ticket, title=title, body=body)
         return Response(AdminSupportTicketSerializer(_base_queryset().get(pk=pk), context={"detail": True}).data)
 
 
@@ -141,27 +176,6 @@ class AdminSupportTicketNoteView(APIView):
         return Response(AdminSupportTicketSerializer(_base_queryset().get(pk=pk), context={"detail": True}).data)
 
 
-class AdminSupportTicketAssignView(APIView):
-    """슈퍼관리자 담당자를 배정하거나 해제합니다."""
-
-    permission_classes = [IsSuperAdmin]
-
-    def post(self, request, pk):
-        serializer = AdminTicketAssignSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ticket = get_object_or_404(SupportTicket, pk=pk)
-        assignee_id = serializer.validated_data.get("assignee_id")
-        assignee = None
-        if assignee_id is not None:
-            assignee = get_object_or_404(get_user_model().objects.filter(is_superuser=True, is_active=True), pk=assignee_id)
-        before = ticket.assigned_to_id
-        ticket.assigned_to = assignee
-        ticket.save(update_fields=["assigned_to", "updated_at"])
-        add_event(ticket, actor=request.user, event_type="ticket.assigned", payload={"from": before, "to": assignee_id})
-        AdminActionLog.record(admin=request.user, action="support.assign", target_type="SupportTicket", target_id=ticket.pk, metadata={"from": before, "to": assignee_id}, request_id=_request_id(request))
-        return Response(AdminSupportTicketSerializer(_base_queryset().get(pk=pk), context={"detail": True}).data)
-
-
 class AdminSupportTicketStatusView(APIView):
     """운영자 상태 전이와 사용자 알림을 처리합니다."""
 
@@ -176,9 +190,9 @@ class AdminSupportTicketStatusView(APIView):
         except Exception as exc:
             return Response({"error": str(exc.detail[0]) if hasattr(exc, "detail") else "상태를 변경할 수 없습니다."}, status=409)
         AdminActionLog.record(admin=request.user, action="support.status", target_type="SupportTicket", target_id=ticket.pk, reason=serializer.validated_data.get("reason", ""), metadata={"status": ticket.status}, request_id=_request_id(request))
-        labels = {SupportTicket.Status.WAITING_FOR_USER: ("추가 정보가 필요해요", "내 문의에서 운영자 요청을 확인해 주세요."), SupportTicket.Status.RESOLVED: ("1:1 문의가 해결 처리되었어요", "내 문의에서 처리 내용을 확인해 주세요."), SupportTicket.Status.CLOSED: ("1:1 문의가 종결되었어요", "종결된 문의는 읽기 전용으로 보관됩니다.")}
-        if ticket.status in labels:
-            title, body = labels[ticket.status]
+        status_notification = _status_notification(ticket.status)
+        if status_notification:
+            title, body = status_notification
             _notify_requester(ticket, title=title, body=body)
         return Response(AdminSupportTicketSerializer(_base_queryset().get(pk=pk), context={"detail": True}).data)
 
@@ -195,14 +209,22 @@ class AdminSupportTicketApproveNameChangeView(APIView):
         ticket = get_object_or_404(SupportTicket.objects.select_for_update().select_related("requester"), pk=pk)
         if ticket.ticket_type != SupportTicket.TicketType.NAME_CHANGE or ticket.requester is None:
             return Response({"error": "처리할 수 있는 이름 변경 요청이 아닙니다."}, status=400)
+        if ticket.status == SupportTicket.Status.CLOSED:
+            return Response({"error": "종결된 문의는 처리할 수 없습니다."}, status=409)
+        if ticket.events.filter(event_type="ticket.name_change_approved").exists():
+            return Response({"error": "이미 승인된 이름 변경 요청입니다."}, status=409)
         user = get_user_model().objects.select_for_update().get(pk=ticket.requester_id)
         before = {"last_name": user.last_name, "first_name": user.first_name}
         user.last_name = ticket.requested_last_name
         user.first_name = ticket.requested_first_name
         user.save(update_fields=["last_name", "first_name"])
         add_event(ticket, actor=request.user, event_type="ticket.name_change_approved", payload={"before": before, "after": {"last_name": user.last_name, "first_name": user.first_name}, "reason": serializer.validated_data.get("reason", "")})
+        if ticket.status == SupportTicket.Status.RECEIVED:
+            transition(ticket, actor=request.user, status=SupportTicket.Status.IN_PROGRESS)
+        if ticket.status in (SupportTicket.Status.IN_PROGRESS, SupportTicket.Status.WAITING_FOR_USER):
+            transition(ticket, actor=request.user, status=SupportTicket.Status.RESOLVED)
         AdminActionLog.record(admin=request.user, action="support.name_change_approve", target_type="SupportTicket", target_id=ticket.pk, reason=serializer.validated_data.get("reason", ""), metadata={"before": before, "after": {"last_name": user.last_name, "first_name": user.first_name}}, request_id=_request_id(request))
-        _notify_requester(ticket, title="이름 변경이 승인되었어요", body="프로필에서 변경된 이름을 확인해 주세요.")
+        _notify_requester(ticket, title="이름 변경이 처리 완료되었어요", body="프로필에서 변경된 이름을 확인해 주세요.")
         return Response(AdminSupportTicketSerializer(_base_queryset().get(pk=pk), context={"detail": True}).data)
 
 

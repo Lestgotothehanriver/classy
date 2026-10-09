@@ -5,7 +5,7 @@ import os
 from rest_framework import serializers
 
 from .models import SupportAttachment, SupportEvent, SupportMessage, SupportTicket
-from .services import related_summary, ticket_role, validate_related_target
+from .services import related_summary, status_label, ticket_role, validate_related_target
 
 
 TYPE_TITLES = {
@@ -44,9 +44,24 @@ class SupportMessageSerializer(serializers.ModelSerializer):
 class SupportEventSerializer(serializers.ModelSerializer):
     """사용자에게 공개 가능한 시스템 상태 이력입니다."""
 
+    label = serializers.SerializerMethodField()
+
     class Meta:
         model = SupportEvent
-        fields = ["id", "event_type", "payload", "created_at"]
+        fields = ["id", "label", "created_at"]
+
+    def get_label(self, obj):
+        if obj.event_type == "ticket.created":
+            return "문의가 접수됨"
+        if obj.event_type == "ticket.reopened":
+            return "문의가 다시 처리 중으로 변경됨"
+        if obj.event_type == "ticket.public_reply":
+            return "운영자 답변이 등록됨"
+        if obj.event_type == "ticket.name_change_approved":
+            return "이름 변경이 처리 완료됨"
+        if obj.event_type == "ticket.status_changed":
+            return status_label(obj.payload.get("to", ""))
+        return "문의 상태가 변경됨"
 
 
 class SupportTicketSerializer(serializers.ModelSerializer):
@@ -56,28 +71,38 @@ class SupportTicketSerializer(serializers.ModelSerializer):
     unread_admin_replies = serializers.SerializerMethodField()
     messages = serializers.SerializerMethodField()
     events = serializers.SerializerMethodField()
-    assigned_to_name = serializers.SerializerMethodField()
+    status_label = serializers.SerializerMethodField()
+    last_operator_name = serializers.SerializerMethodField()
+    last_operator_at = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportTicket
         fields = [
-            "id", "ticket_type", "status", "title", "requester_name", "requester_role",
-            "assigned_to_name", "related_kind", "related_id", "related", "requested_last_name",
+            "id", "ticket_type", "status", "status_label", "title", "requester_name", "requester_role",
+            "last_operator_name", "last_operator_at", "related_kind", "related_id", "related", "requested_last_name",
             "requested_first_name", "name_change_reason", "unread_admin_replies", "messages",
-            "events", "created_at", "updated_at", "resolved_at", "closed_at",
+            "events", "created_at", "updated_at", "resolved_at", "closed_at", "last_user_read_at",
         ]
 
     def get_related(self, obj):
         return related_summary(obj)
 
-    def get_assigned_to_name(self, obj):
-        return "" if obj.assigned_to is None else obj.assigned_to.user_name
+    def get_status_label(self, obj):
+        return status_label(obj.status)
+
+    def get_last_operator_name(self, obj):
+        return getattr(obj, "last_operator_name", "") or ""
+
+    def get_last_operator_at(self, obj):
+        return getattr(obj, "last_operator_at", None)
 
     def get_unread_admin_replies(self, obj):
-        latest_user = obj.last_user_message_at
         if obj.last_admin_message_at is None:
             return 0
-        return int(latest_user is None or obj.last_admin_message_at > latest_user)
+        return int(
+            obj.last_user_read_at is None
+            or obj.last_admin_message_at > obj.last_user_read_at
+        )
 
     def get_messages(self, obj):
         if not self.context.get("detail"):
@@ -113,6 +138,7 @@ class SupportTicketCreateSerializer(serializers.Serializer):
             SupportTicket.TicketType.CASH_PAYMENT: SupportTicket.RelatedKind.PURCHASE,
             SupportTicket.TicketType.TUTORING_FEE: SupportTicket.RelatedKind.TUTORING_REGISTRATION,
             SupportTicket.TicketType.PAYBACK: SupportTicket.RelatedKind.TUTORING_REGISTRATION,
+            SupportTicket.TicketType.VERIFICATION_PROFILE: SupportTicket.RelatedKind.INSTRUCTOR_VERIFICATION,
         }.get(ticket_type)
         if required_kind and attrs.get("related_kind") != required_kind:
             raise serializers.ValidationError("이 문의 유형에는 연결 업무를 지정해야 합니다.")

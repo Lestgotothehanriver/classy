@@ -1247,6 +1247,28 @@ dialog.wide {
   flex-wrap: wrap;
   margin: 20px 0;
 }
+.support-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0 0;
+}
+.support-actions .support-action {
+  width: 100%;
+  text-decoration: none;
+}
+.support-guide {
+  padding-bottom: 0;
+}
+.support-guide p + p {
+  margin-top: 16px;
+}
+.support-guide ol {
+  margin: 10px 0 16px;
+  padding-left: 22px;
+  color: #5f646d;
+  line-height: 1.7;
+}
 .info-panel {
   padding: 24px 0;
   border-top: 1px solid var(--line);

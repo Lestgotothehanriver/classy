@@ -2,24 +2,35 @@
 
 from rest_framework import serializers
 
-from config.apps.support.models import SupportTicket
-from config.apps.support.serializers import SupportEventSerializer, SupportMessageSerializer
-from config.apps.support.services import related_summary
+from config.apps.support.models import SupportEvent, SupportTicket
+from config.apps.support.serializers import SupportMessageSerializer
+from config.apps.support.services import related_summary, status_label
+
+
+class AdminSupportEventSerializer(serializers.ModelSerializer):
+    """운영 감사용으로 처리자와 원본 변경값을 포함하는 티켓 이력입니다."""
+
+    class Meta:
+        model = SupportEvent
+        fields = ["id", "actor_name", "event_type", "payload", "created_at"]
 
 
 class AdminSupportTicketSerializer(serializers.ModelSerializer):
     """운영자가 내부 메모까지 포함해 조회하는 티켓 표현입니다."""
 
     requester = serializers.SerializerMethodField()
-    assignee = serializers.SerializerMethodField()
     related = serializers.SerializerMethodField()
     messages = serializers.SerializerMethodField()
     events = serializers.SerializerMethodField()
+    status_label = serializers.SerializerMethodField()
+    last_operator_name = serializers.SerializerMethodField()
+    last_operator_at = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportTicket
         fields = [
-            "id", "ticket_type", "status", "title", "requester", "assignee",
+            "id", "ticket_type", "status", "status_label", "title", "requester",
+            "last_operator_name", "last_operator_at",
             "related_kind", "related_id", "related", "requested_last_name",
             "requested_first_name", "name_change_reason", "messages", "events",
             "created_at", "updated_at", "last_admin_message_at", "last_user_message_at",
@@ -34,10 +45,14 @@ class AdminSupportTicketSerializer(serializers.ModelSerializer):
             "role": obj.requester_role,
         }
 
-    def get_assignee(self, obj):
-        if obj.assigned_to is None:
-            return None
-        return {"id": obj.assigned_to_id, "name": obj.assigned_to.user_name, "email": obj.assigned_to.email}
+    def get_status_label(self, obj):
+        return status_label(obj.status)
+
+    def get_last_operator_name(self, obj):
+        return getattr(obj, "last_operator_name", "") or ""
+
+    def get_last_operator_at(self, obj):
+        return getattr(obj, "last_operator_at", None)
 
     def get_related(self, obj):
         return related_summary(obj)
@@ -50,7 +65,7 @@ class AdminSupportTicketSerializer(serializers.ModelSerializer):
     def get_events(self, obj):
         if not self.context.get("detail"):
             return []
-        return SupportEventSerializer(obj.events.all(), many=True).data
+        return AdminSupportEventSerializer(obj.events.all(), many=True).data
 
 
 class AdminTicketReplySerializer(serializers.Serializer):
@@ -64,12 +79,6 @@ class AdminTicketNoteSerializer(serializers.Serializer):
     """내부 메모 입력입니다."""
 
     content = serializers.CharField()
-
-
-class AdminTicketAssignSerializer(serializers.Serializer):
-    """담당자 배정 입력입니다. null은 미배정으로 되돌립니다."""
-
-    assignee_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class AdminTicketStatusSerializer(serializers.Serializer):

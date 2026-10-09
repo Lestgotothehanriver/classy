@@ -73,7 +73,6 @@ class OperationsDashboardView(APIView):
             )["total"],
             "pending_verifications": pending_verifications.count(),
             "support_received": support_tickets.filter(status=SupportTicket.Status.RECEIVED).count(),
-            "support_unassigned": support_tickets.filter(assigned_to__isnull=True).count(),
             "support_in_progress": support_tickets.filter(status=SupportTicket.Status.IN_PROGRESS).count(),
             "support_waiting_for_user": support_tickets.filter(status=SupportTicket.Status.WAITING_FOR_USER).count(),
         }

@@ -50,3 +50,26 @@ export async function api(path, options = {}) {
   }
   return data;
 }
+
+/** Downloads a protected API attachment with the current account token. */
+export async function downloadProtectedFile(path, filename) {
+  const token = sessionStorage.getItem("classy_token");
+  const res = await fetch(apiPath(path), {
+    headers: token ? { Authorization: `Token ${token}` } : {},
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    if (res.status === 401 && token)
+      window.dispatchEvent(new Event("classy:expired"));
+    throw new Error(errorText(data));
+  }
+  const objectUrl = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}

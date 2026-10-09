@@ -41,13 +41,6 @@ class SupportTicket(models.Model):
         max_length=30, choices=Status.choices, default=Status.RECEIVED, db_index=True
     )
     title = models.CharField(max_length=255)
-    assigned_to = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="assigned_support_tickets",
-    )
     related_kind = models.CharField(max_length=40, choices=RelatedKind.choices, blank=True)
     related_id = models.PositiveBigIntegerField(null=True, blank=True)
     requested_last_name = models.CharField(max_length=150, blank=True)
@@ -55,6 +48,7 @@ class SupportTicket(models.Model):
     name_change_reason = models.TextField(blank=True)
     last_admin_message_at = models.DateTimeField(null=True, blank=True)
     last_user_message_at = models.DateTimeField(null=True, blank=True)
+    last_user_read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -64,7 +58,6 @@ class SupportTicket(models.Model):
         ordering = ["-updated_at", "-pk"]
         indexes = [
             models.Index(fields=["status", "ticket_type", "updated_at"]),
-            models.Index(fields=["assigned_to", "status", "updated_at"]),
             models.Index(fields=["related_kind", "related_id"]),
         ]
 

@@ -41,7 +41,6 @@ from .report import (
 )
 from .support import (
     AdminSupportTicketApproveNameChangeView,
-    AdminSupportTicketAssignView,
     AdminSupportTicketAttachmentView,
     AdminSupportTicketDetailView,
     AdminSupportTicketListView,
@@ -90,7 +89,6 @@ __all__ = [
     "AdminSupportTicketDetailView",
     "AdminSupportTicketReplyView",
     "AdminSupportTicketNoteView",
-    "AdminSupportTicketAssignView",
     "AdminSupportTicketStatusView",
     "AdminSupportTicketApproveNameChangeView",
     "AdminSupportTicketAttachmentView",
