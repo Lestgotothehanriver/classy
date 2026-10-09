@@ -19,11 +19,21 @@ STATUS_LABELS = {
     SupportTicket.Status.RESOLVED: "처리 완료",
     SupportTicket.Status.CLOSED: "종결됨",
 }
+REFUND_STATUS_LABELS = {
+    "not_requested": "환불 요청 없음",
+    "manual_review": "운영 검토 필요",
+    "refunded": "환불 완료",
+}
 
 
 def status_label(status: str) -> str:
     """사용자·운영 화면에 표시할 티켓 상태명을 반환합니다."""
     return STATUS_LABELS.get(status, "접수됨")
+
+
+def refund_status_label(status: str) -> str:
+    """운영 화면에 표시할 구매 환불 상태명을 반환합니다."""
+    return REFUND_STATUS_LABELS.get(status, "상태 확인 필요")
 
 
 def display_name(user) -> str:
@@ -70,7 +80,26 @@ def related_summary(ticket: SupportTicket) -> dict | None:
         return None
     if ticket.related_kind == SupportTicket.RelatedKind.PURCHASE:
         row = PurchaseHistory.objects.filter(pk=ticket.related_id).first()
-        return None if row is None else {"kind": ticket.related_kind, "id": row.pk, "label": row.product_id or row.transaction_id, "status": row.refund_status}
+        if row is None:
+            return None
+        google_order_id = ""
+        if row.platform == "google":
+            google_detail = getattr(row, "google_play_detail", None)
+            google_order_id = getattr(google_detail, "order_id", "")
+        return {
+            "kind": ticket.related_kind,
+            "id": row.pk,
+            "label": row.product_id or row.transaction_id,
+            "status": row.refund_status,
+            "refund_status_label": refund_status_label(row.refund_status),
+            "platform": row.platform,
+            "transaction_id": row.transaction_id,
+            "store_order_id": google_order_id or row.transaction_id,
+            "original_transaction_id": row.original_transaction_id,
+            "purchased_cash": row.purchased_cash,
+            "paid_amount": row.paid_amount,
+            "is_refunded": row.is_refunded,
+        }
     if ticket.related_kind == SupportTicket.RelatedKind.TUTORING_REGISTRATION:
         row = TutoringRegistration.objects.filter(pk=ticket.related_id).first()
         return None if row is None else {"kind": ticket.related_kind, "id": row.pk, "label": row.subject, "status": row.contract_status}
