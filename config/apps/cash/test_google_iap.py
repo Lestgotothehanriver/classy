@@ -510,7 +510,7 @@ class GoogleRtdnAndRefundTests(TestCase):
         'config.apps.cash.management.commands.sync_google_voided_purchases.list_google_voided_purchases',
         return_value=[],
     )
-    def test_voided_purchase_sync_uses_30_day_then_24_hour_overlap(
+    def test_voided_purchase_sync_uses_safe_lookback_then_24_hour_overlap(
         self,
         mock_list,
     ):
@@ -519,7 +519,7 @@ class GoogleRtdnAndRefundTests(TestCase):
         first_window = mock_list.call_args.kwargs
         self.assertGreaterEqual(
             first_window['start_time'],
-            before - timedelta(days=30, seconds=1),
+            before - timedelta(days=29, hours=23, seconds=1),
         )
 
         state = GooglePlaySyncState.objects.get(key='voided_purchases')
