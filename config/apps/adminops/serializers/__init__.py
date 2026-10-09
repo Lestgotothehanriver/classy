@@ -26,6 +26,7 @@ from .report import (
     SanctionItemSerializer,
 )
 from .notice import AdminNoticeSerializer
+from .support import AdminSupportTicketSerializer
 
 __all__ = [
     "AdminLoginSerializer",
@@ -49,4 +50,5 @@ __all__ = [
     "ResolveCaseSerializer",
     "SanctionInputSerializer",
     "AdminNoticeSerializer",
+    "AdminSupportTicketSerializer",
 ]

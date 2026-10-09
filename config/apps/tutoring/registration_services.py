@@ -156,6 +156,9 @@ def refresh_contract_status(registration):
     if registration.contract_status != status_value:
         registration.contract_status = status_value
         registration.save(update_fields=["contract_status", "updated_at"])
+    if status_value == TutoringRegistration.ContractStatus.ACTIVE:
+        from .payback_services import ensure_payback_payout
+        ensure_payback_payout(registration)
     return status_value
 
 

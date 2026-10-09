@@ -52,6 +52,16 @@ def _notify_with_push(user, ntype, role, title, body, data=None):
     _create(user, ntype, role, title, body, data)
 
 
+def notify_support_ticket_update(user, *, role, ticket_id: int, title: str, body: str):
+    """민감한 티켓 세부정보 없이 운영 처리 변동을 알립니다."""
+    _notify_with_push(user=user, ntype="support_ticket", role=role, title=title, body=body, data={"ticket_id": str(ticket_id)})
+
+
+def notify_payback_completed(user, *, registration_id: int, amount: int):
+    """수동 페이백 지급 완료를 학생에게 알립니다."""
+    _notify_with_push(user=user, ntype="payback_completed", role="student", title="페이백 지급 완료", body=f"페이백 {amount:,}원이 지급 완료되었어요.", data={"registration_id": str(registration_id)})
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 과외 요청 / 제안
 # ─────────────────────────────────────────────────────────────────────────────

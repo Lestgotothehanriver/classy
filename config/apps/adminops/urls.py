@@ -18,6 +18,9 @@ from .views import (
     TutoringRegistrationConfirmFeeView,
     TutoringRegistrationDetailView,
     TutoringRegistrationDocumentView,
+    TutoringRegistrationPaybackCompleteView,
+    TutoringRegistrationPaybackFailView,
+    TutoringRegistrationPaybackRetryView,
     TutoringRegistrationListView,
     TutoringRegistrationRejectFeeView,
     TutoringRegistrationSummaryView,
@@ -34,6 +37,15 @@ from .views import (
     AdminNoticeDetailView,
     AdminNoticeListCreateView,
     AdminNoticeUnpublishView,
+    AdminSupportTicketListView,
+    AdminSupportTicketSummaryView,
+    AdminSupportTicketDetailView,
+    AdminSupportTicketReplyView,
+    AdminSupportTicketNoteView,
+    AdminSupportTicketAssignView,
+    AdminSupportTicketStatusView,
+    AdminSupportTicketApproveNameChangeView,
+    AdminSupportTicketAttachmentView,
 )
 
 app_name = "adminops"
@@ -41,6 +53,15 @@ app_name = "adminops"
 urlpatterns = [
     path("auth/login/", AdminLoginAPIView.as_view(), name="admin-login"),
     path("auth/me/", AdminMeAPIView.as_view(), name="admin-me"),
+    path("inquiries/", AdminSupportTicketListView.as_view(), name="support-ticket-list"),
+    path("inquiries/summary/", AdminSupportTicketSummaryView.as_view(), name="support-ticket-summary"),
+    path("inquiries/<int:pk>/", AdminSupportTicketDetailView.as_view(), name="support-ticket-detail"),
+    path("inquiries/<int:pk>/reply/", AdminSupportTicketReplyView.as_view(), name="support-ticket-reply"),
+    path("inquiries/<int:pk>/notes/", AdminSupportTicketNoteView.as_view(), name="support-ticket-note"),
+    path("inquiries/<int:pk>/assign/", AdminSupportTicketAssignView.as_view(), name="support-ticket-assign"),
+    path("inquiries/<int:pk>/status/", AdminSupportTicketStatusView.as_view(), name="support-ticket-status"),
+    path("inquiries/<int:pk>/approve-name-change/", AdminSupportTicketApproveNameChangeView.as_view(), name="support-ticket-name-change"),
+    path("inquiries/<int:pk>/attachments/<int:attachment_id>/", AdminSupportTicketAttachmentView.as_view(), name="support-ticket-attachment"),
     # 운영 대시보드
     path(
         "dashboard/operations/",
@@ -139,6 +160,9 @@ urlpatterns = [
         TutoringRegistrationDocumentView.as_view(),
         name="tutoring-registration-document",
     ),
+    path("tutoring-registrations/<int:pk>/payback/complete/", TutoringRegistrationPaybackCompleteView.as_view(), name="tutoring-registration-payback-complete"),
+    path("tutoring-registrations/<int:pk>/payback/fail/", TutoringRegistrationPaybackFailView.as_view(), name="tutoring-registration-payback-fail"),
+    path("tutoring-registrations/<int:pk>/payback/retry/", TutoringRegistrationPaybackRetryView.as_view(), name="tutoring-registration-payback-retry"),
     # 신고 관리 (가해자 중심 통합 케이스)
     path(
         "reports/",

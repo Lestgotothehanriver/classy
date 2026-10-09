@@ -21,6 +21,9 @@ from .tutoring_registration import (
     TutoringRegistrationDetailView,
     TutoringRegistrationDocumentView,
     TutoringRegistrationListView,
+    TutoringRegistrationPaybackCompleteView,
+    TutoringRegistrationPaybackFailView,
+    TutoringRegistrationPaybackRetryView,
     TutoringRegistrationRejectFeeView,
     TutoringRegistrationSummaryView,
 )
@@ -35,6 +38,17 @@ from .report import (
     ReportSanctionView,
     ReportedUserListView,
     ReportedUserSummaryView,
+)
+from .support import (
+    AdminSupportTicketApproveNameChangeView,
+    AdminSupportTicketAssignView,
+    AdminSupportTicketAttachmentView,
+    AdminSupportTicketDetailView,
+    AdminSupportTicketListView,
+    AdminSupportTicketNoteView,
+    AdminSupportTicketReplyView,
+    AdminSupportTicketStatusView,
+    AdminSupportTicketSummaryView,
 )
 
 __all__ = [
@@ -58,6 +72,9 @@ __all__ = [
     "TutoringRegistrationConfirmFeeView",
     "TutoringRegistrationRejectFeeView",
     "TutoringRegistrationDocumentView",
+    "TutoringRegistrationPaybackCompleteView",
+    "TutoringRegistrationPaybackFailView",
+    "TutoringRegistrationPaybackRetryView",
     "ReportedUserListView",
     "ReportedUserSummaryView",
     "ReportCaseDetailView",
@@ -68,4 +85,13 @@ __all__ = [
     "ReportEvidenceView",
     "ReportContentActionView",
     "LectureReviewStreamView",
+    "AdminSupportTicketListView",
+    "AdminSupportTicketSummaryView",
+    "AdminSupportTicketDetailView",
+    "AdminSupportTicketReplyView",
+    "AdminSupportTicketNoteView",
+    "AdminSupportTicketAssignView",
+    "AdminSupportTicketStatusView",
+    "AdminSupportTicketApproveNameChangeView",
+    "AdminSupportTicketAttachmentView",
 ]

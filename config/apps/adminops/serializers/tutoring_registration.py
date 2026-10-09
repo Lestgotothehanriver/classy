@@ -16,6 +16,7 @@ from config.apps.adminops.models import AdminActionLog
 from config.apps.pending.models import PendingInstructor
 from config.apps.tutoring.models import (
     CommissionInvoice,
+    PaybackPayout,
     StudentPaybackAccount,
     TutoringRegistration,
     TutoringResource,
@@ -39,6 +40,13 @@ def _payback_account(obj: TutoringRegistration):
     try:
         return obj.student_payback_account
     except StudentPaybackAccount.DoesNotExist:
+        return None
+
+
+def _payback_payout(obj: TutoringRegistration):
+    try:
+        return obj.payback_payout
+    except PaybackPayout.DoesNotExist:
         return None
 
 
@@ -122,6 +130,7 @@ class TutoringRegistrationDetailSerializer(TutoringRegistrationListSerializer):
     platform_account = serializers.SerializerMethodField()
     resource = serializers.SerializerMethodField()
     payback_account = serializers.SerializerMethodField()
+    payback_payout = serializers.SerializerMethodField()
     action_logs = serializers.SerializerMethodField()
 
     class Meta(TutoringRegistrationListSerializer.Meta):
@@ -138,6 +147,7 @@ class TutoringRegistrationDetailSerializer(TutoringRegistrationListSerializer):
             "platform_account",
             "resource",
             "payback_account",
+            "payback_payout",
             "action_logs",
         ]
 
@@ -234,6 +244,20 @@ class TutoringRegistrationDetailSerializer(TutoringRegistrationListSerializer):
             "account_holder": account.account_holder,
             "verification_status": account.verification_status,
             "verified_at": account.verified_at,
+        }
+
+    def get_payback_payout(self, obj: TutoringRegistration):
+        payout = _payback_payout(obj)
+        if payout is None:
+            return None
+        return {
+            "id": payout.pk,
+            "amount": payout.amount,
+            "status": payout.status,
+            "payment_reference": payout.payment_reference,
+            "failure_reason": payout.failure_reason,
+            "processed_at": payout.processed_at,
+            "created_at": payout.created_at,
         }
 
     def get_action_logs(self, obj: TutoringRegistration):

@@ -195,6 +195,11 @@ function App() {
       return true;
     }
 
+    if (notification?.type === "support_ticket") {
+      go("support");
+      return true;
+    }
+
     return false;
   }
 

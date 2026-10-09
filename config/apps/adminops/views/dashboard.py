@@ -9,6 +9,7 @@ from config.apps.cash.models import SettlementRecord
 from config.apps.pending.models import PendingInstructor
 from config.apps.report.models import Report, ReportStatusChoices
 from config.apps.tutoring.models import TutoringResource
+from config.apps.support.models import SupportTicket
 
 from ..permissions import IsSuperAdmin
 
@@ -60,6 +61,7 @@ class OperationsDashboardView(APIView):
         pending_verifications = PendingInstructor.objects.filter(
             status=PendingInstructor.Status.PENDING
         )
+        support_tickets = SupportTicket.objects.exclude(status=SupportTicket.Status.CLOSED)
 
         summary = {
             "pending_reports": pending_reports.count(),
@@ -70,6 +72,10 @@ class OperationsDashboardView(APIView):
                 total=Coalesce(Sum("amount"), 0)
             )["total"],
             "pending_verifications": pending_verifications.count(),
+            "support_received": support_tickets.filter(status=SupportTicket.Status.RECEIVED).count(),
+            "support_unassigned": support_tickets.filter(assigned_to__isnull=True).count(),
+            "support_in_progress": support_tickets.filter(status=SupportTicket.Status.IN_PROGRESS).count(),
+            "support_waiting_for_user": support_tickets.filter(status=SupportTicket.Status.WAITING_FOR_USER).count(),
         }
         summary["action_required"] = sum(
             (
@@ -77,6 +83,7 @@ class OperationsDashboardView(APIView):
                 summary["awaiting_fee_confirmation"],
                 summary["pending_settlements"],
                 summary["pending_verifications"],
+                summary["support_received"],
             )
         )
 

@@ -24,6 +24,7 @@ from config.apps.tutoring.models import (
     TutoringResource,
     TutoringResourceFile,
 )
+from config.apps.tutoring.payback_services import complete_payback, fail_payback, retry_payback
 
 from ..exceptions import AdminOpsError
 from ..permissions import IsSuperAdmin
@@ -44,7 +45,7 @@ _ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 def _base_qs():
     return (
         TutoringRegistration.objects.select_related(
-            "student", "instructor", "resource", "student_payback_account"
+            "student", "instructor", "resource", "student_payback_account", "payback_payout"
         ).prefetch_related(
             "submissions", "commission_invoices", "resource__files"
         )
@@ -200,6 +201,55 @@ class TutoringRegistrationRejectFeeView(APIView):
             return Response({"error": exc.message}, status=exc.default_status)
         updated = _base_qs().get(pk=pk)
         return Response(TutoringRegistrationDetailSerializer(updated).data)
+
+
+class TutoringRegistrationPaybackCompleteView(APIView):
+    """POST /.../payback/complete/ - 지급 참조번호를 받아 완료 처리합니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk):
+        try:
+            complete_payback(
+                registration_id=pk,
+                admin=request.user,
+                payment_reference=request.data.get("payment_reference", ""),
+                request_id=_request_id(request),
+            )
+        except AdminOpsError as exc:
+            return Response({"error": exc.message}, status=exc.default_status)
+        return Response(TutoringRegistrationDetailSerializer(_base_qs().get(pk=pk)).data)
+
+
+class TutoringRegistrationPaybackFailView(APIView):
+    """POST /.../payback/fail/ - 실패 사유를 남깁니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk):
+        try:
+            fail_payback(
+                registration_id=pk,
+                admin=request.user,
+                reason=request.data.get("reason", ""),
+                request_id=_request_id(request),
+            )
+        except AdminOpsError as exc:
+            return Response({"error": exc.message}, status=exc.default_status)
+        return Response(TutoringRegistrationDetailSerializer(_base_qs().get(pk=pk)).data)
+
+
+class TutoringRegistrationPaybackRetryView(APIView):
+    """POST /.../payback/retry/ - 실패한 지급을 재처리 대기로 되돌립니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk):
+        try:
+            retry_payback(registration_id=pk, admin=request.user, request_id=_request_id(request))
+        except AdminOpsError as exc:
+            return Response({"error": exc.message}, status=exc.default_status)
+        return Response(TutoringRegistrationDetailSerializer(_base_qs().get(pk=pk)).data)
 
 
 class TutoringRegistrationDocumentView(APIView):

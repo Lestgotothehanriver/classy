@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "config.apps.notice",
     "config.apps.tutoring",
     "config.apps.report",
+    "config.apps.support",
     "config.apps.mypage",
     "config.apps.block",
     "corsheaders",

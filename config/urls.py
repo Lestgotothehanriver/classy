@@ -35,6 +35,7 @@ urlpatterns = [
     path("cash/", include("config.apps.cash.urls")),
     path("lectures/", include("config.apps.lecture.urls")),
     path("report/", include("config.apps.report.urls")),
+    path("support/", include("config.apps.support.urls")),
     path("main/", include("config.apps.main.urls")),
     path("mypage/", include("config.apps.mypage.urls")),
     path("blocks/", include("config.apps.block.urls")),

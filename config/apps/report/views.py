@@ -58,15 +58,19 @@ class InquiryCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        from .serializers import InquirySerializer
-        
-        logger.debug("[BACKEND_DEBUG_REPORT] InquiryCreate Attempt - email: %s", request.user.email)
-        serializer = InquirySerializer(
-            data=request.data,
+        # 전환 기간에는 기존 클라이언트 계약을 유지하면서 새 티켓의 LEGACY 유형으로
+        # 접수합니다. 기존 Inquiry 테이블은 과거 데이터 이관 근거로 보존합니다.
+        from config.apps.support.models import SupportTicket
+        from config.apps.support.serializers import SupportTicketCreateSerializer, SupportTicketSerializer
+
+        serializer = SupportTicketCreateSerializer(
+            data={
+                "ticket_type": SupportTicket.TicketType.LEGACY,
+                "title": request.data.get("title", "기존 문의"),
+                "content": request.data.get("content", ""),
+            },
             context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
-        inquiry = serializer.save()
-
-        logger.debug("[BACKEND_DEBUG_REPORT] Inquiry SUCCESS - id: %d", inquiry.id)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        ticket = serializer.save()
+        return Response(SupportTicketSerializer(ticket, context={"detail": True}).data, status=status.HTTP_201_CREATED)

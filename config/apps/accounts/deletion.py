@@ -74,12 +74,15 @@ def delete_account(user_id):
         InstructorInfo, InstructorReview, StudentReview, TutoringPost, TutoringProposal,
         TutoringPostLike,
     )
+    from config.apps.support.services import anonymize_user_tickets
 
     User = get_user_model()
     user = User.objects.select_for_update().get(pk=user_id)
     if user.deleted_at:
         return
     now = timezone.now()
+    # 문의 처리 이력은 보관하되 탈퇴 후에는 본인 식별·첨부 열람이 불가능해야 합니다.
+    anonymize_user_tickets(user)
     student = Student.objects.filter(user=user).first()
     instructor = Instructor.objects.filter(user=user).first()
     rooms = ChatRoom.objects.filter(Q(student__user=user) | Q(instructor__user=user))

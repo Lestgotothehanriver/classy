@@ -509,24 +509,38 @@ function Account({ onLogout }) {
     </>
   );
 }
+const SUPPORT_TYPES = [
+  ["NAME_CHANGE", "이름 변경"],
+  ["CASH_PAYMENT", "캐시·결제"],
+  ["TUTORING_FEE", "성사 수수료"],
+  ["PAYBACK", "페이백"],
+  ["VERIFICATION_PROFILE", "인증·프로필"],
+];
+
 function Support() {
+  const [tab, setTab] = useState("hub");
+  const [selectedId, setSelectedId] = useState(null);
+  const [ticketType, setTicketType] = useState("");
+  const tickets = useLoad("/support/tickets/");
+  const purchases = useLoad(ticketType === "CASH_PAYMENT" ? "/cash/purchase-history/" : null, [ticketType]);
+  const detail = useLoad(selectedId ? `/support/tickets/${selectedId}/` : null, [selectedId]);
+  const { notify } = useContext(Ctx);
+  if (tab === "mine") return <section className="service-section"><div className="section-title"><h2>내 문의</h2><Btn onClick={() => setTab("hub")}>고객센터</Btn></div><State resource={tickets}>{list(tickets.data).map((ticket) => <button type="button" className="history-row post-management-card" key={ticket.id} onClick={() => setSelectedId(ticket.id)}><b>{ticket.title}</b><p className="muted">{ticket.status} · {date(ticket.updated_at)} {ticket.unread_admin_replies ? "· 새 답변" : ""}</p></button>)}{!list(tickets.data).length && <Empty title="등록한 문의가 없습니다" text="필요한 운영 요청은 1:1 문의로 접수할 수 있어요." />}</State>{selectedId && <TicketThread ticket={detail.data} resource={detail} onClose={() => setSelectedId(null)} onUpdated={() => { tickets.reload(); detail.reload(); }} />}</section>;
   return (
-    <ActionForm
-      title="1:1 문의"
-      path="/report/inquiry/"
-      submit="문의 접수"
-      onDone={(_, f) => f.reset()}
-    >
-      <label>
-        제목
-        <input name="title" required maxLength={200} />
-      </label>
-      <label>
-        문의 내용
-        <textarea name="content" rows={7} required />
-      </label>
-    </ActionForm>
+    <>
+      <section className="service-section"><h2>고객센터</h2><p className="muted">빠른 안내는 카카오 고객센터에서, 확인·처리가 필요한 요청은 1:1 문의 티켓으로 남겨주세요.</p><div className="actions"><a className="button" href="https://pf.kakao.com/_YxhWxlX" target="_blank" rel="noreferrer">카카오 고객센터 문의</a><Btn onClick={() => setTab("ticket")}>1:1 문의 티켓 접수</Btn><Btn onClick={() => setTab("mine")}>내 문의</Btn></div></section>
+      {tab === "ticket" && <ActionForm title="1:1 문의 티켓" path="/support/tickets/" submit="문의 접수" transform={(entries) => { const body = Object.fromEntries(entries); if (!body.related_id) { delete body.related_id; delete body.related_kind; } return body; }} onDone={(_, form) => { form.reset(); setTicketType(""); tickets.reload(); setTab("mine"); }}><label>문의 유형<select name="ticket_type" required value={ticketType} onChange={(event) => setTicketType(event.target.value)}><option value="" disabled>문의 유형을 선택해주세요</option>{SUPPORT_TYPES.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>{ticketType === "CASH_PAYMENT" && <label>관련 구매 내역<State resource={purchases}><select name="related_id" required defaultValue=""><option value="" disabled>구매 내역을 선택해주세요</option>{list(purchases.data).map((purchase) => <option key={purchase.id} value={purchase.id}>{date(purchase.date)} · {money(purchase.purchased_cash)} 캐시</option>)}</select></State><input type="hidden" name="related_kind" value="PURCHASE" /></label>}<label>제목 (선택)<input name="title" maxLength={200} /></label><label>문의 내용<textarea name="content" rows={7} required /></label><p className="form-note">접수 후 운영자 답변과 처리 상태는 내 문의에서 확인할 수 있어요.</p></ActionForm>}
+    </>
   );
+}
+
+function TicketThread({ ticket, resource, onClose, onUpdated }) {
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { notify } = useContext(Ctx);
+  if (!ticket) return <State resource={resource} />;
+  const closed = ticket.status === "CLOSED";
+  return <Modal title={`문의 #${ticket.id}`} onClose={onClose}><div className="chat-messages">{ticket.messages?.map((message) => <article className="chat-message" key={message.id}><b>{message.sender_name || message.sender_kind}</b><p>{message.content}</p><small>{date(message.created_at)}</small></article>)}</div>{closed ? <p className="muted">종결된 문의는 읽기 전용입니다.</p> : <form className="form" onSubmit={async (event) => { event.preventDefault(); if (!content.trim()) return; setBusy(true); try { await api(`/support/tickets/${ticket.id}/messages/`, { method: "POST", body: new FormData(event.currentTarget) }); setContent(""); onUpdated(); notify("답변을 등록했습니다."); } catch (error) { notify(error.message); } finally { setBusy(false); } }}><label>추가 답변<textarea name="content" value={content} onChange={(event) => setContent(event.target.value)} required /></label><Btn className="primary" disabled={busy}>{busy ? "등록 중…" : "답변 등록"}</Btn></form>}</Modal>;
 }
 
 function Tutoring() {

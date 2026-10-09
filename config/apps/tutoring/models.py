@@ -468,6 +468,28 @@ class StudentPaybackAccount(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class PaybackPayout(models.Model):
+    """성사등록에 대해 단 한 번 수행하는 학생 페이백 지급 작업입니다."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "지급 대기"
+        COMPLETED = "COMPLETED", "지급 완료"
+        FAILED = "FAILED", "지급 실패"
+
+    registration = models.OneToOneField(
+        TutoringRegistration,
+        on_delete=models.PROTECT,
+        related_name="payback_payout",
+    )
+    amount = models.PositiveBigIntegerField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    payment_reference = models.CharField(max_length=120, blank=True)
+    failure_reason = models.TextField(blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class CommissionInvoice(models.Model):
     class InvoiceType(models.TextChoices):
         INITIAL = "INITIAL", "최초 수수료"

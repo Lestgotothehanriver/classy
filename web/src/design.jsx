@@ -199,9 +199,7 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
             <a href="/privacy">개인정보처리방침</a>
             <button type="button" className="footer-link" onClick={() => go("notices")}>공지사항</button>
             <a
-              href="https://pf.kakao.com/_YxhWxlX"
-              target="_blank"
-              rel="noreferrer"
+              href="#support"
             >
               고객센터
             </a>
@@ -549,9 +547,7 @@ export function HomePage() {
             </ol>
             <a
               className="support-link"
-              href="https://pf.kakao.com/_YxhWxlX"
-              target="_blank"
-              rel="noreferrer"
+              href="#support"
             >
               이용 중 궁금한 점이 있나요?
               <span>
@@ -1229,15 +1225,11 @@ export function Profile({ onLogout }) {
               알림
               <ChevronRight size={16} />
             </button>
-            <a
-              href="https://pf.kakao.com/_YxhWxlX"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <button onClick={() => go("support")}>
               <MessageCircle size={18} />
               고객센터
               <ChevronRight size={16} />
-            </a>
+            </button>
             <button onClick={onLogout}>
               <LogOut size={18} />
               로그아웃
