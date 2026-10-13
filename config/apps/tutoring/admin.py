@@ -29,6 +29,7 @@ class RegionAdmin(admin.ModelAdmin):
 class TutoringPostAdmin(admin.ModelAdmin):
     list_display  = ("id", "get_student", "method", "sex", "field", "cost", "view_count", "is_active")
     list_filter   = ("is_active", "method", "sex", "field")
+    filter_horizontal = ("regions", "subjects")
     search_fields = ("title", "student__user__username", "student__user__email", "region")
     ordering      = ("-id",)
 

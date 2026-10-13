@@ -20,6 +20,7 @@ class UserAdmin(admin.ModelAdmin):
 class StudentAdmin(admin.ModelAdmin):
     list_display  = ("id", "get_username", "get_email", "get_subjects", "created_at")
     search_fields = ("user__username", "user__email")
+    filter_horizontal = ("subjects",)
     readonly_fields = ("created_at",)
     ordering      = ("-created_at",)
 

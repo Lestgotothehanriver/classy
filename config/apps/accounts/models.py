@@ -188,6 +188,9 @@ class Student(models.Model):
     subjects = models.ManyToManyField('Subject', blank=True, related_name='students')
     last_login = models.DateTimeField(null=True, blank=True)  # 학생 계정 마지막 로그인
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.user.username
 
 
 class Instructor(models.Model):
