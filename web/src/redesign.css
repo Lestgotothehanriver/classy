@@ -2855,7 +2855,12 @@ progress {
   position: absolute;
   inset: 0;
   content: "";
-  background: linear-gradient(90deg, rgba(12, 16, 38, .72), rgba(12, 16, 38, .12));
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, .72) 0%,
+    rgba(0, 0, 0, .42) 38%,
+    rgba(0, 0, 0, 0) 78%
+  );
 }
 .notice-banner-copy { position: relative; max-width: 620px; }
 .notice-banner-copy b { display: block; margin-bottom: 8px; font-size: 22px; }
