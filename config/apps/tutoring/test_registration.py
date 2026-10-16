@@ -19,7 +19,10 @@ from config.apps.tutoring.admin import (
     reject_fee_payment,
     sync_linked_payment_state,
 )
-from config.apps.tutoring.registration_services import decrypt_account_number
+from config.apps.tutoring.registration_services import (
+    confirm_fee_payment as confirm_fee_payment_service,
+    decrypt_account_number,
+)
 
 from .models import (
     CommissionInvoice,
@@ -175,7 +178,7 @@ class TutoringRegistrationFlowTest(APITestCase):
             signup_starts_at=now - timedelta(days=1),
             signup_ends_at=now + timedelta(days=1),
         )
-        InstructorPromotionBenefit.objects.create(
+        benefit = InstructorPromotionBenefit.objects.create(
             campaign=campaign,
             instructor=self.instructor,
             benefit_starts_at=now - timedelta(days=1),
@@ -199,6 +202,8 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(quote_response.json()["payment"]["amount"], 1500)
         self.assertTrue(quote_response.json()["payment"]["promotionApplied"])
         self.assertFalse(TutoringResource.objects.exists())
+        benefit.refresh_from_db()
+        self.assertEqual(benefit.used_tutoring_registration_count, 0)
 
         final_response = self.instructor_client.put(
             self.url,
@@ -210,7 +215,17 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(final_response.json()["payment"]["commissionRateBps"], 50)
         self.assertEqual(final_response.json()["payment"]["amount"], 1500)
         self.assertEqual(CommissionInvoice.objects.count(), 1)
-        self.assertEqual(TutoringResource.objects.get().files.count(), 2)
+        resource = TutoringResource.objects.get()
+        self.assertEqual(resource.files.count(), 2)
+        benefit.refresh_from_db()
+        self.assertEqual(benefit.used_tutoring_registration_count, 0)
+
+        confirm_fee_payment_service(resource, notify=False)
+
+        benefit.refresh_from_db()
+        invoice = CommissionInvoice.objects.get()
+        self.assertEqual(benefit.used_tutoring_registration_count, 1)
+        self.assertEqual(invoice.promotion_usage_number, 1)
 
     def test_mismatch_is_reported_without_exposing_counterparty_values(self):
         instructor_response = self.instructor_client.put(

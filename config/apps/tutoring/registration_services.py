@@ -163,6 +163,7 @@ def refresh_contract_status(registration):
     return status_value
 
 
+@transaction.atomic
 def sync_linked_payment_state(resource, notify=True):
     """``fee_payment_status`` 변경을 연결 인보이스·계약 상태에 반영한다.
 
@@ -185,7 +186,7 @@ def sync_linked_payment_state(resource, notify=True):
         return
 
     previous_contract_status = registration.contract_status
-    invoice = registration.commission_invoices.filter(
+    invoice = registration.commission_invoices.select_for_update().filter(
         invoice_type=CommissionInvoice.InvoiceType.INITIAL
     ).first()
     previous_invoice_status = invoice.status if invoice else None
@@ -200,6 +201,15 @@ def sync_linked_payment_state(resource, notify=True):
             invoice.status = CommissionInvoice.Status.PAYMENT_PENDING
             invoice.paid_at = None
         invoice.save(update_fields=["status", "paid_at", "updated_at"])
+        if (
+            resource.fee_payment_status == "PAID"
+            and previous_invoice_status != CommissionInvoice.Status.PAID
+        ):
+            from config.apps.promotions.services import (
+                consume_confirmed_tutoring_benefit,
+            )
+
+            consume_confirmed_tutoring_benefit(invoice)
 
     contract_status = refresh_contract_status(registration)
     if (
@@ -217,6 +227,7 @@ def sync_linked_payment_state(resource, notify=True):
         notify_fee_payment_failed(resource)
 
 
+@transaction.atomic
 def confirm_fee_payment(resource, *, notify=True):
     """수수료 입금을 확인 처리(→PAID)하고 연결 상태를 동기화한다."""
     resource.fee_payment_status = "PAID"
@@ -225,6 +236,7 @@ def confirm_fee_payment(resource, *, notify=True):
     return resource
 
 
+@transaction.atomic
 def mark_fee_payment_failed(resource, *, notify=True):
     """수수료 입금을 실패 처리(→FAILED)하고 연결 상태를 동기화한다."""
     resource.fee_payment_status = "FAILED"

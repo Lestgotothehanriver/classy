@@ -69,14 +69,18 @@ class InstructorPromotionBenefitTests(TestCase):
 
         self.assertFalse(self.campaign.benefits.filter(instructor__user=student_user).exists())
 
-    def test_only_first_three_tutoring_reservations_use_benefit(self):
-        """과외 성사 혜택은 시간순 세 건만 사용하고 복구하지 않는다."""
+    def test_tutoring_reservation_does_not_increment_usage(self):
+        """수수료율 예약은 입금 확인 전 프로모션 사용 건수를 늘리지 않는다."""
         benefit = assign_signup_promotion(self.instructor, now=self.now)
-        reservations = [reserve_tutoring_benefit(self.instructor, now=self.now) for _ in range(4)]
+        reserved_benefit, usage_number = reserve_tutoring_benefit(
+            self.instructor,
+            now=self.now,
+        )
 
-        self.assertEqual([usage for _, usage in reservations], [1, 2, 3, None])
+        self.assertEqual(reserved_benefit, benefit)
+        self.assertIsNone(usage_number)
         benefit.refresh_from_db()
-        self.assertEqual(benefit.used_tutoring_registration_count, 3)
+        self.assertEqual(benefit.used_tutoring_registration_count, 0)
 
     def test_campaign_and_benefit_end_instants_are_exclusive(self):
         """종료 시각 정각의 가입·성사·정산은 혜택을 적용하지 않는다."""

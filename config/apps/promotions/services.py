@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
@@ -94,22 +94,56 @@ def annotate_featured_instructors(queryset, *, now: datetime | None = None):
 
 @transaction.atomic
 def reserve_tutoring_benefit(instructor, *, now: datetime | None = None):
-    """과외 성사 1건에 사용할 혜택을 원자적으로 예약하고 사용 순번을 반환합니다."""
+    """과외 성사 수수료에 적용할 혜택을 예약하되 사용 건수는 늘리지 않습니다."""
+    from config.apps.tutoring.models import CommissionInvoice
+
     current = now or timezone.now()
-    benefit = (
+    benefits = (
         InstructorPromotionBenefit.objects.select_for_update()
         .filter(
             instructor=instructor,
             benefit_starts_at__lte=current,
             benefit_ends_at__gt=current,
-            used_tutoring_registration_count__lt=models.F("tutoring_registration_limit"),
         )
         .select_related("campaign")
         .order_by("benefit_ends_at", "id")
+    )
+    for benefit in benefits:
+        pending_reservation_count = CommissionInvoice.objects.filter(
+            promotion_benefit=benefit,
+            invoice_type=CommissionInvoice.InvoiceType.INITIAL,
+            status__in=[
+                CommissionInvoice.Status.READY,
+                CommissionInvoice.Status.PAYMENT_PENDING,
+            ],
+        ).count()
+        if (
+            benefit.used_tutoring_registration_count + pending_reservation_count
+            < benefit.tutoring_registration_limit
+        ):
+            return benefit, None
+    return None, None
+
+
+@transaction.atomic
+def consume_confirmed_tutoring_benefit(invoice):
+    """입금 확인 완료된 [invoice]의 프로모션 사용 건수를 한 번만 증가시킵니다."""
+    if invoice.promotion_benefit_id is None or invoice.promotion_usage_number is not None:
+        return
+
+    benefit = (
+        InstructorPromotionBenefit.objects.select_for_update()
+        .filter(pk=invoice.promotion_benefit_id)
         .first()
     )
-    if benefit is None:
-        return None, None
+    if (
+        benefit is None
+        or benefit.used_tutoring_registration_count
+        >= benefit.tutoring_registration_limit
+    ):
+        return
+
     benefit.used_tutoring_registration_count += 1
     benefit.save(update_fields=["used_tutoring_registration_count"])
-    return benefit, benefit.used_tutoring_registration_count
+    invoice.promotion_usage_number = benefit.used_tutoring_registration_count
+    invoice.save(update_fields=["promotion_usage_number", "updated_at"])
