@@ -89,12 +89,23 @@ class MyTutoringRegistrationView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        prepare_payment = str(
+            request.data.get("preparePayment", "")
+        ).lower() in {"true", "1"}
         proof_files = request.FILES.getlist("feeConfirmationFiles")
         if not proof_files:
             proof_files = request.FILES.getlist("fee_confirmation_file")
-        if role == TutoringSubmission.Role.INSTRUCTOR and not proof_files:
+        if (
+            role == TutoringSubmission.Role.INSTRUCTOR
+            and not prepare_payment
+            and not proof_files
+        ):
             raise ValidationError(
                 {"feeConfirmationFiles": "입금 증빙 파일을 한 개 이상 첨부해 주세요."}
+            )
+        if prepare_payment and role != TutoringSubmission.Role.INSTRUCTOR:
+            raise ValidationError(
+                {"preparePayment": "강사만 수수료 확정을 요청할 수 있습니다."}
             )
         if role == TutoringSubmission.Role.STUDENT and proof_files:
             raise ValidationError(
@@ -112,6 +123,7 @@ class MyTutoringRegistrationView(APIView):
                 request.user,
                 serializer.validated_data,
                 proof_files=proof_files,
+                prepare_payment=prepare_payment,
             )
         except RegistrationLockedError as exc:
             raise ValidationError({"detail": str(exc)})

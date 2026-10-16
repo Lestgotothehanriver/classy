@@ -79,6 +79,7 @@ class TutoringRegistrationListSerializer(serializers.ModelSerializer):
     instructor_user_name = serializers.SerializerMethodField()
     fee_payment_status = serializers.SerializerMethodField()
     commission_amount = serializers.SerializerMethodField()
+    promotion_applied = serializers.SerializerMethodField()
 
     class Meta:
         model = TutoringRegistration
@@ -90,6 +91,7 @@ class TutoringRegistrationListSerializer(serializers.ModelSerializer):
             "contract_status",
             "fee_payment_status",
             "commission_amount",
+            "promotion_applied",
             "student_name",
             "student_user_name",
             "instructor_name",
@@ -117,6 +119,10 @@ class TutoringRegistrationListSerializer(serializers.ModelSerializer):
     def get_commission_amount(self, obj: TutoringRegistration):
         invoice = _initial_invoice(obj)
         return invoice.commission_amount if invoice else None
+
+    def get_promotion_applied(self, obj: TutoringRegistration) -> bool:
+        invoice = _initial_invoice(obj)
+        return invoice is not None and invoice.promotion_benefit_id is not None
 
 
 class TutoringRegistrationDetailSerializer(TutoringRegistrationListSerializer):
@@ -195,6 +201,7 @@ class TutoringRegistrationDetailSerializer(TutoringRegistrationListSerializer):
             "base_amount": invoice.base_amount,
             "commission_rate_bps": invoice.commission_rate_bps,
             "commission_amount": invoice.commission_amount,
+            "promotion_applied": invoice.promotion_benefit_id is not None,
             "status": invoice.status,
             "paid_at": invoice.paid_at,
         }

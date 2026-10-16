@@ -301,6 +301,7 @@ def save_my_registration(
     user,
     validated_data,
     proof_files=(),
+    prepare_payment=False,
 ):
     """현재 사용자의 독립 제출과 수동 입금 검증 정보를 원자적으로 저장한다."""
     with transaction.atomic():
@@ -409,6 +410,15 @@ def save_my_registration(
                 invoice.base_amount = instructor_submission.first_month_fee
                 invoice.commission_amount = commission_amount
                 invoice.save(update_fields=["base_amount", "commission_amount", "updated_at"])
+
+        if prepare_payment:
+            return {
+                "registration": registration,
+                "resource": None,
+                "invoice": invoice,
+                "role": role,
+                "mismatched_fields": mismatched_fields,
+            }
 
         resource = _sync_resource(
             registration,

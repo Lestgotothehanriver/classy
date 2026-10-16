@@ -1,9 +1,11 @@
 import shutil
 import tempfile
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
@@ -11,6 +13,7 @@ from config.apps.accounts.models import Instructor
 from config.apps.adminops.models import AdminActionLog
 from config.apps.cash.models import Account, LectureRentalHistory, SettlementRecord
 from config.apps.lecture.models import Lecture
+from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 
 User = get_user_model()
 PASSWORD = "Passw0rd!123"
@@ -73,7 +76,12 @@ class SettlementAPITests(APITestCase):
         self.student = make_user("student@example.com")
 
         self.settlement = SettlementRecord.objects.create(
-            instructor=self.instructor, amount=10000, status="PENDING"
+            instructor=self.instructor,
+            amount=10000,
+            platform_fee_rate_bps=2000,
+            platform_fee_amount=2000,
+            payout_amount=8000,
+            status="PENDING",
         )
         # 정산에 연결된 대여 2건(정산 대상으로 마킹).
         self.rentals = [
@@ -133,6 +141,40 @@ class SettlementAPITests(APITestCase):
         self.assertEqual(res.data["account_info"]["bank"], "신한은행")
         self.assertEqual(res.data["phone"], "010-1234-5678")
         self.assertEqual(len(res.data["rentals"]), 2)
+
+    def test_promotion_snapshot_is_exposed_in_list_and_detail(self):
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="출시 기념 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        benefit = InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now,
+            benefit_ends_at=now + timedelta(days=90),
+        )
+        self.settlement.promotion_benefit = benefit
+        self.settlement.platform_fee_rate_bps = 0
+        self.settlement.platform_fee_amount = 0
+        self.settlement.payout_amount = self.settlement.amount
+        self.settlement.save(
+            update_fields=[
+                "promotion_benefit",
+                "platform_fee_rate_bps",
+                "platform_fee_amount",
+                "payout_amount",
+            ]
+        )
+        self.as_admin()
+
+        listed = self.client.get(self.LIST).data["results"][0]
+        detailed = self.client.get(self.detail_url(self.settlement.pk)).data
+
+        self.assertTrue(listed["promotion_applied"])
+        self.assertEqual(listed["platform_fee_rate_bps"], 0)
+        self.assertTrue(detailed["promotion_applied"])
 
     # ── 완료 ──────────────────────────────────────────────────────────────
     def test_complete_requires_reference(self):

@@ -271,6 +271,7 @@ export function HomePage() {
   const items = teacher
     ? list(nearby.data?.recommended_posts)
     : list(nearby.data);
+  const promotion = teacher ? nearby.data?.promotion : null;
   return (
     <>
       <PageHeading
@@ -283,7 +284,18 @@ export function HomePage() {
             : "필요한 강의를 골라 듣고, 나에게 맞는 과외 선생님을 만나보세요."
         }
       />
-      <HomeNoticeExposure />
+      <section className="home-section home-notice-section">
+        <div className="section-title">
+          <h2>공지사항</h2>
+          <button
+            className="text-button"
+            onClick={() => go("notices")}
+          >
+            전체 보기 <ChevronRight size={15} />
+          </button>
+        </div>
+        <HomeNoticeExposure />
+      </section>
       <div className="home-layout">
         <div className="home-main">
           <section className="home-actions" aria-label="빠른 메뉴">
@@ -343,6 +355,36 @@ export function HomePage() {
             {teacher ? "내 강의 관리" : "대여 강의 관리"}
             <ChevronRight size={18} />
           </button>
+          {promotion && (
+            <section
+              className="promotion-summary-card"
+              aria-label="출시 기념 프로모션 혜택"
+            >
+              <strong>🎉 클래씨 출시 기념 혜택이 적용 중이에요!</strong>
+              <p>
+                과외 성사 수수료{" "}
+                <span className="promotion-summary-value">
+                  {(promotion.tutoring_commission_rate_bps / 100).toFixed(1)}%
+                </span>
+                {" · "}
+                <span className="promotion-summary-value">
+                  {promotion.remaining_tutoring_registration_count}건
+                </span>
+                {" 남음"}
+              </p>
+              <p>
+                강의 정산 수수료{" "}
+                <span className="promotion-summary-value">
+                  {(promotion.lecture_settlement_fee_rate_bps / 100).toFixed(1)}%
+                </span>
+                {" · "}
+                {new Date(promotion.ends_at).toLocaleDateString("ko-KR", {
+                  timeZone: "Asia/Seoul",
+                })}
+                까지
+              </p>
+            </section>
+          )}
           <section className="home-section">
             <div className="section-title">
               <h2>과목별로 찾아보기</h2>

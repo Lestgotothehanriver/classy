@@ -1,14 +1,17 @@
 import tempfile
+from datetime import timedelta
 from unittest.mock import Mock
 
 from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from config.apps.accounts.models import Instructor, Student, Subject, User
 from config.apps.chat_app.models import ChatRoom
 from config.apps.notification.models import Notification
+from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 from config.apps.tutoring.admin import (
     TutoringRegistrationAdmin,
     TutoringResourceAdmin,
@@ -163,6 +166,51 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.json()["payment"]["amount"], 21000)
         self.assertEqual(CommissionInvoice.objects.get().commission_rate_bps, 700)
+
+    def test_prepare_payment_snapshots_promotion_before_proof_upload(self):
+        """증빙 화면 진입 전 수수료 확정값을 만들고 최종 등록에도 유지한다."""
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="증빙 전 수수료 확정 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now - timedelta(days=1),
+            benefit_ends_at=now + timedelta(days=1),
+        )
+        quote_payload = self.instructor_payload(
+            fee=300000,
+            class_type="SHORT_TERM",
+        )
+        quote_payload.pop("feeConfirmationFiles")
+        quote_payload["preparePayment"] = "true"
+
+        quote_response = self.instructor_client.put(
+            self.url,
+            quote_payload,
+            format="multipart",
+        )
+
+        self.assertEqual(quote_response.status_code, 200, quote_response.data)
+        self.assertEqual(quote_response.json()["payment"]["commissionRateBps"], 50)
+        self.assertEqual(quote_response.json()["payment"]["amount"], 1500)
+        self.assertTrue(quote_response.json()["payment"]["promotionApplied"])
+        self.assertFalse(TutoringResource.objects.exists())
+
+        final_response = self.instructor_client.put(
+            self.url,
+            self.instructor_payload(fee=300000, class_type="SHORT_TERM"),
+            format="multipart",
+        )
+
+        self.assertEqual(final_response.status_code, 200, final_response.data)
+        self.assertEqual(final_response.json()["payment"]["commissionRateBps"], 50)
+        self.assertEqual(final_response.json()["payment"]["amount"], 1500)
+        self.assertEqual(CommissionInvoice.objects.count(), 1)
+        self.assertEqual(TutoringResource.objects.get().files.count(), 2)
 
     def test_mismatch_is_reported_without_exposing_counterparty_values(self):
         instructor_response = self.instructor_client.put(

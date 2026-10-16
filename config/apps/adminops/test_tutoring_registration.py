@@ -1,8 +1,10 @@
 import tempfile
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
 
@@ -10,6 +12,7 @@ from config.apps.accounts.models import Instructor, Student, Subject
 from config.apps.adminops.models import AdminActionLog
 from config.apps.chat_app.models import ChatRoom
 from config.apps.pending.models import PendingInstructor
+from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 from config.apps.tutoring.models import (
     CommissionInvoice,
     TutoringPost,
@@ -246,6 +249,31 @@ class TutoringRegistrationAdminAPITests(APITestCase):
         self.assertIn("account_number", data["platform_account"])
         self.assertEqual(len(data["resource"]["files"]), 2)
         self.assertEqual(data["mismatched_fields"], [])
+
+    def test_promotion_snapshot_is_exposed_in_list_and_detail(self):
+        registration = self._submit_both()
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="출시 기념 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        benefit = InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now,
+            benefit_ends_at=now + timedelta(days=90),
+        )
+        invoice = CommissionInvoice.objects.get(registration=registration)
+        invoice.promotion_benefit = benefit
+        invoice.save(update_fields=["promotion_benefit"])
+        self.as_admin()
+
+        listed = self.client.get(self.LIST).data["results"][0]
+        detailed = self.client.get(self.detail_url(registration.pk)).data
+
+        self.assertTrue(listed["promotion_applied"])
+        self.assertTrue(detailed["commission_invoice"]["promotion_applied"])
 
     # ── 수수료 확인 ────────────────────────────────────────────────────────
     def test_confirm_fee_activates_contract_and_logs(self):
