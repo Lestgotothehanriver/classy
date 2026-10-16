@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from config.apps.accounts.models import Subject
 from config.apps.chat_app.models import ChatRoom
+from config.apps.promotions.services import reserve_tutoring_benefit
 from config.apps.block.utils import users_have_block_relation
 
 from .models import (
@@ -373,21 +374,41 @@ def save_my_registration(
 
         invoice = None
         if role == TutoringSubmission.Role.INSTRUCTOR:
-            rate_bps = commission_rate_bps(instructor_submission.class_type)
+            invoice = registration.commission_invoices.filter(
+                invoice_type=CommissionInvoice.InvoiceType.INITIAL
+            ).first()
+            promotion_benefit = None
+            promotion_usage_number = None
+            if invoice is None:
+                promotion_benefit, promotion_usage_number = reserve_tutoring_benefit(
+                    registration.instructor.instructor_profile
+                )
+            rate_bps = (
+                promotion_benefit.tutoring_commission_rate_bps
+                if promotion_benefit is not None
+                else invoice.commission_rate_bps
+                if invoice is not None
+                else commission_rate_bps(instructor_submission.class_type)
+            )
             commission_amount = (
                 instructor_submission.first_month_fee * rate_bps // 10000
             )
-            invoice, _ = CommissionInvoice.objects.update_or_create(
-                registration=registration,
-                invoice_type=CommissionInvoice.InvoiceType.INITIAL,
-                defaults={
-                    "base_amount": instructor_submission.first_month_fee,
-                    "commission_rate_bps": rate_bps,
-                    "commission_amount": commission_amount,
-                    "status": CommissionInvoice.Status.PAYMENT_PENDING,
-                    "paid_at": None,
-                },
-            )
+            if invoice is None:
+                invoice = CommissionInvoice.objects.create(
+                    registration=registration,
+                    invoice_type=CommissionInvoice.InvoiceType.INITIAL,
+                    base_amount=instructor_submission.first_month_fee,
+                    commission_rate_bps=rate_bps,
+                    commission_amount=commission_amount,
+                    status=CommissionInvoice.Status.PAYMENT_PENDING,
+                    paid_at=None,
+                    promotion_benefit=promotion_benefit,
+                    promotion_usage_number=promotion_usage_number,
+                )
+            else:
+                invoice.base_amount = instructor_submission.first_month_fee
+                invoice.commission_amount = commission_amount
+                invoice.save(update_fields=["base_amount", "commission_amount", "updated_at"])
 
         resource = _sync_resource(
             registration,
@@ -431,6 +452,8 @@ def serialize_payment(invoice):
         "invoiceId": invoice.pk,
         "amount": invoice.commission_amount,
         "commissionRateBps": invoice.commission_rate_bps,
+        "promotionApplied": invoice.promotion_benefit_id is not None,
+        "promotionUsageNumber": invoice.promotion_usage_number,
         "status": invoice.status,
         "bank": settings.TUTORING_PAYMENT_BANK,
         "accountNumber": settings.TUTORING_PAYMENT_ACCOUNT_NUMBER,

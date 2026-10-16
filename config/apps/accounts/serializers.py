@@ -245,6 +245,9 @@ class InstructorSignupSerializer(serializers.Serializer):
             instruction=validated_data.get("instruction", ""),
             student_number=validated_data.get("student_number", ""),
         )
+        from config.apps.promotions.services import assign_signup_promotion
+
+        assign_signup_promotion(instructor_profile)
 
         # 회원가입 단계에서는 PendingInstructor를 자동으로 생성하지 않습니다.
         # PendingInstructor.objects.create(

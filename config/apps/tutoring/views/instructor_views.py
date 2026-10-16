@@ -17,6 +17,7 @@ from config.apps.chat_app.models import ChatRoom
 from ..models import InstructorInfo, InstructorReview, TutoringResource
 from ..serializers import InstructorListSerializer, InstructorInfoSerializer, InstructorReviewSerializer
 from config.apps.common.mixins import InstructorAnnotateMixin
+from config.apps.promotions.services import annotate_featured_instructors
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +70,6 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
         qs = self.annotate_instructor_stats(qs, self.request.user)
 
         ordering = self.request.query_params.get("ordering", "latest")
-        if ordering == "likes":
-            qs = qs.order_by("-like_count", "-id")
-        else:
-            qs = qs.order_by("-id")
-
         liked = self.request.query_params.get("liked")
         if liked is not None:
             qs = qs.filter(is_liked=(liked.lower() in ("true", "1")))
@@ -153,6 +149,12 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
                 for n in no_list:
                     q |= Q(student_number__startswith=n)
                 qs = qs.filter(q)
+
+        qs = annotate_featured_instructors(qs)
+        if ordering == "likes":
+            qs = qs.order_by("-is_promotion_featured", "-like_count", "-id")
+        else:
+            qs = qs.order_by("-is_promotion_featured", "-id")
 
         return qs
 

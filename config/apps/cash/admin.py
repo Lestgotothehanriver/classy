@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django.db import transaction
 from django.utils import timezone
-from .constants import PLATFORM_FEE_RATE
 from .models import (
     PurchaseHistory,
     LectureRentalHistory,
@@ -114,13 +113,13 @@ class SettlementRecordAdmin(admin.ModelAdmin):
     def total_cash_display(self, obj):
         return obj.amount
 
-    @admin.display(description=f'플랫폼 수수료({int(PLATFORM_FEE_RATE * 100)}%)')
+    @admin.display(description='플랫폼 수수료')
     def platform_fee_display(self, obj):
-        return int(obj.amount * PLATFORM_FEE_RATE)
+        return obj.platform_fee_amount
 
     @admin.display(description='지급 기준 캐시')
     def payout_base_display(self, obj):
-        return obj.amount - int(obj.amount * PLATFORM_FEE_RATE)
+        return obj.payout_amount
 
     def save_model(self, request, obj, form, change):
         """

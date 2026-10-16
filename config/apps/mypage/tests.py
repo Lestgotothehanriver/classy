@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -8,6 +9,7 @@ from django.utils import timezone
 from config.apps.accounts.models import User, Student, Instructor, Subject
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory, SettlementRecord
 from config.apps.lecture.models import Lecture
+from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,56 @@ class InstructorSettlementFlowTests(APITestCase):
         self.assertTrue(r2.is_settled)
         self.assertEqual(r1.settlement_id, record.id)
         self.assertEqual(r2.settlement_id, record.id)
+
+    def test_active_promotion_waives_settlement_fee_and_snapshots_result(self):
+        """유효 혜택으로 신청한 정산은 0% 수수료를 확정 저장한다."""
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="정산 면제 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        benefit = InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now - timedelta(days=1),
+            benefit_ends_at=now + timedelta(days=1),
+        )
+        self._rental(cash=2000)
+
+        response = self.client.post(self.request_url)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["promotion_applied"])
+        self.assertEqual(response.data["platform_fee_rate_bps"], 0)
+        self.assertEqual(response.data["platform_fee_amount"], 0)
+        self.assertEqual(response.data["payout_amount"], 2000)
+        record = SettlementRecord.objects.get(instructor=self.instructor)
+        self.assertEqual(record.promotion_benefit_id, benefit.id)
+
+    def test_expired_promotion_uses_standard_settlement_fee(self):
+        """혜택 종료 뒤 신청한 정산은 판매 시점과 무관하게 기본 20%를 쓴다."""
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="종료된 정산 프로모션",
+            signup_starts_at=now - timedelta(days=2),
+            signup_ends_at=now - timedelta(days=1),
+        )
+        InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now - timedelta(days=2),
+            benefit_ends_at=now,
+        )
+        self._rental(cash=2000)
+
+        response = self.client.post(self.request_url)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["promotion_applied"])
+        self.assertEqual(response.data["platform_fee_rate_bps"], 2000)
+        self.assertEqual(response.data["platform_fee_amount"], 400)
+        self.assertEqual(response.data["payout_amount"], 1600)
 
     def test_excludes_canceled_zero_cash_and_settled(self):
         """취소/0캐시/이미정산 대여는 정산 대상에서 제외된다."""

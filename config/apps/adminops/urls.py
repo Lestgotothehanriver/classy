@@ -45,6 +45,9 @@ from .views import (
     AdminSupportTicketStatusView,
     AdminSupportTicketApproveNameChangeView,
     AdminSupportTicketAttachmentView,
+    PromotionBenefitListView,
+    PromotionCampaignDetailView,
+    PromotionCampaignListCreateView,
 )
 
 app_name = "adminops"
@@ -52,6 +55,9 @@ app_name = "adminops"
 urlpatterns = [
     path("auth/login/", AdminLoginAPIView.as_view(), name="admin-login"),
     path("auth/me/", AdminMeAPIView.as_view(), name="admin-me"),
+    path("promotions/", PromotionCampaignListCreateView.as_view(), name="promotion-list-create"),
+    path("promotions/<int:pk>/", PromotionCampaignDetailView.as_view(), name="promotion-detail"),
+    path("promotions/<int:pk>/benefits/", PromotionBenefitListView.as_view(), name="promotion-benefits"),
     path("inquiries/", AdminSupportTicketListView.as_view(), name="support-ticket-list"),
     path("inquiries/summary/", AdminSupportTicketSummaryView.as_view(), name="support-ticket-summary"),
     path("inquiries/<int:pk>/", AdminSupportTicketDetailView.as_view(), name="support-ticket-detail"),

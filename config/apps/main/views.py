@@ -13,6 +13,7 @@ from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
 from config.apps.main.serializers import StudentMainTutorSerializer, InstructorMainStudentSerializer
 from config.apps.block.utils import get_blocked_user_ids
+from config.apps.promotions.services import promotion_summary_for
 from config.apps.common.utils import filter_by_account_region
 from config.apps.tutoring.models import TutoringPost
 from config.apps.tutoring.serializers import TutoringPostListSerializer
@@ -193,4 +194,5 @@ class InstructorMainAPIView(APIView):
             "this_month_total_cash": this_month_cash,
             "recommended_students": student_serializer.data,
             "recommended_posts": post_serializer.data,
+            "promotion": promotion_summary_for(instructor),
         })

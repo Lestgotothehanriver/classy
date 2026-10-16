@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
 from config.apps.tutoring.models import (
@@ -10,6 +13,7 @@ from config.apps.tutoring.models import (
 )
 from config.apps.tutoring.serializers import TutoringPostWriteSerializer
 from config.apps.pending.models import PendingInstructor
+from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 
 
 class LikeSortingTestBase(TestCase):
@@ -188,6 +192,44 @@ class LocalRecommendationPaginationTest(TestCase):
         )
         self.assertEqual(post_response.status_code, 200)
         self.assertEqual(post_response.json()["results"], [])
+
+
+class InstructorPromotionSortingTest(LikeSortingTestBase):
+    """프로모션 강사가 기존 검색 결과 안에서만 우선되는지 검증합니다."""
+
+    def setUp(self):
+        """두 강사를 찜하고 그중 한 명에게 유효 혜택을 부여합니다."""
+        super().setUp()
+        InstructorLike.objects.create(student=self.student1, instructor=self.inst1)
+        InstructorLike.objects.create(student=self.student1, instructor=self.inst2)
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="탐색 우선 노출 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.inst2,
+            benefit_starts_at=now - timedelta(days=1),
+            benefit_ends_at=now + timedelta(days=1),
+        )
+
+    def test_promoted_instructor_is_first_only_within_filtered_results(self):
+        """기존 찜 필터는 유지하고, 통과한 대상자만 먼저 노출한다."""
+        promoted = self.client.get("/tutoring/instructors/", {"liked": "true"})
+        excluded = self.client.get("/tutoring/instructors/", {"liked": "false"})
+
+        self.assertEqual(promoted.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in promoted.json()["results"]],
+            [self.inst2.id, self.inst1.id],
+        )
+        self.assertEqual(excluded.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in excluded.json()["results"]],
+            [self.inst3.id],
+        )
 
 
 class InstructorLikeSortingTest(LikeSortingTestBase):

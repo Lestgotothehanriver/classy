@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from config.apps.lecture.models import Lecture
 from config.apps.lecture.serializers import LectureListSerializer
 from config.apps.cash.models import SettlementRecord, LectureRentalHistory, Account
+from config.apps.promotions.services import active_benefit_for
 
 class StudentRentedLectureListView(generics.ListAPIView):
     """
@@ -212,10 +213,22 @@ class InstructorSettlementRequestView(APIView):
             if total_cash == 0:
                 return Response({"detail": "No settleable revenue found."}, status=400)
 
+            promotion_benefit = active_benefit_for(instructor)
+            fee_rate_bps = (
+                promotion_benefit.lecture_settlement_fee_rate_bps
+                if promotion_benefit is not None
+                else 2000
+            )
+            platform_fee_amount = total_cash * fee_rate_bps // 10000
+
             settlement_record = SettlementRecord.objects.create(
                 instructor=instructor,
                 amount=total_cash,
-                status='PENDING'
+                status='PENDING',
+                platform_fee_rate_bps=fee_rate_bps,
+                platform_fee_amount=platform_fee_amount,
+                payout_amount=total_cash - platform_fee_amount,
+                promotion_benefit=promotion_benefit,
             )
 
             # is_settled 마킹과 정산 건 FK 연결을 함께 기록해 감사 추적을 남긴다.
@@ -229,7 +242,11 @@ class InstructorSettlementRequestView(APIView):
             "detail": "Settlement requested successfully.",
             "settlement_id": settlement_record.id,
             "amount": total_cash,
-            "status": settlement_record.status
+            "status": settlement_record.status,
+            "platform_fee_rate_bps": settlement_record.platform_fee_rate_bps,
+            "platform_fee_amount": settlement_record.platform_fee_amount,
+            "payout_amount": settlement_record.payout_amount,
+            "promotion_applied": settlement_record.promotion_benefit_id is not None,
         }, status=201)
 
 

@@ -49,6 +49,11 @@ from .support import (
     AdminSupportTicketStatusView,
     AdminSupportTicketSummaryView,
 )
+from .promotion import (
+    PromotionBenefitListView,
+    PromotionCampaignDetailView,
+    PromotionCampaignListCreateView,
+)
 
 __all__ = [
     "AdminLoginAPIView",
@@ -92,4 +97,7 @@ __all__ = [
     "AdminSupportTicketStatusView",
     "AdminSupportTicketApproveNameChangeView",
     "AdminSupportTicketAttachmentView",
+    "PromotionCampaignListCreateView",
+    "PromotionCampaignDetailView",
+    "PromotionBenefitListView",
 ]

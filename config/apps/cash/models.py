@@ -379,6 +379,16 @@ class SettlementRecord(models.Model):
     ]
     instructor = models.ForeignKey('accounts.Instructor', on_delete=models.CASCADE, related_name='settlements')
     amount = models.PositiveIntegerField()
+    platform_fee_rate_bps = models.PositiveIntegerField(default=2000)
+    platform_fee_amount = models.PositiveIntegerField(default=0)
+    payout_amount = models.PositiveIntegerField(default=0)
+    promotion_benefit = models.ForeignKey(
+        "promotions.InstructorPromotionBenefit",
+        on_delete=models.PROTECT,
+        related_name="settlement_records",
+        null=True,
+        blank=True,
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)

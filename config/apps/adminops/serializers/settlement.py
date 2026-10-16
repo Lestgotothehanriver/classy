@@ -8,14 +8,9 @@
 
 from rest_framework import serializers
 
-from config.apps.cash.constants import PLATFORM_FEE_RATE
 from config.apps.cash.models import Account, LectureRentalHistory, SettlementRecord
 
 from .instructor_verification import _real_name
-
-
-def _platform_fee(amount: int) -> int:
-    return int(amount * PLATFORM_FEE_RATE)
 
 
 class SettlementRentalSerializer(serializers.Serializer):
@@ -43,6 +38,8 @@ class SettlementListSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
     platform_fee = serializers.SerializerMethodField()
     payout_amount = serializers.SerializerMethodField()
+    platform_fee_rate_bps = serializers.IntegerField(read_only=True)
+    promotion_applied = serializers.SerializerMethodField()
     rental_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -53,6 +50,8 @@ class SettlementListSerializer(serializers.ModelSerializer):
             "amount",
             "platform_fee",
             "payout_amount",
+            "platform_fee_rate_bps",
+            "promotion_applied",
             "real_name",
             "user_name",
             "created_at",
@@ -70,10 +69,13 @@ class SettlementListSerializer(serializers.ModelSerializer):
         return self._user(obj).user_name
 
     def get_platform_fee(self, obj: SettlementRecord) -> int:
-        return _platform_fee(obj.amount)
+        return obj.platform_fee_amount
 
     def get_payout_amount(self, obj: SettlementRecord) -> int:
-        return obj.amount - _platform_fee(obj.amount)
+        return obj.payout_amount
+
+    def get_promotion_applied(self, obj: SettlementRecord) -> bool:
+        return obj.promotion_benefit_id is not None
 
     def get_rental_count(self, obj: SettlementRecord) -> int:
         annotated = getattr(obj, "rental_count", None)

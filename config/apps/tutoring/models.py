@@ -491,6 +491,7 @@ class PaybackPayout(models.Model):
 
 
 class CommissionInvoice(models.Model):
+    """성사 과외 수수료의 확정 금액과 프로모션 적용 근거를 보관합니다."""
     class InvoiceType(models.TextChoices):
         INITIAL = "INITIAL", "최초 수수료"
         ADJUSTMENT = "ADJUSTMENT", "추가 정산"
@@ -515,6 +516,14 @@ class CommissionInvoice(models.Model):
     base_amount = models.PositiveBigIntegerField()
     commission_rate_bps = models.PositiveIntegerField()
     commission_amount = models.PositiveBigIntegerField()
+    promotion_benefit = models.ForeignKey(
+        "promotions.InstructorPromotionBenefit",
+        on_delete=models.PROTECT,
+        related_name="commission_invoices",
+        null=True,
+        blank=True,
+    )
+    promotion_usage_number = models.PositiveSmallIntegerField(null=True, blank=True)
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.READY)
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
