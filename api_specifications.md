@@ -50,7 +50,7 @@
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
-| 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (콤마 구분 ID, 선택)<br>- `cost` (최대 수업료, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `age` (나이 범위, 선택)<br>- `university` (출신 대학교, 선택)<br>- `department` (학과명, 선택)<br>- `student_id` (학번/사번 필터, 선택)<br>- `search` (통합 검색어, 선택) | 승인 완료된 강사 목록을 다양한 조건에 맞추어 필터링 조회합니다. (차단 유저 제외) |
+| 강사 목록 조회 | `GET` | `/tutoring/instructors/` | **[Query]**<br>- `ordering` ('latest'/'likes'/'rank', 선택)<br>- `liked` (bool, 선택)<br>- `subject` (콤마 구분 ID, 선택)<br>- `region` (콤마 구분 ID, 선택)<br>- `cost` (최대 수업료, 선택)<br>- `method` ('ONLINE'/'OFFLINE', 선택)<br>- `sex` ('M'/'F', 선택)<br>- `age` (나이 범위, 선택)<br>- `university` (출신 대학교, 선택)<br>- `department` (학과명, 선택)<br>- `student_id` (학번/사번 필터, 선택)<br>- `search` (통합 검색어, 선택) | 승인 완료된 강사 목록을 다양한 조건에 맞추어 필터링 조회합니다. `rank`는 전역 누적 랭킹순이며 랭킹 외 강사는 뒤에 표시됩니다. (차단 유저 제외) |
 | 강사 상세 프로필 | `GET` | `/tutoring/instructors/<int:pk>/` | **[Path]**<br>- `pk` (int, 강사 ID) | 특정 강사의 상세 프로필과 실제 수업 성사 건수·평균 수업료를 조회합니다. 값이 없는 통계는 `*_display` 필드에서 `"-"`로 반환합니다. |
 | 강사 수업 소개 상세 | `GET` | `/tutoring/instructors/<int:instructor_id>/info/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 강사가 설정한 수업 소개 탭 정보(자기소개, 평점 요약, 정산 랭킹 등)를 상세 조회합니다. 수업료 미정은 `cost_display: "협의 후 결정"`, 통계 미등록 값은 `stats_display`에서 `"-"`로 반환합니다. |
 | 강사 리뷰 목록 | `GET` | `/tutoring/instructors/<int:instructor_id>/reviews/` | **[Path]**<br>- `instructor_id` (int, 강사 ID) | 특정 강사가 학생들에게서 받은 모든 리뷰 목록을 최신순으로 조회합니다. |

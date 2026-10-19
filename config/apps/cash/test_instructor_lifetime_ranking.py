@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from config.apps.accounts.models import Instructor, Student, User, UserSanction
 from config.apps.cash.instructor_lifetime_ranking import lifetime_rankings
@@ -12,6 +13,7 @@ from config.apps.chat_app.models import ChatRoom
 from config.apps.lecture.models import Lecture
 from config.apps.tutoring.models import (
     CommissionInvoice,
+    InstructorInfo,
     TutoringPost,
     TutoringRegistration,
 )
@@ -31,6 +33,14 @@ class InstructorLifetimeRankingTest(TestCase):
         self.first_instructor = self._create_instructor("first")
         self.second_instructor = self._create_instructor("second")
         self.third_instructor = self._create_instructor("third")
+        for instructor in (
+            self.first_instructor,
+            self.second_instructor,
+            self.third_instructor,
+        ):
+            InstructorInfo.objects.create(instructor=instructor)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.student_user)
 
     def _create_instructor(self, suffix):
         """[suffix]를 식별자로 사용하는 활성 강사 계정을 생성합니다."""
@@ -198,3 +208,20 @@ class InstructorLifetimeRankingTest(TestCase):
         permanent_ban.save(update_fields=["is_active"])
         self.assertIn(self.first_instructor.pk, lifetime_rankings())
         self.assertTrue(warning.is_active)
+
+    def test_rank_ordering_returns_ranked_instructors_before_unranked_ones(self):
+        """`ordering=rank`은 필터 대상 안에서 전역 누적 점수 순서를 유지합니다."""
+        self._create_rental(self.first_instructor, 100)
+        self._create_rental(self.second_instructor, 200)
+
+        response = self.client.get("/tutoring/instructors/", {"ordering": "rank"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in response.json()["results"]],
+            [
+                self.second_instructor.id,
+                self.first_instructor.id,
+                self.third_instructor.id,
+            ],
+        )

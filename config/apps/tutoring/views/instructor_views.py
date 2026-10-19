@@ -1,12 +1,29 @@
 from rest_framework import generics, permissions
-from django.db.models import Avg, Count, F, ExpressionWrapper, FloatField, OuterRef, Subquery, Value, BooleanField
+from django.db.models import (
+    Avg,
+    BooleanField,
+    Case,
+    Count,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    IntegerField,
+    OuterRef,
+    Subquery,
+    Value,
+    When,
+)
 from django.shortcuts import get_object_or_404
 import logging
 from rest_framework.response import Response
 from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student, InstructorLike
-from config.apps.cash.instructor_lifetime_ranking import lifetime_rank_for, lifetime_rankings
+from config.apps.cash.instructor_lifetime_ranking import (
+    lifetime_rank_for,
+    lifetime_ranked_instructor_ids,
+    lifetime_rankings,
+)
 from config.apps.common.utils import (
     apply_subject_filter,
     filter_by_account_region,
@@ -26,10 +43,10 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
 
     과외 강사 목록을 조회하고 필터링하는 API View입니다.
 
-    GET 요청 시, 검색 키워드(search), 정렬 기준(ordering), 찜 여부(liked), 과목 필터(subject), 지역 필터(region), 성별(sex), 나이대(age), 출신 학교명(university), 학과명(department) 등의 쿼리 스트링 조건에 기반하여 가입된 강사 중 차단한 강사를 제외한 목록을 최신순 혹은 인기순으로 반환합니다.
+    GET 요청 시, 검색 키워드(search), 정렬 기준(ordering), 찜 여부(liked), 과목 필터(subject), 지역 필터(region), 성별(sex), 나이대(age), 출신 학교명(university), 학과명(department) 등의 쿼리 스트링 조건에 기반하여 가입된 강사 중 차단한 강사를 제외한 목록을 최신순·인기순·누적 랭킹순으로 반환합니다.
 
     Query Parameters:
-        ordering (str, optional): 정렬 기준 ('latest' | 'likes', 기본값 'latest').
+        ordering (str, optional): 정렬 기준 ('latest' | 'likes' | 'rank', 기본값 'latest').
         liked (bool, optional): 본인이 찜한 강사만 볼지 여부.
         subject (str, optional): 과목 ID 목록 (콤마 구분, 예: '1,2').
         region (str, optional): 지역 ID 목록 (콤마 구분, 예: '11110,11120').
@@ -156,7 +173,27 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
                 qs = qs.filter(q)
 
         qs = annotate_featured_instructors(qs)
-        if ordering == "likes":
+        if ordering == "rank":
+            ranked_instructor_ids = lifetime_ranked_instructor_ids()
+            if ranked_instructor_ids:
+                rank_order = Case(
+                    *[
+                        When(pk=instructor_id, then=Value(position))
+                        for position, instructor_id in enumerate(
+                            ranked_instructor_ids
+                        )
+                    ],
+                    default=Value(len(ranked_instructor_ids)),
+                    output_field=IntegerField(),
+                )
+                qs = qs.order_by(
+                    rank_order,
+                    "-is_promotion_featured",
+                    "-id",
+                )
+            else:
+                qs = qs.order_by("-is_promotion_featured", "-id")
+        elif ordering == "likes":
             qs = qs.order_by("-is_promotion_featured", "-like_count", "-id")
         else:
             qs = qs.order_by("-is_promotion_featured", "-id")

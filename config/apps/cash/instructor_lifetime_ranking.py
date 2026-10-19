@@ -112,6 +112,20 @@ def lifetime_rankings() -> dict[int, InstructorLifetimeRank]:
     }
 
 
+def lifetime_ranked_instructor_ids() -> list[int]:
+    """랭킹 대상 강사 ID를 점수 높은 순서로 반환합니다.
+
+    동점자는 동일 순위를 가지므로, 같은 점수 안에서는 최근 생성된 강사를
+    먼저 노출해 정렬 결과를 안정적으로 유지합니다.
+    """
+
+    return list(
+        _eligible_instructors_with_score()
+        .order_by("-lifetime_rank_score", "-pk")
+        .values_list("pk", flat=True)
+    )
+
+
 def lifetime_rank_for(instructor_id: int) -> InstructorLifetimeRank | None:
     """[instructor_id] 강사의 현재 누적 순위를 반환하거나 미대상을 반환합니다."""
 
