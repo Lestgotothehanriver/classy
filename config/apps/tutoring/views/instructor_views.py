@@ -1,13 +1,12 @@
 from rest_framework import generics, permissions
 from django.db.models import Avg, Count, F, ExpressionWrapper, FloatField, OuterRef, Subquery, Value, BooleanField
-from django.db.models import IntegerField as DjangoIntField
 from django.shortcuts import get_object_or_404
 import logging
 from rest_framework.response import Response
 from config.apps.block.utils import get_blocked_user_ids
 
 from config.apps.accounts.models import Instructor, Student, InstructorLike
-from config.apps.cash.models import InstructorMonthlyRank
+from config.apps.cash.instructor_lifetime_ranking import lifetime_rank_for, lifetime_rankings
 from config.apps.common.utils import (
     apply_subject_filter,
     filter_by_account_region,
@@ -48,6 +47,12 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorListSerializer
+
+    def get_serializer_context(self):
+        """검색 결과와 무관한 전역 누적 순위를 serializer에 전달합니다."""
+        context = super().get_serializer_context()
+        context["lifetime_rankings"] = lifetime_rankings()
+        return context
 
     def get_queryset(self):
         # 과외 프로필(InstructorInfo)을 등록 완료한 강사만 노출한다.
@@ -175,6 +180,12 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InstructorListSerializer
 
+    def get_serializer_context(self):
+        """프로필에도 목록과 동일한 전역 누적 순위를 전달합니다."""
+        context = super().get_serializer_context()
+        context["lifetime_rankings"] = lifetime_rankings()
+        return context
+
     def get_queryset(self):
         qs = Instructor.objects.all().select_related("tutoring_profile")
         blocked_user_ids = get_blocked_user_ids(self.request.user)
@@ -188,7 +199,7 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
 
     특정 강사의 과외 소개 및 상세 통계 탭 정보를 조회하는 API View입니다.
 
-    GET 요청 시, 강사가 작성한 자기소개 본문(description), 수업 방식(method), 소속 및 전문 분야를 비롯하여 강사의 평점 내역 평균치(avg_rating), 총 리뷰 개수(review_count), 최신 월간 순위(current_rank)를 종합 집계하여 제공합니다.
+    GET 요청 시, 강사가 작성한 자기소개 본문(description), 수업 방식(method), 소속 및 전문 분야를 비롯하여 강사의 평점 내역 평균치(avg_rating), 총 리뷰 개수(review_count), 현재 누적 순위(current_rank)를 종합 집계하여 제공합니다.
 
     Path Parameters:
         instructor_id (int): 대상 강사의 Instructor ID.
@@ -222,13 +233,10 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
         data["avg_rating"] = stats["avg_rating"]
         data["review_count"] = stats["review_count"] or 0
 
-        latest_rank = (
-            InstructorMonthlyRank.objects.filter(instructor=instructor)
-            .order_by("-year", "-month")
-            .values("rank")
-            .first()
+        lifetime_ranking = lifetime_rank_for(instructor.pk)
+        data["current_rank"] = (
+            lifetime_ranking.rank if lifetime_ranking is not None else None
         )
-        data["current_rank"] = latest_rank["rank"] if latest_rank else None
         resource_stats = TutoringResource.objects.filter(
             instructor=instructor
         ).aggregate(

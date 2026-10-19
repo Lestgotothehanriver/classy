@@ -10,7 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 from config.apps.accounts.models import Instructor, Student
-from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
+from config.apps.cash.instructor_lifetime_ranking import lifetime_rank_for
+from config.apps.cash.models import LectureRentalHistory
 from config.apps.main.serializers import StudentMainTutorSerializer, InstructorMainStudentSerializer
 from config.apps.block.utils import get_blocked_user_ids
 from config.apps.promotions.services import promotion_summary_for
@@ -86,10 +87,11 @@ class InstructorMainAPIView(APIView):
 
     강사용 메인 대시보드 화면 데이터를 제공하는 API View입니다.
 
-    GET 요청 시 강사 본인의 저번 달 정산 랭킹 정보(순위 및 합산액), 이번 달 VOD 판매로 획득한 누적 수익금 합계(this_month_total_cash), 그리고 강사 본인의 거주 지역과 매칭되는 활성화된 구인 공고를 올린 학생 3명을 무작위로 조회하여 요약 결과를 반환합니다.
+    GET 요청 시 강사 본인의 무기한 누적 랭킹, 이번 달 VOD 판매 캐시 합계(this_month_total_cash), 그리고 강사 본인의 거주 지역과 매칭되는 활성화된 구인 공고를 올린 학생 3명을 무작위로 조회하여 요약 결과를 반환합니다.
 
     Returns:
         Response: {
+            "lifetime_rank_info": dict | None,
             "previous_month_rank_info": dict | None,
             "this_month_total_cash": int,
             "recommended_students": List[InstructorMainStudentSerializer]
@@ -110,27 +112,12 @@ class InstructorMainAPIView(APIView):
         this_month = now.month
         this_year = now.year
 
-        last_month = this_month - 1
-        last_year = this_year
-        if last_month == 0:
-            last_month = 12
-            last_year -= 1
-
-        # 저번 달 순위 모델 조회
-        rank_obj = InstructorMonthlyRank.objects.filter(
-            instructor=instructor,
-            year=last_year,
-            month=last_month
-        ).first()
-
-        rank_data = None
-        if rank_obj:
-            rank_data = {
-                "rank": rank_obj.rank,
-                "total_cash": rank_obj.total_cash,
-                "year": rank_obj.year,
-                "month": rank_obj.month
-            }
+        lifetime_ranking = lifetime_rank_for(instructor.pk)
+        rank_data = (
+            {"rank": lifetime_ranking.rank}
+            if lifetime_ranking is not None
+            else None
+        )
 
         # 이번 달 총 캐시 계산
         this_month_cash = LectureRentalHistory.objects.filter(
@@ -190,6 +177,8 @@ class InstructorMainAPIView(APIView):
         logger.debug("[BACKEND_DEBUG_MAIN] InstructorMain SUCCESS - students count: %d", len(student_serializer.data))
 
         return Response({
+            "lifetime_rank_info": rank_data,
+            # 구버전 앱이 새 누적 순위를 읽기 전까지 유지하는 호환 필드입니다.
             "previous_month_rank_info": rank_data,
             "this_month_total_cash": this_month_cash,
             "recommended_students": student_serializer.data,

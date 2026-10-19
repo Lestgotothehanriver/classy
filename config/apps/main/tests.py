@@ -4,7 +4,7 @@ from rest_framework import status
 from django.utils import timezone
 
 from config.apps.accounts.models import User, Student, Instructor, Subject
-from config.apps.cash.models import InstructorMonthlyRank, LectureRentalHistory
+from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Lecture
 from config.apps.pending.models import PendingInstructor
 from config.apps.tutoring.models import InstructorInfo, Region, TutoringPost
@@ -51,20 +51,6 @@ class MainAPIViewSetTests(APITestCase):
         now = timezone.now()
         this_month = now.month
         this_year = now.year
-
-        last_month = this_month - 1
-        last_year = this_year
-        if last_month == 0:
-            last_month = 12
-            last_year -= 1
-        
-        InstructorMonthlyRank.objects.create(
-            year=last_year,
-            month=last_month,
-            instructor=self.instructor,
-            total_cash=5000,
-            rank=1
-        )
 
         self.lecture = Lecture.objects.create(
             title="Test Lecture",
@@ -146,8 +132,7 @@ class MainAPIViewSetTests(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        self.assertIsNotNone(response.data.get('previous_month_rank_info'))
-        self.assertEqual(response.data['previous_month_rank_info']['total_cash'], 5000)
+        self.assertEqual(response.data['lifetime_rank_info']['rank'], 1)
         self.assertEqual(response.data['previous_month_rank_info']['rank'], 1)
 
         self.assertEqual(response.data.get('this_month_total_cash'), 1000)

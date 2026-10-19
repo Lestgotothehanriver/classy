@@ -98,7 +98,7 @@ class InstructorListSerializer(SafeModelSerializer):
     is_liked = serializers.BooleanField(read_only=True, default=False)
     average_rate = serializers.FloatField(read_only=True, default=None, allow_null=True)
     review_count = serializers.IntegerField(read_only=True, default=0)
-    current_rank = serializers.IntegerField(read_only=True, default=None, allow_null=True)
+    current_rank = serializers.SerializerMethodField()
     tutoring_count = serializers.IntegerField(read_only=True, default=0)
     average_cost = serializers.FloatField(read_only=True, default=None, allow_null=True)
     tutoring_count_display = serializers.SerializerMethodField()
@@ -151,8 +151,13 @@ class InstructorListSerializer(SafeModelSerializer):
         value = getattr(obj, "average_rate", None)
         return round(value, 2) if value is not None else "-"
 
+    def get_current_rank(self, obj):
+        """전역 누적 랭킹 맵에서 현재 강사의 순위를 반환합니다."""
+        ranking = self.context.get("lifetime_rankings", {}).get(obj.pk)
+        return ranking.rank if ranking is not None else None
+
     def get_current_rank_display(self, obj):
-        value = getattr(obj, "current_rank", None)
+        value = self.get_current_rank(obj)
         return value if value is not None else "-"
 
 

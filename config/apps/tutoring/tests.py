@@ -703,11 +703,13 @@ class InstructorProfileStatsTest(TestCase):
         self.assertEqual(detail_response.json()["tutoring_count_display"], "-")
         self.assertEqual(detail_response.json()["average_cost_display"], "-")
         self.assertEqual(detail_response.json()["average_rate_display"], "-")
+        self.assertIsNone(detail_response.json()["current_rank"])
         self.assertEqual(detail_response.json()["current_rank_display"], "-")
 
         self.assertEqual(info_response.status_code, 200)
         self.assertEqual(info_response.json()["cost_display"], "협의 후 결정")
         self.assertEqual(info_response.json()["tutoring_count"], 0)
+        self.assertIsNone(info_response.json()["current_rank"])
         self.assertEqual(
             info_response.json()["stats_display"],
             {
@@ -741,6 +743,35 @@ class InstructorProfileStatsTest(TestCase):
         self.assertEqual(response.json()["average_cost"], 300000.0)
         self.assertEqual(response.json()["stats_display"]["tutoring_count"], "2건")
         self.assertEqual(response.json()["stats_display"]["average_cost"], 300000)
+
+    def test_profile_apis_return_lifetime_rank(self):
+        """목록 상세와 소개 탭은 같은 누적 랭킹을 표시한다."""
+        from config.apps.cash.models import LectureRentalHistory
+        from config.apps.lecture.models import Lecture
+
+        lecture = Lecture.objects.create(
+            title="누적 랭킹 강의",
+            instructor=self.instructor,
+            price=100,
+        )
+        LectureRentalHistory.objects.create(
+            lecture=lecture,
+            student=self.viewer_user,
+            purchased_cash=100,
+            remaining_cash=0,
+        )
+
+        detail_response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/"
+        )
+        info_response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/info/"
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()["current_rank"], 1)
+        self.assertEqual(info_response.status_code, 200)
+        self.assertEqual(info_response.json()["current_rank"], 1)
 
 
 class TutoringPostPatchRepresentationTest(TestCase):
