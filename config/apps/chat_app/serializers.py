@@ -97,8 +97,8 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         """채팅방에 연결된 성사 등록(TutoringRegistration) 기준 수업 종류.
 
         - 등록 없음 / 취소  → None (칩 없음)
-        - 계약 정보 수집 중  → 'unregistered' (성사 등록 진행중)
-        - 등록/진행 중 + 확정 유형 → 'regular'(정규) / 'short_term'(단기)
+        - 계약 정보 수집/입금 확인 중 → 'unregistered' (성사 등록 진행중)
+        - 입금 확인 완료(ACTIVE) + 확정 유형 → 'regular'(정규) / 'short_term'(단기)
         """
         try:
             reg = obj.tutoring_registration
@@ -107,9 +107,9 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
 
         if reg.contract_status == 'CANCELLED':
             return None
-        if reg.contract_status == 'COLLECTING':
+        if reg.contract_status != 'ACTIVE':
             return 'unregistered'
-        # REGISTERED / ACTIVE — 확정된 수업 유형을 노출한다.
+        # ACTIVE — 입금 확인이 완료된 확정 수업 유형만 노출한다.
         if reg.confirmed_class_type == 'REGULAR':
             return 'regular'
         if reg.confirmed_class_type == 'SHORT_TERM':
