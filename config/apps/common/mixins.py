@@ -1,4 +1,15 @@
-from django.db.models import Avg, Count, F, ExpressionWrapper, FloatField, OuterRef, Value, BooleanField, Exists
+from django.db.models import (
+    Avg,
+    BooleanField,
+    Count,
+    Exists,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    OuterRef,
+    Q,
+    Value,
+)
 from config.apps.accounts.models import Student, InstructorLike
 
 class InstructorAnnotateMixin:
@@ -32,8 +43,21 @@ class InstructorAnnotateMixin:
             ),
             review_count=Count("instructor_reviews", distinct=True),
             like_count=Count("liked_by", distinct=True),
-            # 프로필 생성 여부가 아니라 실제 생성된 성사 리소스만 집계한다.
-            tutoring_count=Count("tutoring_resources", distinct=True),
-            average_cost=Avg("tutoring_resources__first_month_fee"),
+            # 수수료 납부 완료 및 활성 계약이 모두 확인된 과외만 집계한다.
+            tutoring_count=Count(
+                "tutoring_resources",
+                filter=Q(
+                    tutoring_resources__fee_payment_status="PAID",
+                    tutoring_resources__registration__contract_status="ACTIVE",
+                ),
+                distinct=True,
+            ),
+            average_cost=Avg(
+                "tutoring_resources__first_month_fee",
+                filter=Q(
+                    tutoring_resources__fee_payment_status="PAID",
+                    tutoring_resources__registration__contract_status="ACTIVE",
+                ),
+            ),
         )
         return qs

@@ -30,7 +30,12 @@ from config.apps.common.utils import (
     parse_int_list,
 )
 from config.apps.chat_app.models import ChatRoom
-from ..models import InstructorInfo, InstructorReview, TutoringResource
+from ..models import (
+    InstructorInfo,
+    InstructorReview,
+    TutoringRegistration,
+    TutoringResource,
+)
 from ..serializers import InstructorListSerializer, InstructorInfoSerializer, InstructorReviewSerializer
 from config.apps.common.mixins import InstructorAnnotateMixin
 from config.apps.promotions.services import annotate_featured_instructors
@@ -275,7 +280,9 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
             lifetime_ranking.rank if lifetime_ranking is not None else None
         )
         resource_stats = TutoringResource.objects.filter(
-            instructor=instructor
+            instructor=instructor,
+            fee_payment_status="PAID",
+            registration__contract_status=TutoringRegistration.ContractStatus.ACTIVE,
         ).aggregate(
             tutoring_count=Count("id"),
             average_cost=Avg("first_month_fee"),

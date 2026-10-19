@@ -690,6 +690,47 @@ class InstructorProfileStatsTest(TestCase):
         token = Token.objects.create(user=self.viewer_user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
+    def _create_tutoring_resource(
+        self,
+        *,
+        fee_payment_status,
+        contract_status,
+        first_month_fee,
+    ):
+        """지정한 납부·계약 상태의 강사 과외 리소스를 생성합니다."""
+        from config.apps.chat_app.models import ChatRoom
+        from config.apps.tutoring.models import (
+            TutoringPost,
+            TutoringRegistration,
+            TutoringResource,
+        )
+
+        post = TutoringPost.objects.create(
+            student=self.student,
+            title=f"프로필 통계 과외 {TutoringResource.objects.count() + 1}",
+        )
+        chat_room = ChatRoom.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            post=post,
+            initiated_by=self.viewer_user,
+        )
+        registration = TutoringRegistration.objects.create(
+            student=self.viewer_user,
+            instructor=self.instructor_user,
+            chat_room=chat_room,
+            subject="수학",
+            start_date=timezone.now().date(),
+            contract_status=contract_status,
+        )
+        return TutoringResource.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            registration=registration,
+            first_month_fee=first_month_fee,
+            fee_payment_status=fee_payment_status,
+        )
+
     def test_new_profile_has_zero_real_tutorings_and_dash_displays(self):
         detail_response = self.client.get(
             f"/tutoring/instructors/{self.instructor.pk}/"
@@ -721,28 +762,71 @@ class InstructorProfileStatsTest(TestCase):
         )
 
     def test_only_real_tutoring_resources_are_counted(self):
-        from config.apps.tutoring.models import TutoringResource
+        from config.apps.tutoring.models import TutoringRegistration, TutoringResource
 
-        TutoringResource.objects.create(
-            student=self.student,
-            instructor=self.instructor,
+        self._create_tutoring_resource(
+            fee_payment_status="PAID",
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
             first_month_fee=200000,
         )
+        self._create_tutoring_resource(
+            fee_payment_status="PAID",
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
+            first_month_fee=400000,
+        )
+        self._create_tutoring_resource(
+            fee_payment_status="PAID",
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
+            first_month_fee=None,
+        )
+        self._create_tutoring_resource(
+            fee_payment_status="PENDING",
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
+            first_month_fee=900000,
+        )
+        self._create_tutoring_resource(
+            fee_payment_status="FAILED",
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
+            first_month_fee=900000,
+        )
+        self._create_tutoring_resource(
+            fee_payment_status="PAID",
+            contract_status=TutoringRegistration.ContractStatus.REGISTERED,
+            first_month_fee=900000,
+        )
+        self._create_tutoring_resource(
+            fee_payment_status="PAID",
+            contract_status=TutoringRegistration.ContractStatus.CANCELLED,
+            first_month_fee=900000,
+        )
         TutoringResource.objects.create(
             student=self.student,
             instructor=self.instructor,
-            first_month_fee=400000,
+            first_month_fee=900000,
+            fee_payment_status="PAID",
         )
 
-        response = self.client.get(
+        info_response = self.client.get(
             f"/tutoring/instructors/{self.instructor.pk}/info/"
         )
+        detail_response = self.client.get(
+            f"/tutoring/instructors/{self.instructor.pk}/"
+        )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["tutoring_count"], 2)
-        self.assertEqual(response.json()["average_cost"], 300000.0)
-        self.assertEqual(response.json()["stats_display"]["tutoring_count"], "2건")
-        self.assertEqual(response.json()["stats_display"]["average_cost"], 300000)
+        self.assertEqual(info_response.status_code, 200)
+        self.assertEqual(info_response.json()["tutoring_count"], 3)
+        self.assertEqual(info_response.json()["average_cost"], 300000.0)
+        self.assertEqual(
+            info_response.json()["stats_display"]["tutoring_count"],
+            "3건",
+        )
+        self.assertEqual(
+            info_response.json()["stats_display"]["average_cost"],
+            300000,
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()["tutoring_count"], 3)
+        self.assertEqual(detail_response.json()["average_cost"], 300000.0)
 
     def test_profile_apis_return_lifetime_rank(self):
         """목록 상세와 소개 탭은 같은 누적 랭킹을 표시한다."""
