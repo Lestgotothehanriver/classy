@@ -48,6 +48,11 @@ try {
       new URL(`../dist${current.path}`, import.meta.url),
       'utf8',
     );
+    const currentAlias = await readFile(
+      new URL(`../dist/${route}.html`, import.meta.url),
+      'utf8',
+    );
+    assert.equal(currentAlias, expected);
 
     for (const suffix of ['', '/', '/?embed=1']) {
       const response = await fetch(`${origin}/${route}${suffix}`);
@@ -62,6 +67,8 @@ try {
 
     assert.match(expected, new RegExp(`data-policy-document="${documentType}"`));
     assert.match(expected, new RegExp(`href="${current.path}"`));
+    assert.match(expected, /<details class="policy-history"/);
+    assert.match(expected, /현재 시행 중인 버전/);
   }
 
   console.log('PASS policy manifest, canonical policy routes, versioned documents, and version controls');

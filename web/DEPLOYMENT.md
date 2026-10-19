@@ -85,10 +85,9 @@ v3 전환 전 백업: `/var/www/classy-web/backups/20260929-web-v3-01/`.
 
 이용약관과 개인정보처리방침은 `web/public/policies/manifest.json`과 시행일별 HTML 파일로 관리합니다. 기존 시행본은 수정하거나 삭제하지 않습니다.
 
-1. 현재 시행본 HTML을 복사해 새 시행일(`YYYY-MM-DD`)의 파일을 각 문서 유형 디렉터리에 추가합니다.
-2. 새 HTML의 시행일과 본문을 확정하고, 문서 상단의 `data-policy-version`을 새 시행일로 설정합니다.
-3. manifest의 `versions`에 새 파일을 추가하고 `currentVersion`을 새 시행일로 변경합니다.
-4. `config/settings/base.py`의 `POLICY_VERSIONS`에서 해당 현재 버전도 같은 시행일로 변경합니다.
-5. `npm test`, `npm run build`, 정책 URL 스모크 테스트를 통과한 새 웹 릴리스를 배포합니다.
+1. `npm run policy:add -- privacy 2026-10-19` 또는 `npm run policy:add -- service-terms 2026-10-19`를 실행합니다.
+2. 명령이 현재 시행본을 새 파일로 복사하고, manifest와 `POLICY_VERSIONS`를 같은 시행일로 갱신합니다. 적용 전 확인만 하려면 끝에 `--dry-run`을 붙입니다.
+3. 생성된 새 HTML의 본문을 법무 검토본으로 수정합니다. 이전 시행본은 수정하지 않습니다.
+4. `npm test`, `npm run build`, 정책 URL 스모크 테스트를 통과한 뒤 `bash deploy/aws/deploy.sh all`로 배포합니다.
 
-`/privacy`, `/service-terms`는 manifest의 최신 시행본을 제공하므로 Flutter 앱의 기존 `?embed=1` URL은 변경하지 않습니다. 과거 시행본은 `/policies/<document-type>/<YYYY-MM-DD>.html`의 고정 URL로 계속 공개합니다.
+빌드 과정은 manifest의 최신 시행본을 `dist/privacy.html`, `dist/service-terms.html`로 자동 복사합니다. 따라서 운영 Nginx와 Flutter 앱의 기존 `?embed=1` URL은 변경하지 않습니다. 과거 시행본은 `/policies/<document-type>/<YYYY-MM-DD>.html`의 고정 URL로 계속 공개합니다.

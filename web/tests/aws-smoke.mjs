@@ -49,7 +49,9 @@ try{
       assert.equal(response.status(),200);
     }
     await page.goto(origin+'/'+route);
-    await page.getByRole('navigation',{name:policy.title+' 버전'}).getByRole('link',{name:'시행일 '+policy.currentVersion}).waitFor();
+    const history=page.locator('details[data-policy-document="'+documentType+'"]');
+    await history.locator('summary').click();
+    await history.getByRole('link',{name:'시행일 '+policy.currentVersion}).waitFor();
   }
   await page.screenshot({path:'test-results/aws-redesign-home.png',fullPage:true});
   assert.deepEqual(errors,[]);

@@ -6,10 +6,19 @@
   const fallbackVersion = history.dataset.policyVersion;
 
   const render = (policy) => {
-    const list = document.createElement('ul');
-    list.className = 'policy-history__list';
+    const current = policy.versions.find(
+      (version) => version.version === policy.currentVersion,
+    );
+    const currentVersion = history.querySelector('[data-policy-current-version]');
+    const list = history.querySelector('[data-policy-version-list]');
+    if (!current || !currentVersion || !list) return;
 
-    policy.versions.forEach((version) => {
+    currentVersion.textContent = `${current.version} 시행`;
+    list.replaceChildren();
+
+    [...policy.versions]
+      .sort((left, right) => right.version.localeCompare(left.version))
+      .forEach((version) => {
       const item = document.createElement('li');
       const link = document.createElement('a');
       link.href = version.path;
@@ -21,13 +30,11 @@
       if (version.version === policy.currentVersion) {
         const current = document.createElement('span');
         current.className = 'policy-history__current';
-        current.textContent = '현재 시행본';
+        current.textContent = '현재 시행 중';
         item.append(current);
       }
       list.append(item);
-    });
-
-    history.replaceChildren(list);
+      });
   };
 
   fetch('/policies/manifest.json', { cache: 'no-cache' })

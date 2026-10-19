@@ -43,6 +43,9 @@ test('policy documents render the shared version-history control', async () => {
       'utf8',
     );
     assert.match(html, new RegExp(`data-policy-document="${documentType}"`));
+    assert.match(html, /<details class="policy-history"/);
+    assert.match(html, /현재 시행 중인 버전/);
+    assert.match(html, /data-policy-version-list/);
     assert.match(html, /src="\/policies\/policy-history\.js"/);
   }
 });
