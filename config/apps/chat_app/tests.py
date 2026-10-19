@@ -138,14 +138,20 @@ class ChatRoomOpponentProfileImageTest(TestCase):
         resp = self.client.get("/chatrooms/", {"role": "student"})
         self.assertEqual(resp.json()[0]["class_status"], "unregistered")
 
-        # 등록 완료 + 정규 → 'regular'
+        # 입금 확인 전 등록 완료(REGISTERED) → 'unregistered'
         reg.contract_status = "REGISTERED"
         reg.confirmed_class_type = "REGULAR"
         reg.save()
         resp = self.client.get("/chatrooms/", {"role": "student"})
+        self.assertEqual(resp.json()[0]["class_status"], "unregistered")
+
+        # 입금 확인 후 활성 계약(ACTIVE) + 정규 → 'regular'
+        reg.contract_status = "ACTIVE"
+        reg.save()
+        resp = self.client.get("/chatrooms/", {"role": "student"})
         self.assertEqual(resp.json()[0]["class_status"], "regular")
 
-        # 단기 → 'short_term'
+        # 활성 계약 + 단기 → 'short_term'
         reg.confirmed_class_type = "SHORT_TERM"
         reg.save()
         resp = self.client.get("/chatrooms/", {"role": "student"})

@@ -80,3 +80,15 @@ v3 전환 전 백업: `/var/www/classy-web/backups/20260929-web-v3-01/`.
 웹만 비활성화하려면 정확히 `/etc/nginx/sites-enabled/classy-web` 링크만 제거한 뒤
 `nginx -t` 통과 후 reload합니다. API 사이트 링크인 `classy`를 제거하지 마세요.
 향후 업데이트는 새 release 디렉터리에 업로드하고 current 링크를 원자적으로 교체합니다.
+
+## 정책 문서 개정 절차
+
+이용약관과 개인정보처리방침은 `web/public/policies/manifest.json`과 시행일별 HTML 파일로 관리합니다. 기존 시행본은 수정하거나 삭제하지 않습니다.
+
+1. 현재 시행본 HTML을 복사해 새 시행일(`YYYY-MM-DD`)의 파일을 각 문서 유형 디렉터리에 추가합니다.
+2. 새 HTML의 시행일과 본문을 확정하고, 문서 상단의 `data-policy-version`을 새 시행일로 설정합니다.
+3. manifest의 `versions`에 새 파일을 추가하고 `currentVersion`을 새 시행일로 변경합니다.
+4. `config/settings/base.py`의 `POLICY_VERSIONS`에서 해당 현재 버전도 같은 시행일로 변경합니다.
+5. `npm test`, `npm run build`, 정책 URL 스모크 테스트를 통과한 새 웹 릴리스를 배포합니다.
+
+`/privacy`, `/service-terms`는 manifest의 최신 시행본을 제공하므로 Flutter 앱의 기존 `?embed=1` URL은 변경하지 않습니다. 과거 시행본은 `/policies/<document-type>/<YYYY-MM-DD>.html`의 고정 URL로 계속 공개합니다.

@@ -54,6 +54,28 @@
     color: var(--sub);
     font-size: 14px;
   }
+  .policy-history {
+    margin-top: 16px;
+    font-size: 14px;
+  }
+  .policy-history__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .policy-history__list a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .policy-history__current {
+    margin-left: 6px;
+    color: var(--sub);
+    font-size: 13px;
+  }
   nav.toc {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -157,6 +179,7 @@
     } catch (e) {}
   })();
 </script>
+<script src="/policies/policy-history.js" defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -165,6 +188,11 @@
     <span class="eyebrow">클래씨 (Classy)</span>
     <h1>이용약관</h1>
     <div class="meta">시행일 2026년 1월 1일&nbsp;·&nbsp;주식회사 클래씨(Classy Inc.)</div>
+    <nav class="policy-history" data-policy-document="service-terms" data-policy-version="2026-01-01" aria-label="이용약관 버전">
+      <ul class="policy-history__list">
+        <li><a href="/policies/service-terms/2026-01-01.html" aria-current="page">시행일 2026-01-01</a><span class="policy-history__current">현재 시행본</span></li>
+      </ul>
+    </nav>
   </header>
 
   <nav class="toc" aria-label="목차">

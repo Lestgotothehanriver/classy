@@ -1,0 +1,24 @@
+{
+  "documents": {
+    "privacy": {
+      "title": "개인정보처리방침",
+      "currentVersion": "2026-01-01",
+      "versions": [
+        {
+          "version": "2026-01-01",
+          "path": "/policies/privacy/2026-01-01.html"
+        }
+      ]
+    },
+    "service-terms": {
+      "title": "이용약관",
+      "currentVersion": "2026-01-01",
+      "versions": [
+        {
+          "version": "2026-01-01",
+          "path": "/policies/service-terms/2026-01-01.html"
+        }
+      ]
+    }
+  }
+}

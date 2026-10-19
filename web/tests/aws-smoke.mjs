@@ -34,13 +34,22 @@ try{
   await page.keyboard.press('Escape');
   const locked=await page.request.get(origin+'/api/accounts/me/');
   assert.equal(locked.status(),401);
-  for(const path of ['privacy','service-terms']){
-    const expected=await readFile(new URL('../public/'+path+'.html',import.meta.url),'utf8');
+  const manifest=JSON.parse(await readFile(new URL('../public/policies/manifest.json',import.meta.url),'utf8'));
+  for(const [documentType, route] of [['privacy','privacy'],['service-terms','service-terms']]){
+    const policy=manifest.documents[documentType];
+    const current=policy.versions.find(version=>version.version===policy.currentVersion);
+    const expected=await readFile(new URL('../public'+current.path,import.meta.url),'utf8');
     for(const suffix of ['', '/', '/?embed=1']){
-      const response=await page.request.get(origin+'/'+path+suffix);
+      const response=await page.request.get(origin+'/'+route+suffix);
       assert.equal(response.status(),200);
-      assert.equal(await response.text(),expected,'policy must be byte-identical: '+path+suffix);
+      assert.equal(await response.text(),expected,'policy must be byte-identical: '+route+suffix);
     }
+    for(const version of policy.versions){
+      const response=await page.request.get(origin+version.path);
+      assert.equal(response.status(),200);
+    }
+    await page.goto(origin+'/'+route);
+    await page.getByRole('navigation',{name:policy.title+' 버전'}).getByRole('link',{name:'시행일 '+policy.currentVersion}).waitFor();
   }
   await page.screenshot({path:'test-results/aws-redesign-home.png',fullPage:true});
   assert.deepEqual(errors,[]);
