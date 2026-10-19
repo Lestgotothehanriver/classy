@@ -1513,6 +1513,8 @@ class RoleAddAPIView(APIView):
             serializer = StudentRoleAddSerializer(data=request.data, context={'request': request})
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            from config.apps.support.services import ensure_support_conversation
+            ensure_support_conversation(user=user, role='student')
 
         elif role == 'instructor':
             if hasattr(user, 'instructor_profile'):
@@ -1521,6 +1523,8 @@ class RoleAddAPIView(APIView):
             serializer = InstructorRoleAddSerializer(data=request.data, context={'request': request})
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            from config.apps.support.services import ensure_support_conversation
+            ensure_support_conversation(user=user, role='instructor')
 
         # 역할이 추가된 후, 로그인 뷰와 유사하게 최신 available_roles 와 사용자 정보 반환
         available_roles = []

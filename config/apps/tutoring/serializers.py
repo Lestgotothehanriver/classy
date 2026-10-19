@@ -107,7 +107,8 @@ class InstructorListSerializer(SafeModelSerializer):
     current_rank_display = serializers.SerializerMethodField()
     sex = serializers.CharField(source='user.sex', read_only=True)
     region = serializers.CharField(source='user.region', read_only=True)
-    user_name = serializers.CharField(source='user.user_name', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    is_official_creator = serializers.BooleanField(read_only=True)
     birth_date = serializers.DateField(source='user.birth_date', read_only=True)
     profile_image = AbsoluteImageField(source='user.profile_image', read_only=True)
     verification_status = serializers.SerializerMethodField()
@@ -123,12 +124,37 @@ class InstructorListSerializer(SafeModelSerializer):
             'review_count', 'current_rank', 'tutoring_count', 'average_cost',
             'tutoring_count_display', 'average_cost_display',
             'average_rate_display', 'current_rank_display', 'sex', 'region',
-            'user_name', 'birth_date', 'profile_image',
+            'user_name', 'birth_date', 'profile_image', 'is_official_creator',
             'verification_status', 'is_certified', 'is_unverified'
         ]
 
     def get_subjects(self, obj):
         return extract_subject_numbers(obj)
+
+    def get_user_name(self, obj):
+        """공식 강의 계정은 실제 운영자 이름 대신 공개 계정명을 반환한다."""
+        if obj.is_official_creator:
+            return "클래씨 공식 계정"
+        return obj.user.user_name
+
+    def to_representation(self, instance):
+        """공식 강의 계정에서 과외용 개인정보·통계를 공개하지 않는다."""
+        data = super().to_representation(instance)
+        if not instance.is_official_creator:
+            return data
+        for field in (
+            "university", "department", "instruction", "student_number",
+            "is_tutoring", "subjects", "average_rate", "review_count",
+            "current_rank", "tutoring_count", "average_cost", "sex", "region",
+            "birth_date", "verification_status", "is_certified", "is_unverified",
+            "profile_image",
+        ):
+            data[field] = None if field in {"sex", "region", "birth_date", "average_rate", "current_rank", "average_cost"} else ""
+        data["is_tutoring"] = False
+        data["subjects"] = []
+        data["review_count"] = 0
+        data["tutoring_count"] = 0
+        return data
 
     def get_verification_status(self, obj):
         return get_instructor_verification_status(obj)

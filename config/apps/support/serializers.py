@@ -4,7 +4,14 @@ import os
 
 from rest_framework import serializers
 
-from .models import SupportAttachment, SupportEvent, SupportMessage, SupportTicket
+from .models import (
+    SupportAttachment,
+    SupportConversation,
+    SupportConversationMessage,
+    SupportEvent,
+    SupportMessage,
+    SupportTicket,
+)
 from .services import related_summary, status_label, ticket_role, validate_related_target
 
 
@@ -171,3 +178,95 @@ class SupportMessageCreateSerializer(serializers.Serializer):
     """사용자 추가 답변 본문입니다."""
 
     content = serializers.CharField()
+
+
+class SupportConversationMessageSerializer(serializers.ModelSerializer):
+    """회원 앱에 표시할 고객지원 메시지입니다."""
+
+    action = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportConversationMessage
+        fields = ["id", "sender_kind", "content", "action", "created_at"]
+
+    def get_action(self, obj):
+        if obj.action_type == SupportConversationMessage.ActionType.NONE:
+            return None
+        default_labels = {
+            SupportConversationMessage.ActionType.TUTORING_CHAT: "해당 채팅방으로 이동",
+            SupportConversationMessage.ActionType.SUPPORT_TICKET: "내 문의 보기",
+            SupportConversationMessage.ActionType.CASH_HISTORY: "구매 내역 보기",
+        }
+        return {
+            "type": obj.action_type,
+            "target_id": obj.action_target_id,
+            "label": obj.action_label or default_labels[obj.action_type],
+        }
+
+
+class SupportConversationSerializer(serializers.ModelSerializer):
+    """역할별 고객지원방 목록·상세의 공용 표현입니다."""
+
+    title = serializers.SerializerMethodField()
+    official_instructor_id = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    messages = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportConversation
+        fields = [
+            "id",
+            "role",
+            "title",
+            "official_instructor_id",
+            "is_muted",
+            "last_message",
+            "unread_count",
+            "messages",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_title(self, obj):
+        return "클래씨 공식 계정"
+
+    def get_official_instructor_id(self, obj):
+        from config.apps.accounts.models import Instructor
+
+        return Instructor.objects.filter(is_official_creator=True).values_list("pk", flat=True).first()
+
+    def get_last_message(self, obj):
+        message = obj.messages.last()
+        if message is None:
+            return None
+        return SupportConversationMessageSerializer(message).data
+
+    def get_unread_count(self, obj):
+        if obj.last_operator_message_at is None:
+            return 0
+        return int(obj.last_member_read_at is None or obj.last_operator_message_at > obj.last_member_read_at)
+
+    def get_messages(self, obj):
+        if not self.context.get("detail"):
+            return []
+        return SupportConversationMessageSerializer(obj.messages.all(), many=True).data
+
+
+class SupportConversationMessageCreateSerializer(serializers.Serializer):
+    """회원이 보내는 텍스트 메시지입니다."""
+
+    content = serializers.CharField(trim_whitespace=True)
+
+
+class AdminSupportConversationMessageCreateSerializer(serializers.Serializer):
+    """슈퍼관리자의 공식 계정 답변과 검증 대상 버튼입니다."""
+
+    content = serializers.CharField(trim_whitespace=True)
+    action_type = serializers.ChoiceField(
+        choices=SupportConversationMessage.ActionType.choices,
+        required=False,
+        default=SupportConversationMessage.ActionType.NONE,
+    )
+    action_target_id = serializers.IntegerField(required=False, min_value=1, allow_null=True)
+    action_label = serializers.CharField(required=False, allow_blank=True, max_length=80)

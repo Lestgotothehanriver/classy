@@ -79,7 +79,8 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     def get_queryset(self):
         # 과외 프로필(InstructorInfo)을 등록 완료한 강사만 노출한다.
         qs = Instructor.objects.filter(
-            tutoring_profile__isnull=False
+            tutoring_profile__isnull=False,
+            is_official_creator=False,
         ).select_related("tutoring_profile")
 
         if self.request.user.is_authenticated:
@@ -255,7 +256,9 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         blocked_user_ids = get_blocked_user_ids(request.user)
         instance = get_object_or_404(
-            InstructorInfo.objects.exclude(instructor__user_id__in=blocked_user_ids),
+            InstructorInfo.objects.exclude(
+                instructor__user_id__in=blocked_user_ids,
+            ).exclude(instructor__is_official_creator=True),
             instructor_id=kwargs["instructor_id"],
         )
         serializer = self.get_serializer(instance)
@@ -338,7 +341,10 @@ class InstructorReviewListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         instructor_id = self.kwargs["instructor_id"]
-        qs = InstructorReview.objects.filter(instructor_id=instructor_id)
+        qs = InstructorReview.objects.filter(
+            instructor_id=instructor_id,
+            instructor__is_official_creator=False,
+        )
         
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)

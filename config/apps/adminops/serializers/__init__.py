@@ -27,6 +27,7 @@ from .report import (
 )
 from .notice import AdminNoticeSerializer
 from .support import AdminSupportTicketSerializer
+from .support_conversation import AdminSupportConversationSerializer
 from .promotion import PromotionBenefitSerializer, PromotionCampaignSerializer
 
 __all__ = [
@@ -52,6 +53,7 @@ __all__ = [
     "SanctionInputSerializer",
     "AdminNoticeSerializer",
     "AdminSupportTicketSerializer",
+    "AdminSupportConversationSerializer",
     "PromotionCampaignSerializer",
     "PromotionBenefitSerializer",
 ]

@@ -40,8 +40,8 @@ class StudentAdmin(admin.ModelAdmin):
 # ── Instructor ────────────────────────────────────────────────────────────────
 @admin.register(Instructor)
 class InstructorAdmin(admin.ModelAdmin):
-    list_display  = ("id", "get_username", "get_email", "university", "department", "is_tutoring", "get_subjects", "created_at")
-    list_filter   = ("is_tutoring",)
+    list_display  = ("id", "get_username", "get_email", "university", "department", "is_tutoring", "is_official_creator", "get_subjects", "created_at")
+    list_filter   = ("is_tutoring", "is_official_creator")
     search_fields = ("user__username", "user__email", "university", "department")
     readonly_fields = ("created_at",)
     ordering      = ("-created_at",)

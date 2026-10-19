@@ -109,3 +109,75 @@ class SupportEvent(models.Model):
 
     class Meta:
         ordering = ["created_at", "pk"]
+
+
+class SupportConversation(models.Model):
+    """회원 역할별 상시 고객지원 대화방입니다.
+
+    티켓과 달리 상태·업무 처리 흐름을 갖지 않으며, 같은 회원이라도 학생과
+    선생님 역할은 서로 다른 대화 이력과 읽음 상태를 가집니다.
+    """
+
+    class Role(models.TextChoices):
+        STUDENT = "student", "학생"
+        INSTRUCTOR = "instructor", "선생님"
+
+    member = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="support_conversations",
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    is_muted = models.BooleanField(default=False)
+    last_member_message_at = models.DateTimeField(null=True, blank=True)
+    last_operator_message_at = models.DateTimeField(null=True, blank=True)
+    last_member_read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["member", "role"], name="support_conversation_member_role_unique"),
+        ]
+
+
+class SupportConversationMessage(models.Model):
+    """고객지원 상시 대화의 공개 텍스트 메시지입니다."""
+
+    class SenderKind(models.TextChoices):
+        MEMBER = "MEMBER", "회원"
+        OPERATOR = "OPERATOR", "운영자"
+        SYSTEM = "SYSTEM", "시스템"
+
+    class ActionType(models.TextChoices):
+        NONE = "NONE", "없음"
+        TUTORING_CHAT = "TUTORING_CHAT", "과외 채팅방"
+        SUPPORT_TICKET = "SUPPORT_TICKET", "문의 티켓"
+        CASH_HISTORY = "CASH_HISTORY", "구매 내역"
+
+    conversation = models.ForeignKey(
+        SupportConversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="support_conversation_messages",
+    )
+    sender_kind = models.CharField(max_length=15, choices=SenderKind.choices)
+    content = models.TextField()
+    action_type = models.CharField(
+        max_length=30,
+        choices=ActionType.choices,
+        default=ActionType.NONE,
+    )
+    action_target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    action_label = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]

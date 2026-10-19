@@ -1,8 +1,12 @@
 from django.urls import path
 
-from .views import PaybackPayoutDetailView, TicketAttachmentView, TicketContextView, TicketDetailView, TicketListCreateView, TicketMessageView, TicketReadView
+from .views import ConversationDetailView, ConversationListView, ConversationMessageView, ConversationReadView, PaybackPayoutDetailView, TicketAttachmentView, TicketContextView, TicketDetailView, TicketListCreateView, TicketMessageView, TicketReadView
 
 urlpatterns = [
+    path("conversations/", ConversationListView.as_view(), name="support-conversation-list"),
+    path("conversations/<int:pk>/", ConversationDetailView.as_view(), name="support-conversation-detail"),
+    path("conversations/<int:pk>/messages/", ConversationMessageView.as_view(), name="support-conversation-message"),
+    path("conversations/<int:pk>/read/", ConversationReadView.as_view(), name="support-conversation-read"),
     path("tickets/", TicketListCreateView.as_view(), name="support-ticket-list-create"),
     path("ticket-context/", TicketContextView.as_view(), name="support-ticket-context"),
     path("payback-payouts/<int:registration_id>/", PaybackPayoutDetailView.as_view(), name="support-payback-payout-detail"),

@@ -12,6 +12,7 @@ import uuid
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from config.apps.accounts.uploads import profile_image_upload_to
 from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
@@ -226,7 +227,19 @@ class Instructor(models.Model):
     instruction = models.TextField(blank=True, default="")  # 자기소개 같은 용도로 쓰는 필드
     student_number = models.CharField(max_length=20, blank=True)  # 학번 (인증에 필요하면 추가)
     is_tutoring = models.BooleanField(default=False)  # 과외 진행 중 여부
+    # 공개 프로필을 일반 과외 강사가 아닌 플랫폼의 공식 강의 계정으로 표시한다.
+    # Django 관리자 권한(User.is_staff)과 분리해 공개 API가 권한 정보를 노출하지 않는다.
+    is_official_creator = models.BooleanField(default=False, db_index=True)
     last_login = models.DateTimeField(null=True, blank=True)  # 강사 계정 마지막 로그인
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_official_creator"],
+                condition=Q(is_official_creator=True),
+                name="accounts_single_official_creator",
+            ),
+        ]
      
 
 class InstructorLike(models.Model):

@@ -40,6 +40,9 @@ from .report import (
     ReportedUserSummaryView,
 )
 from .support import (
+    AdminSupportConversationDetailView,
+    AdminSupportConversationListView,
+    AdminSupportConversationReplyView,
     AdminSupportTicketApproveNameChangeView,
     AdminSupportTicketAttachmentView,
     AdminSupportTicketDetailView,
@@ -97,6 +100,9 @@ __all__ = [
     "AdminSupportTicketStatusView",
     "AdminSupportTicketApproveNameChangeView",
     "AdminSupportTicketAttachmentView",
+    "AdminSupportConversationListView",
+    "AdminSupportConversationDetailView",
+    "AdminSupportConversationReplyView",
     "PromotionCampaignListCreateView",
     "PromotionCampaignDetailView",
     "PromotionBenefitListView",

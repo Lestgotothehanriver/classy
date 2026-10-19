@@ -45,6 +45,9 @@ from .views import (
     AdminSupportTicketStatusView,
     AdminSupportTicketApproveNameChangeView,
     AdminSupportTicketAttachmentView,
+    AdminSupportConversationDetailView,
+    AdminSupportConversationListView,
+    AdminSupportConversationReplyView,
     PromotionBenefitListView,
     PromotionCampaignDetailView,
     PromotionCampaignListCreateView,
@@ -66,6 +69,9 @@ urlpatterns = [
     path("inquiries/<int:pk>/status/", AdminSupportTicketStatusView.as_view(), name="support-ticket-status"),
     path("inquiries/<int:pk>/approve-name-change/", AdminSupportTicketApproveNameChangeView.as_view(), name="support-ticket-name-change"),
     path("inquiries/<int:pk>/attachments/<int:attachment_id>/", AdminSupportTicketAttachmentView.as_view(), name="support-ticket-attachment"),
+    path("support-conversations/", AdminSupportConversationListView.as_view(), name="support-conversation-list"),
+    path("support-conversations/<int:pk>/", AdminSupportConversationDetailView.as_view(), name="support-conversation-detail"),
+    path("support-conversations/<int:pk>/reply/", AdminSupportConversationReplyView.as_view(), name="support-conversation-reply"),
     # 운영 대시보드
     path(
         "dashboard/operations/",

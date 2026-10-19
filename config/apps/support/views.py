@@ -6,6 +6,9 @@ import os
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.db.models import OuterRef, Subquery
+from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework import permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -13,9 +16,15 @@ from rest_framework.views import APIView
 
 from config.apps.tutoring.models import PaybackPayout, TutoringRegistration
 
-from .models import SupportAttachment, SupportEvent, SupportTicket
-from .serializers import SupportMessageCreateSerializer, SupportTicketCreateSerializer, SupportTicketSerializer
-from .services import USER_EVENT_TYPES, add_user_message, mark_ticket_read, ticket_context
+from .models import SupportAttachment, SupportConversation, SupportConversationMessage, SupportEvent, SupportTicket
+from .serializers import (
+    SupportConversationMessageCreateSerializer,
+    SupportConversationSerializer,
+    SupportMessageCreateSerializer,
+    SupportTicketCreateSerializer,
+    SupportTicketSerializer,
+)
+from .services import USER_EVENT_TYPES, add_conversation_message, add_user_message, mark_ticket_read, ticket_context
 
 
 def _ticket_queryset():
@@ -29,6 +38,76 @@ def _ticket_queryset():
         last_operator_name=Subquery(operator_events.values("actor_name")[:1]),
         last_operator_at=Subquery(operator_events.values("created_at")[:1]),
     )
+
+
+def broadcast_conversation_event(conversation, event: str, *, message=None) -> None:
+    """회원·관리자 웹소켓 구독자에게 고객지원 대화 변경을 알립니다."""
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    payload = {"event": event, "conversation_id": str(conversation.pk), "role": conversation.role}
+    if message is not None:
+        from .serializers import SupportConversationMessageSerializer
+        payload["message"] = SupportConversationMessageSerializer(message).data
+    async_to_sync(channel_layer.group_send)(f"support_conversation_{conversation.pk}", {"type": "support.event", "payload": payload})
+    async_to_sync(channel_layer.group_send)("support_admin_inbox", {"type": "support.event", "payload": payload})
+
+
+class ConversationListView(APIView):
+    """현재 활성 역할의 상시 고객지원방을 반환합니다."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        role = request.query_params.get("role", "").strip()
+        if role not in SupportConversation.Role.values:
+            return Response({"error": "role은 student 또는 instructor여야 합니다."}, status=400)
+        conversation = SupportConversation.objects.filter(member=request.user, role=role).first()
+        if conversation is None:
+            return Response([])
+        return Response([SupportConversationSerializer(conversation).data])
+
+
+class ConversationDetailView(APIView):
+    """회원 본인의 고객지원방 메시지를 반환합니다."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        conversation = get_object_or_404(SupportConversation, pk=pk, member=request.user)
+        return Response(SupportConversationSerializer(conversation, context={"detail": True}).data)
+
+
+class ConversationMessageView(APIView):
+    """회원이 고객지원방에 텍스트를 전송합니다."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        conversation = get_object_or_404(SupportConversation, pk=pk, member=request.user)
+        serializer = SupportConversationMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = add_conversation_message(
+            conversation,
+            sender=request.user,
+            sender_kind=SupportConversationMessage.SenderKind.MEMBER,
+            content=serializer.validated_data["content"],
+        )
+        broadcast_conversation_event(conversation, "message", message=message)
+        return Response(SupportConversationSerializer(conversation, context={"detail": True}).data, status=status.HTTP_201_CREATED)
+
+
+class ConversationReadView(APIView):
+    """회원이 공식 계정의 답변을 읽은 시각을 기록합니다."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        conversation = get_object_or_404(SupportConversation, pk=pk, member=request.user)
+        conversation.last_member_read_at = timezone.now()
+        conversation.save(update_fields=["last_member_read_at", "updated_at"])
+        broadcast_conversation_event(conversation, "read")
+        return Response({"id": conversation.pk, "last_member_read_at": conversation.last_member_read_at})
 
 
 class TicketListCreateView(APIView):

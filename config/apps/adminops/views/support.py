@@ -15,9 +15,27 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.apps.adminops.models import AdminActionLog
-from config.apps.notification.helpers import notify_support_ticket_update
-from config.apps.support.models import SupportAttachment, SupportEvent, SupportMessage, SupportTicket
-from config.apps.support.services import USER_EVENT_TYPES, add_event, display_name, transition
+from config.apps.notification.helpers import (
+    notify_support_conversation_update,
+    notify_support_ticket_update,
+)
+from config.apps.support.models import (
+    SupportAttachment,
+    SupportConversation,
+    SupportConversationMessage,
+    SupportEvent,
+    SupportMessage,
+    SupportTicket,
+)
+from config.apps.support.serializers import AdminSupportConversationMessageCreateSerializer
+from config.apps.support.services import (
+    USER_EVENT_TYPES,
+    add_conversation_message,
+    add_event,
+    display_name,
+    transition,
+)
+from config.apps.support.views import broadcast_conversation_event
 
 from ..permissions import IsSuperAdmin
 from ..serializers.support import (
@@ -27,6 +45,7 @@ from ..serializers.support import (
     AdminTicketReplySerializer,
     AdminTicketStatusSerializer,
 )
+from ..serializers.support_conversation import AdminSupportConversationSerializer
 
 
 def _base_queryset():
@@ -240,3 +259,89 @@ class AdminSupportTicketAttachmentView(APIView):
         except FileNotFoundError as exc:
             raise Http404("Attachment missing") from exc
         return FileResponse(handle, as_attachment=False, filename=attachment.original_name or os.path.basename(attachment.file.name), content_type=mimetypes.guess_type(attachment.file.name)[0] or "application/octet-stream")
+
+
+def _conversation_queryset():
+    """고객지원 채팅 목록과 상세에서 공통으로 쓰는 로딩 규칙입니다."""
+    return SupportConversation.objects.select_related("member").prefetch_related("messages")
+
+
+class AdminSupportConversationListView(ListAPIView):
+    """티켓과 분리된 역할별 고객지원 채팅 목록입니다."""
+
+    permission_classes = [IsSuperAdmin]
+    serializer_class = AdminSupportConversationSerializer
+
+    def get_queryset(self):
+        queryset = _conversation_queryset()
+        role = self.request.query_params.get("role", "")
+        if role in SupportConversation.Role.values:
+            queryset = queryset.filter(role=role)
+        query = self.request.query_params.get("q", "").strip()
+        if query:
+            queryset = queryset.filter(
+                Q(member__user_name__icontains=query)
+                | Q(member__email__icontains=query)
+            )
+        return queryset.order_by("-updated_at", "-pk")
+
+
+class AdminSupportConversationDetailView(RetrieveAPIView):
+    """슈퍼관리자의 고객지원 대화 상세 조회입니다."""
+
+    permission_classes = [IsSuperAdmin]
+    serializer_class = AdminSupportConversationSerializer
+
+    def get_queryset(self):
+        return _conversation_queryset()
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["detail"] = True
+        return context
+
+
+class AdminSupportConversationReplyView(APIView):
+    """공식 계정 이름으로 텍스트 또는 검증된 버튼형 메시지를 전송합니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        serializer = AdminSupportConversationMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        conversation = get_object_or_404(
+            SupportConversation.objects.select_for_update().select_related("member"),
+            pk=pk,
+        )
+        message = add_conversation_message(
+            conversation,
+            sender=request.user,
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+            content=serializer.validated_data["content"],
+            action_type=serializer.validated_data["action_type"],
+            action_target_id=serializer.validated_data.get("action_target_id"),
+            action_label=serializer.validated_data.get("action_label", ""),
+        )
+        AdminActionLog.record(
+            admin=request.user,
+            action="support_conversation.reply",
+            target_type="SupportConversation",
+            target_id=conversation.pk,
+            metadata={"message_id": message.pk, "action_type": message.action_type},
+            request_id=_request_id(request),
+        )
+        broadcast_conversation_event(conversation, "message", message=message)
+        notify_support_conversation_update(
+            conversation.member,
+            role=conversation.role,
+            conversation_id=conversation.pk,
+            body=message.content,
+        )
+        return Response(
+            AdminSupportConversationSerializer(
+                _conversation_queryset().get(pk=conversation.pk),
+                context={"detail": True},
+            ).data,
+            status=201,
+        )

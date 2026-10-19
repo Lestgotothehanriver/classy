@@ -8,7 +8,13 @@ from config.apps.cash.models import PurchaseHistory
 from config.apps.pending.models import PendingInstructor
 from config.apps.tutoring.models import TutoringRegistration
 
-from .models import SupportEvent, SupportMessage, SupportTicket
+from .models import (
+    SupportConversation,
+    SupportConversationMessage,
+    SupportEvent,
+    SupportMessage,
+    SupportTicket,
+)
 
 
 USER_EVENT_TYPES = ("ticket.created", "ticket.reopened")
@@ -225,3 +231,89 @@ def ticket_attachment_queryset(tickets):
     """주어진 티켓 집합의 첨부를 반환합니다."""
     from .models import SupportAttachment
     return SupportAttachment.objects.filter(ticket__in=tickets)
+
+
+def ensure_support_conversation(*, user, role: str) -> SupportConversation:
+    """실제 보유 역할에만 역할별 고객지원 대화방을 하나 보장합니다."""
+    valid_roles = {
+        SupportConversation.Role.STUDENT: hasattr(user, "student_profile"),
+        SupportConversation.Role.INSTRUCTOR: hasattr(user, "instructor_profile"),
+    }
+    if not valid_roles.get(role, False):
+        raise ValidationError("보유하지 않은 역할의 고객지원방은 만들 수 없습니다.")
+    conversation, _ = SupportConversation.objects.get_or_create(member=user, role=role)
+    return conversation
+
+
+def validate_conversation_action(*, conversation, action_type: str, action_target_id: int | None) -> None:
+    """운영자 버튼이 수신 회원의 실제 소유 화면만 열도록 검증합니다."""
+    if action_type == SupportConversationMessage.ActionType.NONE:
+        if action_target_id is not None:
+            raise ValidationError("동작 없는 메시지에는 대상 ID를 지정할 수 없습니다.")
+        return
+    if action_type == SupportConversationMessage.ActionType.CASH_HISTORY:
+        if conversation.role != SupportConversation.Role.STUDENT or action_target_id is not None:
+            raise ValidationError("구매 내역은 학생 고객지원방에서만 열 수 있습니다.")
+        return
+    if action_target_id is None:
+        raise ValidationError("버튼 대상 ID가 필요합니다.")
+    if action_type == SupportConversationMessage.ActionType.TUTORING_CHAT:
+        from config.apps.chat_app.models import ChatRoom
+
+        room = ChatRoom.objects.filter(pk=action_target_id).select_related("student__user", "instructor__user").first()
+        if room is None or conversation.member_id not in {room.student.user_id, room.instructor.user_id}:
+            raise ValidationError("회원이 참여한 과외 채팅방만 연결할 수 있습니다.")
+        expected_role = "student" if room.student.user_id == conversation.member_id else "instructor"
+        if expected_role != conversation.role:
+            raise ValidationError("현재 고객지원 역할과 과외 채팅방 역할이 일치하지 않습니다.")
+        return
+    if action_type == SupportConversationMessage.ActionType.SUPPORT_TICKET:
+        ticket = SupportTicket.objects.filter(pk=action_target_id, requester=conversation.member).first()
+        if ticket is None or ticket.requester_role != conversation.role:
+            raise ValidationError("현재 역할의 본인 문의 티켓만 연결할 수 있습니다.")
+        return
+    raise ValidationError("지원하지 않는 고객지원 버튼입니다.")
+
+
+@transaction.atomic
+def add_conversation_message(
+    conversation: SupportConversation,
+    *,
+    sender,
+    sender_kind: str,
+    content: str,
+    action_type: str = SupportConversationMessage.ActionType.NONE,
+    action_target_id: int | None = None,
+    action_label: str = "",
+) -> SupportConversationMessage:
+    """메시지·목록 정렬 시각·읽지 않음 기준을 원자적으로 기록합니다."""
+    content = content.strip()
+    if not content:
+        raise ValidationError("메시지 내용을 입력해주세요.")
+    if sender_kind == SupportConversationMessage.SenderKind.OPERATOR:
+        validate_conversation_action(
+            conversation=conversation,
+            action_type=action_type,
+            action_target_id=action_target_id,
+        )
+    elif action_type != SupportConversationMessage.ActionType.NONE:
+        raise ValidationError("회원 메시지에는 버튼을 추가할 수 없습니다.")
+    message = SupportConversationMessage.objects.create(
+        conversation=conversation,
+        sender=sender,
+        sender_kind=sender_kind,
+        content=content,
+        action_type=action_type,
+        action_target_id=action_target_id,
+        action_label=action_label.strip(),
+    )
+    update_field = (
+        "last_member_message_at"
+        if sender_kind == SupportConversationMessage.SenderKind.MEMBER
+        else "last_operator_message_at"
+    )
+    SupportConversation.objects.filter(pk=conversation.pk).update(
+        **{update_field: message.created_at, "updated_at": message.created_at}
+    )
+    conversation.refresh_from_db()
+    return message

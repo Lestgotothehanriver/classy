@@ -23,16 +23,31 @@ class LectureInstructorSerializer(serializers.ModelSerializer):
     앱의 강의 상세/목록에서 업로더 프로필(닉네임·프로필이미지·대학·학과·학번)을
     표시하기 위해 사용합니다.
     """
-    user_name = serializers.CharField(source="user.user_name", read_only=True)
+    user_name = serializers.SerializerMethodField()
     profile_image = AbsoluteImageField(source="user.profile_image", read_only=True)
+    is_official_creator = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Instructor
         fields = [
             "id", "user", "user_name",
             "university", "department", "student_number",
-            "instruction", "profile_image",
+            "instruction", "profile_image", "is_official_creator",
         ]
+
+    def get_user_name(self, obj):
+        """공식 계정 강의에는 운영자 실명 대신 고정 공개명을 노출한다."""
+        if obj.is_official_creator:
+            return "클래씨 공식 계정"
+        return obj.user.user_name
+
+    def to_representation(self, instance):
+        """강의에서는 공식 계정의 개인 학력·소개 정보를 노출하지 않는다."""
+        data = super().to_representation(instance)
+        if instance.is_official_creator:
+            for field in ("university", "department", "student_number", "instruction", "profile_image"):
+                data[field] = ""
+        return data
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -52,7 +67,7 @@ class LectureListSerializer(serializers.ModelSerializer):
     """강의 목록 — video 필드 제외."""
     like_count = serializers.IntegerField(read_only=True, default=0)
     is_liked = serializers.BooleanField(read_only=True, default=False)
-    instructor_name = serializers.CharField(source="instructor.user.user_name", read_only=True)
+    instructor_name = serializers.SerializerMethodField()
     instructor = LectureInstructorSerializer(read_only=True)
     subjects = serializers.SlugRelatedField(many=True, read_only=True, slug_field="number")
     thumbnail = AbsoluteImageField(read_only=True)
@@ -60,6 +75,11 @@ class LectureListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lecture
         exclude = ["video", "sample_preview", "sample_preview_duration"]
+
+    def get_instructor_name(self, obj):
+        if obj.instructor.is_official_creator:
+            return "클래씨 공식 계정"
+        return obj.instructor.user.user_name
 
 
 class LectureStreamSerializer(serializers.ModelSerializer):
