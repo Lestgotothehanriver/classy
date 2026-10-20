@@ -2,6 +2,7 @@
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 
 class SupportTicket(models.Model):
@@ -193,7 +194,6 @@ class SupportConversationMessage(models.Model):
         blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         ordering = ["created_at", "pk"]
         constraints = [

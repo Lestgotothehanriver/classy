@@ -11,7 +11,12 @@ from rest_framework.authtoken.models import Token
 from .models import SupportConversation, SupportConversationMessage
 from .realtime import consume_admin_realtime_ticket
 from .serializers import SupportConversationMessageSerializer
-from .services import add_conversation_message, publish_support_conversation_message
+from .services import (
+    add_conversation_message,
+    add_support_member_presence,
+    publish_support_conversation_message,
+    remove_support_member_presence,
+)
 
 
 class SupportConversationConsumer(AsyncWebsocketConsumer):
@@ -29,9 +34,14 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
             return
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        self._tracks_member_presence = not self.user.is_superuser
+        if self._tracks_member_presence:
+            await self._add_member_presence()
 
     async def disconnect(self, _code):
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if getattr(self, "_tracks_member_presence", False):
+            await self._remove_member_presence()
 
     async def receive(self, text_data=None, bytes_data=None):
         """텍스트 전송과 읽음 처리만 허용한다. 버튼 메시지는 관리자 REST API만 사용한다."""
@@ -50,10 +60,21 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
             return
         if data.get("type") != "message":
             return
+        client_message_id = str(data.get("client_message_id", "")).strip()
         message = await self._save_text_message(data.get("text", ""))
         if message is None:
             await self.send(json.dumps({"event": "error", "message": "메시지 내용을 입력해주세요."}))
             return
+        await self.send(
+            json.dumps(
+                {
+                    "event": "message_ack",
+                    "client_message_id": client_message_id,
+                    "message": message,
+                },
+                default=str,
+            )
+        )
 
     def _token_key(self):
         query = parse_qs(self.scope["query_string"].decode())
@@ -93,6 +114,22 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
             pk=self.conversation_id,
             member=self.user,
         ).exists()
+
+    @database_sync_to_async
+    def _add_member_presence(self):
+        add_support_member_presence(
+            self.conversation_id,
+            self.user.pk,
+            self.channel_name,
+        )
+
+    @database_sync_to_async
+    def _remove_member_presence(self):
+        remove_support_member_presence(
+            self.conversation_id,
+            self.user.pk,
+            self.channel_name,
+        )
 
     @database_sync_to_async
     def _mark_member_read(self):

@@ -95,7 +95,7 @@ def push_to_users(user_ids: Iterable[int], title: str, body: str, username: str,
 
     for user in users:
         try:
-            send_push_to_user(user, title, body, payload_data)
+            send_push_to_user(user, title, body, payload_data, chat_only=True)
         except Exception as e:
             logger.error(f"Failed to send chat push to user {user.id}: {e}")
 

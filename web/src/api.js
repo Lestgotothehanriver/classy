@@ -60,6 +60,55 @@ export function subscribeWebSocket(path, onMessage) {
     socket?.close();
   };
 }
+
+export function sendSupportMessageViaWebSocket(path, text) {
+  return new Promise((resolve, reject) => {
+    const clientMessageId = crypto.randomUUID();
+    let sent = false;
+    let settled = false;
+    let socket;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      socket?.close();
+      reject(Object.assign(error, { sent }));
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      socket?.close();
+      resolve();
+    };
+    try {
+      socket = new WebSocket(websocketPath(path));
+      const timeout = window.setTimeout(() => fail(new Error("채팅 연결 시간이 초과되었습니다.")), 10000);
+      socket.onopen = () => {
+        try {
+          socket.send(JSON.stringify({ type: "message", text, client_message_id: clientMessageId }));
+          sent = true;
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error("메시지를 전송하지 못했습니다."));
+        }
+      };
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.event === "message_ack" && payload.client_message_id === clientMessageId) {
+            window.clearTimeout(timeout);
+            succeed();
+          }
+        } catch (_) {}
+      };
+      socket.onerror = () => fail(new Error("채팅 연결에 실패했습니다."));
+      socket.onclose = () => {
+        window.clearTimeout(timeout);
+        if (!settled) fail(new Error("채팅 연결이 종료되었습니다."));
+      };
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error("채팅 연결에 실패했습니다."));
+    }
+  });
+}
 export function errorText(data) {
   if (typeof data === "string") return data;
   if (!data) return "요청을 처리하지 못했습니다.";

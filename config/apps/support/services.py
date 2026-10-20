@@ -1,6 +1,7 @@
 """티켓 관계 검증·상태 전이·감사 이력을 한곳에서 처리합니다."""
 
 from django.db import transaction
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -33,6 +34,45 @@ REFUND_STATUS_LABELS = {
 
 KAKAO_CUSTOMER_CENTER_URL = "https://pf.kakao.com/_YxhWxlX"
 KAKAO_CUSTOMER_CENTER_LABEL = "고객센터 바로가기"
+
+# 회원이 실제 고객지원 대화 화면을 열고 있는지를 사용자 단위로 보관한다.
+# 일반 채팅 Presence와 마찬가지로 한 기기라도 열려 있으면 해당 회원의 모든
+# 기기에 채팅 FCM을 보내지 않는다.
+SUPPORT_PRESENCE_KEY = "support:conversation:{conversation_id}:member_online"
+
+
+def support_member_is_online(conversation_id: int, user_id: int) -> bool:
+    """Return whether [user_id] currently has the support room open."""
+    presence = cache.get(SUPPORT_PRESENCE_KEY.format(conversation_id=conversation_id)) or {}
+    return bool(presence.get(str(user_id)))
+
+
+def add_support_member_presence(
+    conversation_id: int, user_id: int, channel_name: str
+) -> None:
+    """Record one [channel_name] viewing the member support room."""
+    key = SUPPORT_PRESENCE_KEY.format(conversation_id=conversation_id)
+    presence = cache.get(key) or {}
+    user_channels = set(presence.get(str(user_id), []))
+    user_channels.add(channel_name)
+    presence[str(user_id)] = list(user_channels)
+    cache.set(key, presence, timeout=60 * 60 * 24)
+
+
+def remove_support_member_presence(
+    conversation_id: int, user_id: int, channel_name: str
+) -> None:
+    """Remove one disconnected [channel_name] from member room Presence."""
+    key = SUPPORT_PRESENCE_KEY.format(conversation_id=conversation_id)
+    presence = cache.get(key) or {}
+    user_key = str(user_id)
+    user_channels = set(presence.get(user_key, []))
+    user_channels.discard(channel_name)
+    if user_channels:
+        presence[user_key] = list(user_channels)
+    else:
+        presence.pop(user_key, None)
+    cache.set(key, presence, timeout=60 * 60 * 24)
 
 STUDENT_WELCOME_MESSAGE = """클래씨에 가입하신 것을 환영해요!🎉
 
@@ -491,6 +531,8 @@ def publish_support_conversation_message(
 
     if conversation.is_muted:
         return
+    if support_member_is_online(conversation.pk, member.pk):
+        return
     tokens = list(member.device_tokens.all())
     if tokens and not any(
         token.is_active and getattr(token, "is_chat_active", True)
@@ -514,4 +556,5 @@ def publish_support_conversation_message(
             "target_role": conversation.role,
             "unread_count": str(unread_count),
         },
+        chat_only=True,
     )

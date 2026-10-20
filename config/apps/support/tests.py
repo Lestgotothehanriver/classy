@@ -22,8 +22,10 @@ from .services import (
     STUDENT_PAYBACK_MESSAGE,
     STUDENT_WELCOME_MESSAGE,
     add_conversation_message,
+    add_support_member_presence,
     ensure_support_conversation_with_onboarding,
     publish_support_conversation_message,
+    remove_support_member_presence,
 )
 
 
@@ -347,3 +349,31 @@ class SupportConversationOnboardingTests(APITestCase):
             self.official_user.user_name,
         )
         self.assertFalse(Notification.objects.filter(user=member).exists())
+
+    def test_open_support_room_skips_push_until_member_disconnects(self):
+        """방을 연 회원은 WebSocket만 받고 FCM은 받지 않는다."""
+        member = User.objects.create_user(
+            username="support-online-member",
+            user_name="온라인 회원",
+            password="pass1234",
+        )
+        Student.objects.create(user=member)
+        conversation = SupportConversation.objects.create(
+            member=member,
+            role=SupportConversation.Role.STUDENT,
+        )
+        message = add_conversation_message(
+            conversation,
+            sender=self.official_user,
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+            content="실시간 확인",
+        )
+        add_support_member_presence(conversation.pk, member.pk, "test-channel")
+        with patch("config.apps.notification.fcm.send_push_to_user") as send_push:
+            publish_support_conversation_message(conversation, message)
+        send_push.assert_not_called()
+
+        remove_support_member_presence(conversation.pk, member.pk, "test-channel")
+        with patch("config.apps.notification.fcm.send_push_to_user") as send_push:
+            publish_support_conversation_message(conversation, message)
+        send_push.assert_called_once()

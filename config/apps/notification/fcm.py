@@ -126,19 +126,20 @@ def _build_fcm_message(token, platform, title, body, str_data):
     )
 
 
-def send_push_to_user(user, title: str, body: str, data: dict = None):
+def send_push_to_user(user, title: str, body: str, data: dict = None, *, chat_only: bool = False):
     """
-    특정 user의 활성화된 모든 DeviceToken에 FCM push 전송.
+    특정 user의 활성화된 DeviceToken에 FCM push 전송.
+
+    [chat_only]가 참이면 채팅 알림을 허용한 단말에만 보낸다.
     firebase-admin 미설치 시 로그만 남기고 graceful 종료.
     """
     from .models import DeviceToken
     logger.info(f"*** [FCM] Request to send push to: {user.email} (Title: {title}) ***")
     
-    token_rows = list(
-        DeviceToken.objects
-        .filter(user=user, is_active=True)
-        .values_list('token', 'platform')
-    )
+    tokens = DeviceToken.objects.filter(user=user, is_active=True)
+    if chat_only:
+        tokens = tokens.filter(is_chat_active=True)
+    token_rows = list(tokens.values_list('token', 'platform'))
     if not token_rows:
         logger.info(f"*** [FCM] No active tokens found for user: {user.email} ***")
         return
