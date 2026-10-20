@@ -206,12 +206,18 @@ class SupportConversationMessageSerializer(serializers.ModelSerializer):
             SupportConversationMessage.ActionType.TUTORING_CHAT: "해당 채팅방으로 이동",
             SupportConversationMessage.ActionType.SUPPORT_TICKET: "내 문의 보기",
             SupportConversationMessage.ActionType.CASH_HISTORY: "구매 내역 보기",
+            SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER: "고객센터 바로가기",
         }
-        return {
+        action = {
             "type": obj.action_type,
             "target_id": obj.action_target_id,
             "label": obj.action_label or default_labels[obj.action_type],
         }
+        if obj.action_type == SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER:
+            from .services import KAKAO_CUSTOMER_CENTER_URL
+
+            action["url"] = KAKAO_CUSTOMER_CENTER_URL
+        return action
 
 
 class SupportConversationSerializer(serializers.ModelSerializer):

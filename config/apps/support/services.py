@@ -31,6 +31,66 @@ REFUND_STATUS_LABELS = {
     "refunded": "환불 완료",
 }
 
+KAKAO_CUSTOMER_CENTER_URL = "https://pf.kakao.com/_YxhWxlX"
+KAKAO_CUSTOMER_CENTER_LABEL = "고객센터 바로가기"
+
+STUDENT_WELCOME_MESSAGE = """클래씨에 가입하신 것을 환영해요!🎉
+
+클래씨에서는 필요한 강의만 골라 시청하고, 마음에 드는 선생님을 찾아 과외를 시작할 수 있어요.
+
+[클래씨 이용 방법]
+
+① 필요한 강의 찾아보기
+
+원하는 과목, 원하는 부분의 강의만 찾아서 학습할 수 있어요.
+
+② 나에게 맞는 선생님 찾기
+
+선생님이 필요한가요? 과외 메뉴에서 나에게 딱 맞는 선생님을 직접 찾아보거나, 과외 요청서를 등록해 다양한 선생님들의 제안을 받아보세요.
+
+③ 선생님과 대화하기
+
+강의에 댓글을 남기거나, 과외 제안서를 보내면 선생님과 대화를 할 수 있어요. 궁금한 내용, 혹은 원하는 내용이 있다면 선생님과 상담을 진행해보세요.
+
+필요한 강의, 원하는 과외. 모두 클래씨에서 만나보세요!
+
+서비스 이용중 궁금한 점이나 불편한 점이 있다면 언제든 아래 카카오톡 고객센터로 문의해주세요."""
+
+STUDENT_PAYBACK_MESSAGE = """[과외비 페이백 혜택]
+
+원하는 선생님과 과외가 성사되셨나요?
+
+선생님과의 채팅창 상단의 [성사 등록하고 페이백 받기] 버튼을 눌러주세요. 선생님과 회원님이 모두 성사 등록을 하시면 첫 달 과외비의 0.5%를 페이백 혜택으로 지급받으실 수 있어요!"""
+
+INSTRUCTOR_WELCOME_MESSAGE = """클래씨의 선생님이 되신 것을 환영해요! 🎉
+
+안녕하세요! 선생님의 새로운 시작을 함께할 교육 플랫폼 클래씨에요.
+
+클래씨에서는 직접 과외 학생을 찾거나, 강의를 등록하고 판매하여 수익을 얻을 수 있어요.
+
+[클래씨 이용 방법]
+
+① 선생님 프로필 작성하기
+
+담당 과목과 수업 방식, 자신만의 강점을 자세히 소개해 보세요. 구체적인 프로필은 학생과 학부모님에게 신뢰감을 줄 수 있어요.
+
+② 강의 등록하고 판매하기
+
+선생님의 수업을 강의로 등록해보세요. 과외를 시작하기 전 학생들이 선생님의 실제 수업 스타일을 미리 경험할 수 있고, 강의 판매 수익도 얻을 수 있어요. 또한 경력이 많지 않더라도 강의를 통해 자신만의 수업 역량을 보여줄 수 있어요! 유료로 업로드한 강의가 판매되었다면, [강의 관리 및 정산] 메뉴에서 수익 정산을 신청할 수 있어요. 
+
+③ 과외 학생 찾기
+
+학생들이 등록한 과외 요청서를 확인하고, 조건에 맞는 학생에게 과외 제안서를 보내보세요. 선생님의 프로필이나 강의를 보고 학생이 직접 과외를 요청할 수도 있어요.
+
+④ 성사 등록 하기
+
+과외가 성사되었다면 채팅창 상단의 [성사 등록] 버튼을 눌러 성사 등록을 완료하고 이용요금을 지불해 주세요.
+납부해주신 이용요금이 선생님의 클래씨 랭킹에 반영되고, 클래씨 랭킹이 높을수록 선생님의 과외 제안서가 상단에 노출돼요.
+
+선생님의 수업이 더 많은 학생에게 닿을 수 있도록, 클래씨가 함께할게요!
+
+서비스 이용중 궁금한 점이나 불편한 점이 있다면 언제든 아래 카카오톡 고객센터로 문의해주세요."""
+
 
 def status_label(status: str) -> str:
     """사용자·운영 화면에 표시할 티켓 상태명을 반환합니다."""
@@ -245,6 +305,61 @@ def ensure_support_conversation(*, user, role: str) -> SupportConversation:
     return conversation
 
 
+@transaction.atomic
+def ensure_support_conversation_with_onboarding(*, user, role: str) -> SupportConversation:
+    """역할별 고객지원방과 가입 안내 메시지를 정확히 한 번 보장합니다."""
+    conversation = ensure_support_conversation(user=user, role=role)
+    from config.apps.accounts.models import Instructor
+
+    official = (
+        Instructor.objects.select_related("user")
+        .filter(is_official_creator=True)
+        .first()
+    )
+    sender = official.user if official is not None else None
+    templates = (
+        (
+            SupportConversationMessage.OnboardingTemplateKey.STUDENT_WELCOME,
+            STUDENT_WELCOME_MESSAGE,
+            SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER,
+            KAKAO_CUSTOMER_CENTER_LABEL,
+        ),
+        (
+            SupportConversationMessage.OnboardingTemplateKey.STUDENT_PAYBACK,
+            STUDENT_PAYBACK_MESSAGE,
+            SupportConversationMessage.ActionType.NONE,
+            "",
+        ),
+    ) if role == SupportConversation.Role.STUDENT else (
+        (
+            SupportConversationMessage.OnboardingTemplateKey.INSTRUCTOR_WELCOME,
+            INSTRUCTOR_WELCOME_MESSAGE,
+            SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER,
+            KAKAO_CUSTOMER_CENTER_LABEL,
+        ),
+    )
+
+    for template_key, content, action_type, action_label in templates:
+        message, created = SupportConversationMessage.objects.get_or_create(
+            conversation=conversation,
+            onboarding_template_key=template_key,
+            defaults={
+                "sender": sender,
+                "sender_kind": SupportConversationMessage.SenderKind.OPERATOR,
+                "content": content,
+                "action_type": action_type,
+                "action_label": action_label,
+            },
+        )
+        if created:
+            SupportConversation.objects.filter(pk=conversation.pk).update(
+                last_operator_message_at=message.created_at,
+                updated_at=message.created_at,
+            )
+    conversation.refresh_from_db()
+    return conversation
+
+
 def validate_conversation_action(*, conversation, action_type: str, action_target_id: int | None) -> None:
     """운영자 버튼이 수신 회원의 실제 소유 화면만 열도록 검증합니다."""
     if action_type == SupportConversationMessage.ActionType.NONE:
@@ -254,6 +369,10 @@ def validate_conversation_action(*, conversation, action_type: str, action_targe
     if action_type == SupportConversationMessage.ActionType.CASH_HISTORY:
         if conversation.role != SupportConversation.Role.STUDENT or action_target_id is not None:
             raise ValidationError("구매 내역은 학생 고객지원방에서만 열 수 있습니다.")
+        return
+    if action_type == SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER:
+        if action_target_id is not None:
+            raise ValidationError("카카오 고객센터 버튼에는 대상 ID를 지정할 수 없습니다.")
         return
     if action_target_id is None:
         raise ValidationError("버튼 대상 ID가 필요합니다.")
@@ -317,3 +436,82 @@ def add_conversation_message(
     )
     conversation.refresh_from_db()
     return message
+
+
+def publish_support_conversation_message(
+    conversation: SupportConversation,
+    message: SupportConversationMessage,
+) -> None:
+    """고객지원 메시지의 실시간·채팅 푸시 후처리를 단일 경로로 수행합니다."""
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    from .views import broadcast_conversation_event
+
+    broadcast_conversation_event(conversation, "message", message=message)
+    if message.sender_kind != SupportConversationMessage.SenderKind.OPERATOR:
+        return
+
+    member = conversation.member
+    unread_count = int(
+        conversation.last_member_read_at is None
+        or message.created_at > conversation.last_member_read_at
+    )
+    from config.apps.accounts.models import Instructor
+
+    official = (
+        Instructor.objects.select_related("user")
+        .filter(is_official_creator=True)
+        .first()
+    )
+    sender_name = (
+        getattr(official.user, "user_name", "")
+        if official is not None
+        else ""
+    ) or "클래씨 공식 계정"
+    sender_id = str(official.user_id) if official is not None else "official"
+    room_id = f"support:{conversation.pk}"
+    payload = {
+        "type": "chat.summary",
+        "room_id": room_id,
+        "msg_id": str(message.pk),
+        "text": message.content,
+        "created_at": message.created_at.isoformat(),
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "target_role": conversation.role,
+        "unread_count": unread_count,
+    }
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        async_to_sync(channel_layer.group_send)(
+            f"notification_user_{member.pk}",
+            payload,
+        )
+
+    if conversation.is_muted:
+        return
+    tokens = list(member.device_tokens.all())
+    if tokens and not any(
+        token.is_active and getattr(token, "is_chat_active", True)
+        for token in tokens
+    ):
+        return
+
+    from config.apps.notification.fcm import send_push_to_user
+
+    send_push_to_user(
+        member,
+        title=sender_name,
+        body=message.content[:100] or "새 고객지원 답변이 도착했어요.",
+        data={
+            "type": "message",
+            "room_id": room_id,
+            "msg_id": str(message.pk),
+            "sender_id": sender_id,
+            "sender_name": sender_name,
+            "created_at": message.created_at.isoformat(),
+            "target_role": conversation.role,
+            "unread_count": str(unread_count),
+        },
+    )

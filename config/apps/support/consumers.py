@@ -11,7 +11,7 @@ from rest_framework.authtoken.models import Token
 from .models import SupportConversation, SupportConversationMessage
 from .realtime import consume_admin_realtime_ticket
 from .serializers import SupportConversationMessageSerializer
-from .services import add_conversation_message
+from .services import add_conversation_message, publish_support_conversation_message
 
 
 class SupportConversationConsumer(AsyncWebsocketConsumer):
@@ -54,20 +54,6 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
         if message is None:
             await self.send(json.dumps({"event": "error", "message": "메시지 내용을 입력해주세요."}))
             return
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                "type": "support.event",
-                "payload": {"event": "message", "conversation_id": str(self.conversation_id), "message": message},
-            },
-        )
-        await self.channel_layer.group_send(
-            "support_admin_inbox",
-            {
-                "type": "support.event",
-                "payload": {"event": "message", "conversation_id": str(self.conversation_id), "message": message},
-            },
-        )
 
     def _token_key(self):
         query = parse_qs(self.scope["query_string"].decode())
@@ -135,6 +121,7 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
                 sender_kind=sender_kind,
                 content=content,
             )
+            publish_support_conversation_message(conversation, message)
         except Exception:
             return None
         return SupportConversationMessageSerializer(message).data

@@ -156,6 +156,14 @@ class SupportConversationMessage(models.Model):
         TUTORING_CHAT = "TUTORING_CHAT", "과외 채팅방"
         SUPPORT_TICKET = "SUPPORT_TICKET", "문의 티켓"
         CASH_HISTORY = "CASH_HISTORY", "구매 내역"
+        KAKAO_CUSTOMER_CENTER = "KAKAO_CUSTOMER_CENTER", "카카오 고객센터"
+
+    class OnboardingTemplateKey(models.TextChoices):
+        """회원가입 안내 메시지의 멱등 키입니다."""
+
+        STUDENT_WELCOME = "student_welcome", "학생 가입 안내"
+        STUDENT_PAYBACK = "student_payback", "학생 페이백 안내"
+        INSTRUCTOR_WELCOME = "instructor_welcome", "선생님 가입 안내"
 
     conversation = models.ForeignKey(
         SupportConversation,
@@ -178,7 +186,20 @@ class SupportConversationMessage(models.Model):
     )
     action_target_id = models.PositiveBigIntegerField(null=True, blank=True)
     action_label = models.CharField(max_length=80, blank=True)
+    onboarding_template_key = models.CharField(
+        max_length=50,
+        choices=OnboardingTemplateKey.choices,
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation", "onboarding_template_key"],
+                condition=Q(onboarding_template_key__isnull=False),
+                name="support_conversation_onboarding_template_unique",
+            ),
+        ]

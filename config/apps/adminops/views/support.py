@@ -15,10 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.apps.adminops.models import AdminActionLog
-from config.apps.notification.helpers import (
-    notify_support_conversation_update,
-    notify_support_ticket_update,
-)
+from config.apps.notification.helpers import notify_support_ticket_update
 from config.apps.support.models import (
     SupportAttachment,
     SupportConversation,
@@ -34,6 +31,7 @@ from config.apps.support.services import (
     add_conversation_message,
     add_event,
     display_name,
+    publish_support_conversation_message,
     transition,
 )
 from config.apps.support.views import broadcast_conversation_event
@@ -379,13 +377,7 @@ class AdminSupportConversationReplyView(APIView):
             metadata={"message_id": message.pk, "action_type": message.action_type},
             request_id=_request_id(request),
         )
-        broadcast_conversation_event(conversation, "message", message=message)
-        notify_support_conversation_update(
-            conversation.member,
-            role=conversation.role,
-            conversation_id=conversation.pk,
-            body=message.content,
-        )
+        publish_support_conversation_message(conversation, message)
         return Response(
             AdminSupportConversationSerializer(
                 _conversation_queryset().get(pk=conversation.pk),

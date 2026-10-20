@@ -24,7 +24,14 @@ from .serializers import (
     SupportTicketCreateSerializer,
     SupportTicketSerializer,
 )
-from .services import USER_EVENT_TYPES, add_conversation_message, add_user_message, mark_ticket_read, ticket_context
+from .services import (
+    USER_EVENT_TYPES,
+    add_conversation_message,
+    add_user_message,
+    mark_ticket_read,
+    publish_support_conversation_message,
+    ticket_context,
+)
 
 
 def _ticket_queryset():
@@ -113,7 +120,7 @@ class ConversationMessageView(APIView):
             sender_kind=SupportConversationMessage.SenderKind.MEMBER,
             content=serializer.validated_data["content"],
         )
-        broadcast_conversation_event(conversation, "message", message=message)
+        publish_support_conversation_message(conversation, message)
         return Response(
             SupportConversationSerializer(
                 conversation,

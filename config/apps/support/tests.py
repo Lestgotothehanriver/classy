@@ -1,15 +1,30 @@
 """1:1 문의 티켓 공개 API의 핵심 권한·표시 상태 테스트입니다."""
 
 from datetime import date
+from unittest.mock import patch
 
 from rest_framework.test import APITestCase
 
 from config.apps.accounts.models import Instructor, Student, Subject, User
+from config.apps.accounts.serializers import (
+    InstructorSignupSerializer,
+    StudentSignupSerializer,
+)
 from config.apps.cash.models import PurchaseHistory
 from config.apps.chat_app.models import ChatRoom
+from config.apps.notification.models import Notification
 from config.apps.tutoring.models import PaybackPayout, TutoringPost, TutoringRegistration
 
-from .models import SupportConversation, SupportMessage, SupportTicket
+from .models import SupportConversation, SupportConversationMessage, SupportMessage, SupportTicket
+from .services import (
+    INSTRUCTOR_WELCOME_MESSAGE,
+    KAKAO_CUSTOMER_CENTER_URL,
+    STUDENT_PAYBACK_MESSAGE,
+    STUDENT_WELCOME_MESSAGE,
+    add_conversation_message,
+    ensure_support_conversation_with_onboarding,
+    publish_support_conversation_message,
+)
 
 
 class SupportTicketApiTests(APITestCase):
@@ -216,3 +231,119 @@ class SupportConversationOfficialProfileApiTests(APITestCase):
             self.assertEqual(data["official_instructor_id"], self.official.pk)
             self.assertTrue(data["profile_image"].endswith(self.official_user.profile_image.url))
             self.assertTrue(data["profile_image"].startswith("http://testserver/"))
+
+
+class SupportConversationOnboardingTests(APITestCase):
+    """가입 역할별 공식 고객지원방과 매크로 메시지를 검증합니다."""
+
+    def setUp(self):
+        """공개 발신자로 쓰일 단일 공식 계정을 준비합니다."""
+        self.official_user = User.objects.create_user(
+            username="official-onboarding",
+            user_name="클래씨 안내",
+            password="pass1234",
+        )
+        Instructor.objects.create(
+            user=self.official_user,
+            university="클래씨대학교",
+            is_official_creator=True,
+        )
+
+    def test_student_signup_creates_two_distinct_onboarding_messages_once(self):
+        """학생 가입은 안내와 페이백 메시지를 각각 한 번만 저장합니다."""
+        serializer = StudentSignupSerializer(
+            data={
+                "email": "student-onboarding@example.com",
+                "password": "pass12345",
+                "user_name": "가입학생",
+            },
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        user = serializer.save()
+
+        conversation = SupportConversation.objects.get(
+            member=user,
+            role=SupportConversation.Role.STUDENT,
+        )
+        messages = list(conversation.messages.order_by("pk"))
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(
+            [message.onboarding_template_key for message in messages],
+            ["student_welcome", "student_payback"],
+        )
+        self.assertEqual(messages[0].content, STUDENT_WELCOME_MESSAGE)
+        self.assertEqual(messages[1].content, STUDENT_PAYBACK_MESSAGE)
+        self.assertEqual(messages[0].sender, self.official_user)
+        self.assertEqual(
+            messages[0].action_type,
+            SupportConversationMessage.ActionType.KAKAO_CUSTOMER_CENTER,
+        )
+
+        ensure_support_conversation_with_onboarding(user=user, role="student")
+        self.assertEqual(conversation.messages.count(), 2)
+
+        self.client.force_authenticate(user)
+        response = self.client.get(f"/support/conversations/{conversation.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["messages"][0]["action"]["url"], KAKAO_CUSTOMER_CENTER_URL)
+        self.assertEqual(response.data["messages"][0]["action"]["label"], "고객센터 바로가기")
+
+    def test_instructor_signup_creates_one_onboarding_message_once(self):
+        """선생님 가입은 선생님 전용 안내를 한 번만 저장합니다."""
+        serializer = InstructorSignupSerializer(
+            data={
+                "email": "instructor-onboarding@example.com",
+                "password": "pass12345",
+                "user_name": "가입선생님",
+                "university": "테스트대학교",
+            },
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        user = serializer.save()
+
+        conversation = SupportConversation.objects.get(
+            member=user,
+            role=SupportConversation.Role.INSTRUCTOR,
+        )
+        messages = list(conversation.messages.order_by("pk"))
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].onboarding_template_key, "instructor_welcome")
+        self.assertEqual(messages[0].content, INSTRUCTOR_WELCOME_MESSAGE)
+        self.assertEqual(messages[0].sender, self.official_user)
+
+        ensure_support_conversation_with_onboarding(user=user, role="instructor")
+        self.assertEqual(conversation.messages.count(), 1)
+
+    def test_operator_message_uses_chat_push_without_notification_record(self):
+        """운영자 답변은 알림함을 만들지 않고 고객지원 채팅 이벤트로만 발행합니다."""
+        member = User.objects.create_user(
+            username="support-push-member",
+            user_name="회원",
+            password="pass1234",
+        )
+        Student.objects.create(user=member)
+        conversation = SupportConversation.objects.create(
+            member=member,
+            role=SupportConversation.Role.STUDENT,
+        )
+        message = add_conversation_message(
+            conversation,
+            sender=self.official_user,
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+            content="확인했습니다.",
+        )
+
+        with patch("config.apps.notification.fcm.send_push_to_user") as send_push:
+            publish_support_conversation_message(conversation, message)
+
+        send_push.assert_called_once()
+        self.assertEqual(send_push.call_args.kwargs["data"]["type"], "message")
+        self.assertEqual(
+            send_push.call_args.kwargs["data"]["room_id"],
+            f"support:{conversation.pk}",
+        )
+        self.assertEqual(
+            send_push.call_args.kwargs["data"]["sender_name"],
+            self.official_user.user_name,
+        )
+        self.assertFalse(Notification.objects.filter(user=member).exists())

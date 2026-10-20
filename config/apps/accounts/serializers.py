@@ -108,8 +108,8 @@ class StudentSignupSerializer(serializers.Serializer):
         user.save(update_fields=["phone", "region", "birth_date"])
 
         student_profile = Student.objects.create(user=user)
-        from config.apps.support.services import ensure_support_conversation
-        ensure_support_conversation(user=user, role="student")
+        from config.apps.support.services import ensure_support_conversation_with_onboarding
+        ensure_support_conversation_with_onboarding(user=user, role="student")
 
         # 학생 과목 저장 (M2M)
         if studentsubject_ids:
@@ -247,8 +247,8 @@ class InstructorSignupSerializer(serializers.Serializer):
             instruction=validated_data.get("instruction", ""),
             student_number=validated_data.get("student_number", ""),
         )
-        from config.apps.support.services import ensure_support_conversation
-        ensure_support_conversation(user=user, role="instructor")
+        from config.apps.support.services import ensure_support_conversation_with_onboarding
+        ensure_support_conversation_with_onboarding(user=user, role="instructor")
         from config.apps.promotions.services import assign_signup_promotion
 
         assign_signup_promotion(instructor_profile)
