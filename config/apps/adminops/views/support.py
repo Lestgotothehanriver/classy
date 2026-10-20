@@ -301,6 +301,41 @@ class AdminSupportConversationDetailView(RetrieveAPIView):
         return context
 
 
+class AdminSupportConversationReadView(APIView):
+    """관리자가 실제로 열람한 고객지원 대화를 읽음으로 기록합니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        """[pk] 대화의 회원 메시지를 현재 시각까지 읽음으로 확정합니다."""
+        conversation = get_object_or_404(
+            SupportConversation.objects.select_for_update(),
+            pk=pk,
+        )
+        conversation.last_operator_read_at = timezone.now()
+        conversation.save(update_fields=["last_operator_read_at", "updated_at"])
+        AdminActionLog.record(
+            admin=request.user,
+            action="support_conversation.read",
+            target_type="SupportConversation",
+            target_id=conversation.pk,
+            metadata={},
+            request_id=_request_id(request),
+        )
+        broadcast_conversation_event(
+            conversation,
+            "operator_read",
+            last_operator_read_at=conversation.last_operator_read_at,
+        )
+        return Response(
+            {
+                "id": conversation.pk,
+                "last_operator_read_at": conversation.last_operator_read_at,
+            }
+        )
+
+
 class AdminSupportConversationReplyView(APIView):
     """공식 계정 이름으로 텍스트 또는 검증된 버튼형 메시지를 전송합니다."""
 

@@ -1,7 +1,7 @@
 from datetime import timedelta
 
+from django.db import IntegrityError
 from django.test import TestCase
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 from config.apps.accounts.models import User, Student, Instructor, InstructorLike
@@ -11,7 +11,10 @@ from config.apps.tutoring.models import (
     TutoringPost,
     TutoringPostLike,
 )
-from config.apps.tutoring.serializers import TutoringPostWriteSerializer
+from config.apps.tutoring.serializers import (
+    InstructorListSerializer,
+    TutoringPostWriteSerializer,
+)
 from config.apps.pending.models import PendingInstructor
 from config.apps.promotions.models import InstructorPromotionBenefit, PromotionCampaign
 
@@ -48,6 +51,59 @@ class LikeSortingTestBase(TestCase):
         from rest_framework.authtoken.models import Token
         token, _ = Token.objects.get_or_create(user=self.student_user1)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+
+class OfficialCreatorPublicProfileSerializerTests(TestCase):
+    """공식 계정의 공개 이름·이미지와 비공개 과외 정보를 분리해 검증한다."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="official-creator",
+            user_name="클래씨 콘텐츠팀",
+            password="pass1234",
+        )
+        self.user.profile_image = "profile_images/official-profile.png"
+        self.user.save(update_fields=["profile_image"])
+        self.instructor = Instructor.objects.create(
+            user=self.user,
+            university="비공개 대학교",
+            department="비공개 학과",
+            student_number="20260001",
+            instruction="비공개 소개",
+            is_tutoring=True,
+            is_official_creator=True,
+        )
+
+    def test_official_creator_keeps_django_managed_name_and_profile_image(self):
+        """공식 계정도 사용자 공개 이름과 이미지를 반환한다."""
+        data = InstructorListSerializer(self.instructor).data
+
+        self.assertEqual(data["user_name"], self.user.user_name)
+        self.assertTrue(data["profile_image"].endswith(self.user.profile_image.url))
+
+    def test_official_creator_still_hides_tutoring_private_fields(self):
+        """공식 계정의 과외 개인정보와 통계는 계속 비공개로 유지한다."""
+        data = InstructorListSerializer(self.instructor).data
+
+        self.assertEqual(data["university"], "")
+        self.assertEqual(data["department"], "")
+        self.assertEqual(data["instruction"], "")
+        self.assertEqual(data["student_number"], "")
+        self.assertFalse(data["is_tutoring"])
+
+    def test_only_one_official_creator_is_allowed(self):
+        """기존의 단일 공식 계정 DB 제약은 유지한다."""
+        another_user = User.objects.create_user(
+            username="another-official-creator",
+            user_name="다른 공식 계정",
+            password="pass1234",
+        )
+
+        with self.assertRaises(IntegrityError):
+            Instructor.objects.create(
+                user=another_user,
+                is_official_creator=True,
+            )
 
 
 class LocalRecommendationPaginationTest(TestCase):

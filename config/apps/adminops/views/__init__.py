@@ -42,6 +42,7 @@ from .report import (
 from .support import (
     AdminSupportConversationDetailView,
     AdminSupportConversationListView,
+    AdminSupportConversationReadView,
     AdminSupportConversationReplyView,
     AdminSupportTicketApproveNameChangeView,
     AdminSupportTicketAttachmentView,
@@ -102,6 +103,7 @@ __all__ = [
     "AdminSupportTicketAttachmentView",
     "AdminSupportConversationListView",
     "AdminSupportConversationDetailView",
+    "AdminSupportConversationReadView",
     "AdminSupportConversationReplyView",
     "PromotionCampaignListCreateView",
     "PromotionCampaignDetailView",

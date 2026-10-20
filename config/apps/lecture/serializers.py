@@ -36,16 +36,14 @@ class LectureInstructorSerializer(serializers.ModelSerializer):
         ]
 
     def get_user_name(self, obj):
-        """공식 계정 강의에는 운영자 실명 대신 고정 공개명을 노출한다."""
-        if obj.is_official_creator:
-            return "클래씨 공식 계정"
+        """강의 업로더의 공개 계정 이름을 반환한다."""
         return obj.user.user_name
 
     def to_representation(self, instance):
         """강의에서는 공식 계정의 개인 학력·소개 정보를 노출하지 않는다."""
         data = super().to_representation(instance)
         if instance.is_official_creator:
-            for field in ("university", "department", "student_number", "instruction", "profile_image"):
+            for field in ("university", "department", "student_number", "instruction"):
                 data[field] = ""
         return data
 
@@ -77,8 +75,6 @@ class LectureListSerializer(serializers.ModelSerializer):
         exclude = ["video", "sample_preview", "sample_preview_duration"]
 
     def get_instructor_name(self, obj):
-        if obj.instructor.is_official_creator:
-            return "클래씨 공식 계정"
         return obj.instructor.user.user_name
 
 

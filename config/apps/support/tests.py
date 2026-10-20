@@ -9,7 +9,7 @@ from config.apps.cash.models import PurchaseHistory
 from config.apps.chat_app.models import ChatRoom
 from config.apps.tutoring.models import PaybackPayout, TutoringPost, TutoringRegistration
 
-from .models import SupportMessage, SupportTicket
+from .models import SupportConversation, SupportMessage, SupportTicket
 
 
 class SupportTicketApiTests(APITestCase):
@@ -174,3 +174,45 @@ class SupportTicketApiTests(APITestCase):
         self.assertEqual(mine.data["payout"]["status_label"], "지급 완료")
         self.assertEqual(mine.data["payout"]["amount"], 15000)
         self.assertEqual(other.status_code, 404)
+
+
+class SupportConversationOfficialProfileApiTests(APITestCase):
+    """고객지원 대화가 공식 계정의 공개 프로필을 반환하는지 검증한다."""
+
+    def setUp(self):
+        self.member = User.objects.create_user(
+            username="support-member",
+            user_name="고객",
+            password="pass1234",
+        )
+        self.official_user = User.objects.create_user(
+            username="support-official",
+            user_name="클래씨 고객지원",
+            password="pass1234",
+        )
+        self.official_user.profile_image = "profile_images/support-official-profile.png"
+        self.official_user.save(update_fields=["profile_image"])
+        self.official = Instructor.objects.create(
+            user=self.official_user,
+            is_official_creator=True,
+        )
+        self.conversation = SupportConversation.objects.create(
+            member=self.member,
+            role=SupportConversation.Role.STUDENT,
+        )
+        self.client.force_authenticate(self.member)
+
+    def test_list_and_detail_return_official_public_profile(self):
+        """목록과 상세는 공식 계정의 이름·절대 이미지 URL을 같은 값으로 반환한다."""
+        list_response = self.client.get("/support/conversations/?role=student")
+        detail_response = self.client.get(
+            f"/support/conversations/{self.conversation.pk}/"
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(detail_response.status_code, 200)
+        for data in (list_response.data[0], detail_response.data):
+            self.assertEqual(data["title"], self.official_user.user_name)
+            self.assertEqual(data["official_instructor_id"], self.official.pk)
+            self.assertTrue(data["profile_image"].endswith(self.official_user.profile_image.url))
+            self.assertTrue(data["profile_image"].startswith("http://testserver/"))

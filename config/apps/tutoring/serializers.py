@@ -132,9 +132,7 @@ class InstructorListSerializer(SafeModelSerializer):
         return extract_subject_numbers(obj)
 
     def get_user_name(self, obj):
-        """공식 강의 계정은 실제 운영자 이름 대신 공개 계정명을 반환한다."""
-        if obj.is_official_creator:
-            return "클래씨 공식 계정"
+        """공개 프로필에 표시할 계정 이름을 반환한다."""
         return obj.user.user_name
 
     def to_representation(self, instance):
@@ -147,7 +145,6 @@ class InstructorListSerializer(SafeModelSerializer):
             "is_tutoring", "subjects", "average_rate", "review_count",
             "current_rank", "tutoring_count", "average_cost", "sex", "region",
             "birth_date", "verification_status", "is_certified", "is_unverified",
-            "profile_image",
         ):
             data[field] = None if field in {"sex", "region", "birth_date", "average_rate", "current_rank", "average_cost"} else ""
         data["is_tutoring"] = False

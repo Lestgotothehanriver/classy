@@ -40,7 +40,13 @@ def _ticket_queryset():
     )
 
 
-def broadcast_conversation_event(conversation, event: str, *, message=None) -> None:
+def broadcast_conversation_event(
+    conversation,
+    event: str,
+    *,
+    message=None,
+    last_operator_read_at=None,
+) -> None:
     """회원·관리자 웹소켓 구독자에게 고객지원 대화 변경을 알립니다."""
     channel_layer = get_channel_layer()
     if channel_layer is None:
@@ -49,6 +55,8 @@ def broadcast_conversation_event(conversation, event: str, *, message=None) -> N
     if message is not None:
         from .serializers import SupportConversationMessageSerializer
         payload["message"] = SupportConversationMessageSerializer(message).data
+    if last_operator_read_at is not None:
+        payload["last_operator_read_at"] = last_operator_read_at.isoformat()
     async_to_sync(channel_layer.group_send)(f"support_conversation_{conversation.pk}", {"type": "support.event", "payload": payload})
     async_to_sync(channel_layer.group_send)("support_admin_inbox", {"type": "support.event", "payload": payload})
 
@@ -65,7 +73,14 @@ class ConversationListView(APIView):
         conversation = SupportConversation.objects.filter(member=request.user, role=role).first()
         if conversation is None:
             return Response([])
-        return Response([SupportConversationSerializer(conversation).data])
+        return Response(
+            [
+                SupportConversationSerializer(
+                    conversation,
+                    context={"request": request},
+                ).data
+            ]
+        )
 
 
 class ConversationDetailView(APIView):
@@ -75,7 +90,12 @@ class ConversationDetailView(APIView):
 
     def get(self, request, pk):
         conversation = get_object_or_404(SupportConversation, pk=pk, member=request.user)
-        return Response(SupportConversationSerializer(conversation, context={"detail": True}).data)
+        return Response(
+            SupportConversationSerializer(
+                conversation,
+                context={"detail": True, "request": request},
+            ).data
+        )
 
 
 class ConversationMessageView(APIView):
@@ -94,7 +114,13 @@ class ConversationMessageView(APIView):
             content=serializer.validated_data["content"],
         )
         broadcast_conversation_event(conversation, "message", message=message)
-        return Response(SupportConversationSerializer(conversation, context={"detail": True}).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SupportConversationSerializer(
+                conversation,
+                context={"detail": True, "request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ConversationReadView(APIView):

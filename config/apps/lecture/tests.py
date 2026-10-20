@@ -12,11 +12,52 @@ from rest_framework.test import APIClient
 from config.apps.accounts.models import Instructor
 from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
+from config.apps.lecture.serializers import LectureListSerializer
 from config.apps.lecture.utils import extract_video_duration_seconds
 from config.apps.lecture.utils import calculate_sample_preview_duration_seconds
 
 
 User = get_user_model()
+
+
+class OfficialCreatorLectureSerializerTests(TestCase):
+    """공식 계정 강의의 공개 프로필 응답을 검증한다."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="official-lecture-creator",
+            user_name="클래씨 강의",
+        )
+        self.user.profile_image = "profile_images/lecture-official-profile.png"
+        self.user.save(update_fields=["profile_image"])
+        self.instructor = Instructor.objects.create(
+            user=self.user,
+            university="비공개 대학교",
+            department="비공개 학과",
+            student_number="20260002",
+            instruction="비공개 소개",
+            is_official_creator=True,
+        )
+        self.lecture = Lecture.objects.create(
+            instructor=self.instructor,
+            title="공식 강의",
+            price=0,
+        )
+
+    def test_official_lecture_exposes_django_managed_public_profile(self):
+        """강의 응답은 이름·이미지를 보존하고 나머지 개인 정보만 숨긴다."""
+        data = LectureListSerializer(self.lecture).data
+        instructor = data["instructor"]
+
+        self.assertEqual(data["instructor_name"], self.user.user_name)
+        self.assertEqual(instructor["user_name"], self.user.user_name)
+        self.assertTrue(
+            instructor["profile_image"].endswith(self.user.profile_image.url)
+        )
+        self.assertEqual(instructor["university"], "")
+        self.assertEqual(instructor["department"], "")
+        self.assertEqual(instructor["student_number"], "")
+        self.assertEqual(instructor["instruction"], "")
 
 
 class LectureDurationExtractionTests(TestCase):

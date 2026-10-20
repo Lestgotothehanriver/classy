@@ -47,6 +47,7 @@ from .views import (
     AdminSupportTicketAttachmentView,
     AdminSupportConversationDetailView,
     AdminSupportConversationListView,
+    AdminSupportConversationReadView,
     AdminSupportConversationReplyView,
     PromotionBenefitListView,
     PromotionCampaignDetailView,
@@ -71,6 +72,7 @@ urlpatterns = [
     path("inquiries/<int:pk>/attachments/<int:attachment_id>/", AdminSupportTicketAttachmentView.as_view(), name="support-ticket-attachment"),
     path("support-conversations/", AdminSupportConversationListView.as_view(), name="support-conversation-list"),
     path("support-conversations/<int:pk>/", AdminSupportConversationDetailView.as_view(), name="support-conversation-detail"),
+    path("support-conversations/<int:pk>/read/", AdminSupportConversationReadView.as_view(), name="support-conversation-read"),
     path("support-conversations/<int:pk>/reply/", AdminSupportConversationReplyView.as_view(), name="support-conversation-reply"),
     # 운영 대시보드
     path(

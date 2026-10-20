@@ -1,9 +1,11 @@
 """사용자 티켓 API 직렬화기입니다."""
 
 import os
+from functools import cached_property
 
 from rest_framework import serializers
 
+from config.apps.common.utils import get_absolute_media_url
 from .models import (
     SupportAttachment,
     SupportConversation,
@@ -184,10 +186,18 @@ class SupportConversationMessageSerializer(serializers.ModelSerializer):
     """회원 앱에 표시할 고객지원 메시지입니다."""
 
     action = serializers.SerializerMethodField()
+    is_read = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportConversationMessage
-        fields = ["id", "sender_kind", "content", "action", "created_at"]
+        fields = ["id", "sender_kind", "content", "action", "is_read", "created_at"]
+
+    def get_is_read(self, obj):
+        """회원 발신 메시지가 운영자에게 열람됐는지 반환합니다."""
+        if obj.sender_kind != SupportConversationMessage.SenderKind.MEMBER:
+            return True
+        read_at = self.context.get("last_operator_read_at")
+        return bool(read_at is not None and obj.created_at <= read_at)
 
     def get_action(self, obj):
         if obj.action_type == SupportConversationMessage.ActionType.NONE:
@@ -208,6 +218,7 @@ class SupportConversationSerializer(serializers.ModelSerializer):
     """역할별 고객지원방 목록·상세의 공용 표현입니다."""
 
     title = serializers.SerializerMethodField()
+    profile_image = serializers.SerializerMethodField()
     official_instructor_id = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
@@ -219,6 +230,7 @@ class SupportConversationSerializer(serializers.ModelSerializer):
             "id",
             "role",
             "title",
+            "profile_image",
             "official_instructor_id",
             "is_muted",
             "last_message",
@@ -229,18 +241,42 @@ class SupportConversationSerializer(serializers.ModelSerializer):
         ]
 
     def get_title(self, obj):
-        return "클래씨 공식 계정"
+        instructor = self._official_instructor
+        return instructor.user.user_name if instructor else "클래씨 공식 계정"
+
+    def get_profile_image(self, obj):
+        """공식 계정의 공개 프로필 이미지를 절대 URL로 반환한다."""
+        instructor = self._official_instructor
+        if instructor is None:
+            return None
+        return get_absolute_media_url(
+            instructor.user.profile_image,
+            self.context.get("request"),
+        )
 
     def get_official_instructor_id(self, obj):
+        instructor = self._official_instructor
+        return instructor.pk if instructor else None
+
+    @cached_property
+    def _official_instructor(self):
+        """단일 공식 계정과 연결된 강사 프로필을 캐시한다."""
         from config.apps.accounts.models import Instructor
 
-        return Instructor.objects.filter(is_official_creator=True).values_list("pk", flat=True).first()
+        return (
+            Instructor.objects.select_related("user")
+            .filter(is_official_creator=True)
+            .first()
+        )
 
     def get_last_message(self, obj):
         message = obj.messages.last()
         if message is None:
             return None
-        return SupportConversationMessageSerializer(message).data
+        return SupportConversationMessageSerializer(
+            message,
+            context={"last_operator_read_at": obj.last_operator_read_at},
+        ).data
 
     def get_unread_count(self, obj):
         if obj.last_operator_message_at is None:
@@ -250,7 +286,11 @@ class SupportConversationSerializer(serializers.ModelSerializer):
     def get_messages(self, obj):
         if not self.context.get("detail"):
             return []
-        return SupportConversationMessageSerializer(obj.messages.all(), many=True).data
+        return SupportConversationMessageSerializer(
+            obj.messages.all(),
+            many=True,
+            context={"last_operator_read_at": obj.last_operator_read_at},
+        ).data
 
 
 class SupportConversationMessageCreateSerializer(serializers.Serializer):

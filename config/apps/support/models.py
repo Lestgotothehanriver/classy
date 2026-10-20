@@ -132,6 +132,7 @@ class SupportConversation(models.Model):
     last_member_message_at = models.DateTimeField(null=True, blank=True)
     last_operator_message_at = models.DateTimeField(null=True, blank=True)
     last_member_read_at = models.DateTimeField(null=True, blank=True)
+    last_operator_read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
