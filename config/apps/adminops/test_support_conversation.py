@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 
 from config.apps.accounts.models import User
 from config.apps.support.models import SupportConversation, SupportConversationMessage
+from config.apps.support.realtime import consume_admin_realtime_ticket
 
 
 class AdminSupportConversationReadTests(APITestCase):
@@ -84,3 +85,17 @@ class AdminSupportConversationReadTests(APITestCase):
         latest = self.client.get(f"/support/conversations/{self.conversation.pk}/")
         rows = {row["id"]: row for row in latest.data["messages"]}
         self.assertFalse(rows[later_message.pk]["is_read"])
+
+    def test_admin_realtime_ticket_is_single_use_and_never_contains_a_drf_token(self):
+        """BFF가 받는 관리자 WebSocket 티켓은 한 번만 인증에 사용할 수 있다."""
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post("/admin-api/v1/realtime-ticket/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ticket", response.data)
+        self.assertIn("expires_at", response.data)
+        self.assertIn("websocket_base_url", response.data)
+        self.assertNotIn("token", response.data)
+        self.assertEqual(consume_admin_realtime_ticket(response.data["ticket"]), self.admin)
+        self.assertIsNone(consume_admin_realtime_ticket(response.data["ticket"]))

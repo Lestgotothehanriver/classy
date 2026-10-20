@@ -49,6 +49,10 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-=9h1+6wu!^lodk97+vv(s
 DEBUG = True
 
 ALLOWED_HOSTS = []
+WEBSOCKET_PUBLIC_BASE_URL = os.environ.get(
+    "WEBSOCKET_PUBLIC_BASE_URL",
+    "https://api.classystudy.com",
+)
 
 
 # Application definition

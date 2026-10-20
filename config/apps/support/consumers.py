@@ -9,6 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework.authtoken.models import Token
 
 from .models import SupportConversation, SupportConversationMessage
+from .realtime import consume_admin_realtime_ticket
 from .serializers import SupportConversationMessageSerializer
 from .services import add_conversation_message
 
@@ -19,7 +20,7 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
         self.group_name = f"support_conversation_{self.conversation_id}"
-        self.user = await self._user_from_token(self._token_key())
+        self.user = await self._user_from_credentials()
         if getattr(self.user, "is_anonymous", True):
             await self.close()
             return
@@ -77,8 +78,22 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
         parts = headers.get("authorization", "").split()
         return parts[1] if len(parts) == 2 and parts[0].lower() in {"token", "bearer"} else None
 
+    def _ticket(self):
+        query = parse_qs(self.scope["query_string"].decode())
+        return query.get("ticket", [None])[0]
+
+    @database_sync_to_async
+    def _user_from_credentials(self):
+        ticket_user = consume_admin_realtime_ticket(self._ticket())
+        if ticket_user is not None:
+            return ticket_user
+        return self._user_from_token_sync(self._token_key())
+
     @database_sync_to_async
     def _user_from_token(self, token_key):
+        return self._user_from_token_sync(token_key)
+
+    def _user_from_token_sync(self, token_key):
         if not token_key:
             return AnonymousUser()
         try:
@@ -126,4 +141,32 @@ class SupportConversationConsumer(AsyncWebsocketConsumer):
 
     async def support_event(self, event):
         """동기 API와 다른 소켓에서 발생한 이벤트를 현재 구독자에게 전달한다."""
+        await self.send(json.dumps(event["payload"], default=str))
+
+
+class AdminSupportInboxConsumer(AsyncWebsocketConsumer):
+    """슈퍼관리자 고객지원 목록의 실시간 갱신 전용 consumer입니다."""
+
+    group_name = "support_admin_inbox"
+
+    async def connect(self):
+        self.user = await self._user_from_ticket()
+        if self.user is None:
+            await self.close()
+            return
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, _code):
+        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    def _ticket(self):
+        query = parse_qs(self.scope["query_string"].decode())
+        return query.get("ticket", [None])[0]
+
+    @database_sync_to_async
+    def _user_from_ticket(self):
+        return consume_admin_realtime_ticket(self._ticket())
+
+    async def support_event(self, event):
         await self.send(json.dumps(event["payload"], default=str))

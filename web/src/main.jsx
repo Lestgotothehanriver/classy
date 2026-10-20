@@ -33,7 +33,7 @@ import {
   Upload,
   Leaf,
 } from "lucide-react";
-import { api, list } from "./api";
+import { api, list, subscribeWebSocket } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
 import { Services, ReportForm } from "./services";
@@ -1447,11 +1447,21 @@ function Chat({ initialRoomId }) {
         });
     };
     load();
-    const timer = setInterval(load, 5000);
+    const refresh = (event) => {
+      if (event.event === "chat_summary" || event.event === "chat_read_state") {
+        rooms.reload();
+        if (String(event.room_id) === String(selected)) load();
+        return;
+      }
+      load();
+    };
+    const unsubscribeNotifications = subscribeWebSocket("/ws/notifications/", refresh);
+    const unsubscribeRoom = subscribeWebSocket(`/ws/chat/${selected}/`, refresh);
     return () => {
       alive = false;
       controller.abort();
-      clearInterval(timer);
+      unsubscribeNotifications();
+      unsubscribeRoom();
     };
   }, [selected, user.role]);
   useEffect(() => {

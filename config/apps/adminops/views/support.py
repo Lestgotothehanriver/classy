@@ -28,6 +28,7 @@ from config.apps.support.models import (
     SupportTicket,
 )
 from config.apps.support.serializers import AdminSupportConversationMessageCreateSerializer
+from config.apps.support.realtime import issue_admin_realtime_ticket
 from config.apps.support.services import (
     USER_EVENT_TYPES,
     add_conversation_message,
@@ -285,6 +286,18 @@ class AdminSupportConversationListView(ListAPIView):
             )
         return queryset.order_by("-updated_at", "-pk")
 
+
+class AdminSupportRealtimeTicketView(APIView):
+    """BFF 세션이 보관한 Django 토큰으로만 관리자 WebSocket 티켓을 발급합니다."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request):
+        from django.conf import settings
+
+        payload = issue_admin_realtime_ticket(request.user)
+        payload["websocket_base_url"] = settings.WEBSOCKET_PUBLIC_BASE_URL.rstrip("/")
+        return Response(payload)
 
 class AdminSupportConversationDetailView(RetrieveAPIView):
     """슈퍼관리자의 고객지원 대화 상세 조회입니다."""

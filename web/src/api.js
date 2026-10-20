@@ -10,6 +10,56 @@ export function apiPath(path) {
     throw new Error("잘못된 API 주소입니다.");
   return "/api" + url.pathname + url.search;
 }
+export function websocketPath(path) {
+  const token = sessionStorage.getItem("classy_token");
+  if (!token) throw new Error("인증이 필요합니다.");
+  const url = new URL(path, "wss://api.classystudy.com");
+  if (url.origin !== "wss://api.classystudy.com" || !url.pathname.startsWith("/ws/"))
+    throw new Error("잘못된 WebSocket 주소입니다.");
+  url.searchParams.set("token", token);
+  return url.toString();
+}
+
+export function subscribeWebSocket(path, onMessage) {
+  let socket;
+  let retryTimer;
+  let stopped = false;
+  let retryDelay = 1000;
+
+  const connect = () => {
+    if (stopped || document.hidden) return;
+    try {
+      socket = new WebSocket(websocketPath(path));
+      socket.onopen = () => {
+        retryDelay = 1000;
+      };
+      socket.onmessage = (event) => {
+        try {
+          onMessage(JSON.parse(event.data));
+        } catch (_) {}
+      };
+      socket.onclose = () => {
+        if (stopped || document.hidden) return;
+        retryTimer = window.setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      };
+    } catch (_) {
+      retryTimer = window.setTimeout(connect, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 30000);
+    }
+  };
+  const visibility = () => {
+    if (!document.hidden && socket?.readyState !== WebSocket.OPEN) connect();
+  };
+  document.addEventListener("visibilitychange", visibility);
+  connect();
+  return () => {
+    stopped = true;
+    document.removeEventListener("visibilitychange", visibility);
+    if (retryTimer) window.clearTimeout(retryTimer);
+    socket?.close();
+  };
+}
 export function errorText(data) {
   if (typeof data === "string") return data;
   if (!data) return "요청을 처리하지 못했습니다.";
