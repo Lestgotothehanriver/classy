@@ -350,6 +350,47 @@ class SupportConversationOnboardingTests(APITestCase):
         )
         self.assertFalse(Notification.objects.filter(user=member).exists())
 
+    def test_member_unread_count_matches_each_unread_operator_message(self):
+        """고객지원 목록과 채팅 푸시는 0/1이 아닌 실제 미읽음 수를 사용한다."""
+        member = User.objects.create_user(
+            username="support-unread-member",
+            user_name="회원",
+            password="pass1234",
+        )
+        Student.objects.create(user=member)
+        conversation = SupportConversation.objects.create(
+            member=member,
+            role=SupportConversation.Role.STUDENT,
+        )
+        first = add_conversation_message(
+            conversation,
+            sender=self.official_user,
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+            content="첫 번째 답변",
+        )
+        second = add_conversation_message(
+            conversation,
+            sender=self.official_user,
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+            content="두 번째 답변",
+        )
+
+        self.client.force_authenticate(member)
+        response = self.client.get("/support/conversations/?role=student")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["unread_count"], 2)
+
+        with patch("config.apps.notification.fcm.send_push_to_user") as send_push:
+            publish_support_conversation_message(conversation, second)
+
+        self.assertEqual(send_push.call_args.kwargs["data"]["unread_count"], "2")
+        self.assertEqual(first.sender_kind, SupportConversationMessage.SenderKind.OPERATOR)
+
+        read_response = self.client.post(f"/support/conversations/{conversation.pk}/read/")
+        self.assertEqual(read_response.status_code, 200)
+        refreshed = self.client.get("/support/conversations/?role=student")
+        self.assertEqual(refreshed.json()[0]["unread_count"], 0)
+
     def test_open_support_room_skips_push_until_member_disconnects(self):
         """방을 연 회원은 WebSocket만 받고 FCM은 받지 않는다."""
         member = User.objects.create_user(

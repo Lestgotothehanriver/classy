@@ -1,5 +1,5 @@
-import React, { useContext, useEffect, useState } from "react";
-import { api, downloadProtectedFile, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from "./api";
+import React, { useContext, useState } from "react";
+import { api, downloadProtectedFile, list } from "./api";
 import {
   Ctx,
   Btn,
@@ -532,20 +532,23 @@ function Support() {
   const tickets = useLoad("/support/tickets/");
   const ticketContext = useLoad(tab === "ticket" ? "/support/ticket-context/" : null, [tab]);
   const detail = useLoad(selectedId ? `/support/tickets/${selectedId}/` : null, [selectedId]);
-  const { notify, user } = useContext(Ctx);
+  const { notify, user, openChat } = useContext(Ctx);
   const conversations = useLoad(
-    tab === "official" ? `/support/conversations/?role=${user.role}` : null,
-    [tab, user.role],
+    `/support/conversations/?role=${user.role}`,
+    [user.role],
   );
   if (tab === "mine") return <section className="service-section"><div className="section-title"><h2>내 문의</h2><Btn onClick={() => setTab("hub")}>고객센터</Btn></div><State resource={tickets}>{list(tickets.data).map((ticket) => <button type="button" className="history-row post-management-card" key={ticket.id} onClick={() => setSelectedId(ticket.id)}><b>{ticket.title}</b><p className="muted">{ticket.status_label || SUPPORT_STATUS_LABEL[ticket.status]} · {date(ticket.updated_at)} {ticket.unread_admin_replies ? "· 새 답변" : ""}</p></button>)}{!list(tickets.data).length && <Empty title="등록한 문의가 없습니다" text="필요한 운영 요청은 1:1 문의로 접수할 수 있어요." />}</State>{selectedId && <TicketThread ticket={detail.data} resource={detail} onClose={() => setSelectedId(null)} onUpdated={() => { tickets.reload(); detail.reload(); }} />}</section>;
-  if (tab === "official") return <OfficialSupportConversation resource={conversations} onClose={() => setTab("hub")} />;
   return (
     <>
       <section className="service-section">
         <h2>고객센터</h2>
         <div className="support-actions">
           <a className="btn support-action" href="https://pf.kakao.com/_YxhWxlX" target="_blank" rel="noreferrer">카카오 고객센터 문의</a>
-          <Btn className="support-action" onClick={() => setTab("official")}>공식 계정 채팅</Btn>
+          <Btn className="support-action" onClick={() => {
+            const conversation = list(conversations.data)[0];
+            if (conversation) openChat(`support:${conversation.id}`);
+            else notify("공식 계정 채팅방을 준비 중입니다.");
+          }}>공식 계정 채팅</Btn>
           <Btn className="support-action" onClick={() => setTab("ticket")}>1:1 문의 티켓 접수</Btn>
           <Btn className="support-action" onClick={() => setTab("mine")}>내 문의</Btn>
         </div>
@@ -565,33 +568,6 @@ function Support() {
       {tab === "ticket" && <ActionForm title="1:1 문의 티켓" path="/support/tickets/" submit="문의 접수" multipart transform={(entries) => { const body = Object.fromEntries(entries); if (!body.related_id) { delete body.related_id; delete body.related_kind; } return body; }} onDone={(_, form) => { form.reset(); setTicketType(""); tickets.reload(); setTab("mine"); }}><label>문의 유형<select name="ticket_type" required value={ticketType} onChange={(event) => setTicketType(event.target.value)}><option value="" disabled>문의 유형을 선택해주세요</option>{SUPPORT_TYPES.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>{ticketType === "NAME_CHANGE" && <><label>변경할 성<input name="requested_last_name" required maxLength={150} /></label><label>변경할 이름<input name="requested_first_name" required maxLength={150} /></label><label>변경 사유<textarea name="name_change_reason" rows={3} required /></label></>}{ticketType === "CASH_PAYMENT" && <label>관련 구매 내역<State resource={ticketContext}><select name="related_id" required defaultValue=""><option value="" disabled>구매 내역을 선택해주세요</option>{list(ticketContext.data?.purchases).map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.label} · {date(purchase.created_at)}</option>)}</select></State><input type="hidden" name="related_kind" value="PURCHASE" /></label>}{["TUTORING_FEE", "PAYBACK"].includes(ticketType) && <label>관련 성사등록<State resource={ticketContext}><select name="related_id" required defaultValue=""><option value="" disabled>성사등록을 선택해주세요</option>{list(ticketContext.data?.tutoring_registrations).map((registration) => <option key={registration.id} value={registration.id}>{registration.label} · {registration.status}</option>)}</select></State><input type="hidden" name="related_kind" value="TUTORING_REGISTRATION" /></label>}{ticketType === "VERIFICATION_PROFILE" && <label>관련 학력 인증 신청<State resource={ticketContext}><select name="related_id" required defaultValue=""><option value="" disabled>학력 인증 신청을 선택해주세요</option>{list(ticketContext.data?.instructor_verifications).map((verification) => <option key={verification.id} value={verification.id}>{verification.label} · {verification.status}</option>)}</select></State><input type="hidden" name="related_kind" value="INSTRUCTOR_VERIFICATION" /></label>}<label>제목 (선택)<input name="title" maxLength={200} /></label><label>문의 내용<textarea name="content" rows={7} required /></label><label>첨부 파일 (선택, 최대 5개)<input name="files" type="file" multiple /></label><p className="form-note">접수 후 운영자 답변과 처리 상태는 내 문의에서 확인할 수 있어요.</p></ActionForm>}
     </>
   );
-}
-
-function OfficialSupportConversation({ resource, onClose }) {
-  const { notify } = useContext(Ctx);
-  const [content, setContent] = useState("");
-  const [busy, setBusy] = useState(false);
-  const summary = list(resource.data)[0];
-  const detail = useLoad(
-    summary ? `/support/conversations/${summary.id}/` : null,
-    [summary?.id],
-  );
-  const conversation = detail.data;
-
-  useEffect(() => {
-    if (!conversation?.id) return undefined;
-    const unsubscribe = subscribeWebSocket(
-      `/ws/support/conversations/${conversation.id}/`,
-      () => { resource.reload(); detail.reload(); },
-    );
-    api(`/support/conversations/${conversation.id}/read/`, { method: "POST", body: {} }).catch(() => {});
-    return unsubscribe;
-  }, [conversation?.id]);
-
-  if (!summary) return <section className="service-section"><div className="section-title"><h2>공식 계정 채팅</h2><Btn onClick={onClose}>고객센터</Btn></div><State resource={resource}><Empty title="공식 계정 채팅을 준비 중입니다" text="가입 안내 채팅방이 생성되면 이곳에서 확인할 수 있어요." /></State></section>;
-  if (!conversation) return <State resource={detail} />;
-
-  return <section className="service-section"><div className="section-title"><h2>{conversation.title || "클래씨 공식 계정"}</h2><Btn onClick={onClose}>고객센터</Btn></div><div className="chat-messages">{conversation.messages?.map((message) => <article className="chat-message" key={message.id}><b>{message.sender_kind === "MEMBER" ? "나" : conversation.title || "클래씨 공식 계정"}</b><p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>{message.action?.url && <a className="btn primary" href={message.action.url} target="_blank" rel="noreferrer">{message.action.label || "고객센터 바로가기"}</a>}<small>{date(message.created_at)}</small></article>)}</div><form className="form" onSubmit={async (event) => { event.preventDefault(); const text = content.trim(); if (!text || busy) return; setBusy(true); try { try { await sendSupportMessageViaWebSocket(`/ws/support/conversations/${conversation.id}/`, text); } catch (error) { if (error?.sent) throw error; await api(`/support/conversations/${conversation.id}/messages/`, { method: "POST", body: { content: text } }); } setContent(""); resource.reload(); detail.reload(); } catch (error) { notify(error.message || "메시지를 전송하지 못했습니다."); } finally { setBusy(false); } }}><label>메시지<textarea value={content} onChange={(event) => setContent(event.target.value)} required /></label><Btn className="primary" disabled={busy}>{busy ? "전송 중…" : "전송"}</Btn></form></section>;
 }
 
 function TicketThread({ ticket, resource, onClose, onUpdated }) {

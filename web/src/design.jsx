@@ -968,7 +968,8 @@ export function Catalog({ kind, mode }) {
                 <button
                   type="button"
                   className={
-                    "filter-chip" + (order === "rank" ? " active" : "")
+                    "filter-chip ranking-filter-chip" +
+                    (order === "rank" ? " active" : "")
                   }
                   aria-pressed={order === "rank"}
                   onClick={() =>

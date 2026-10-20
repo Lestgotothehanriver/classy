@@ -285,9 +285,13 @@ class SupportConversationSerializer(serializers.ModelSerializer):
         ).data
 
     def get_unread_count(self, obj):
-        if obj.last_operator_message_at is None:
-            return 0
-        return int(obj.last_member_read_at is None or obj.last_operator_message_at > obj.last_member_read_at)
+        """회원이 아직 읽지 않은 운영자 메시지의 실제 개수를 반환한다."""
+        messages = obj.messages.filter(
+            sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
+        )
+        if obj.last_member_read_at is not None:
+            messages = messages.filter(created_at__gt=obj.last_member_read_at)
+        return messages.count()
 
     def get_messages(self, obj):
         if not self.context.get("detail"):

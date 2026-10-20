@@ -493,10 +493,14 @@ def publish_support_conversation_message(
         return
 
     member = conversation.member
-    unread_count = int(
-        conversation.last_member_read_at is None
-        or message.created_at > conversation.last_member_read_at
+    unread_messages = conversation.messages.filter(
+        sender_kind=SupportConversationMessage.SenderKind.OPERATOR,
     )
+    if conversation.last_member_read_at is not None:
+        unread_messages = unread_messages.filter(
+            created_at__gt=conversation.last_member_read_at,
+        )
+    unread_count = unread_messages.count()
     from config.apps.accounts.models import Instructor
 
     official = (

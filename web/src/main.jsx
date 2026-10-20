@@ -33,7 +33,7 @@ import {
   Upload,
   Leaf,
 } from "lucide-react";
-import { api, list, subscribeWebSocket } from "./api";
+import { api, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
 import { Services, ReportForm } from "./services";
@@ -164,6 +164,10 @@ function App() {
   const go = (p) => {
     location.hash = p;
   };
+  const openChat = (roomId) => {
+    setPendingChatRoomId(roomId?.toString() || null);
+    go("chat");
+  };
 
   function openNotificationTarget(notification) {
     const targetRole = notification?.role;
@@ -180,8 +184,7 @@ function App() {
     if (chatNotificationTypes.has(notification?.type)) {
       const roomId = notification?.data?.room_id?.toString();
       if (!roomId) return false;
-      setPendingChatRoomId(roomId);
-      go("chat");
+      openChat(roomId);
       return true;
     }
 
@@ -229,6 +232,7 @@ function App() {
     subjects: list(subjects.data),
     notify,
     go,
+    openChat,
     login: () => {
       setToast("");
       setModal({ type: "login" });
@@ -1376,16 +1380,67 @@ function Notifications() {
     </>
   );
 }
+function isSupportRoomId(roomId) {
+  return typeof roomId === "string" && roomId.startsWith("support:");
+}
+
+function supportConversationId(roomId) {
+  return roomId.slice("support:".length);
+}
+
+function toSupportRoom(conversation) {
+  return {
+    id: `support:${conversation.id}`,
+    is_support: true,
+    title: conversation.title || "클래씨 공식 계정",
+    opponent_info: { user_name: conversation.title || "클래씨 공식 계정" },
+    last_message: conversation.last_message
+      ? { text: conversation.last_message.content }
+      : null,
+    not_read_count: Number(conversation.unread_count) || 0,
+  };
+}
+
+function toSupportChatDetail(conversation) {
+  return {
+    ...toSupportRoom(conversation),
+    messages: (conversation.messages || []).map((message) => ({
+      id: message.id,
+      is_support: true,
+      sender_kind: message.sender_kind,
+      sender_nickname:
+        message.sender_kind === "MEMBER"
+          ? "나"
+          : conversation.title || "클래씨 공식 계정",
+      text: message.content,
+      created_at: message.created_at,
+      action: message.action,
+    })),
+  };
+}
+
 function Chat({ initialRoomId }) {
   const { user, notify } = useContext(Ctx);
   const rooms = useLoad("/chatrooms/?role=" + user.role);
+  const supportRooms = useLoad(
+    "/support/conversations/?role=" + user.role,
+    [user.role],
+  );
   const [selected, setSelected] = useState(null),
     [room, setRoom] = useState(null),
     [error, setError] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
+  const isSupportRoom = isSupportRoomId(selected);
+  const selectedSupportConversationId = isSupportRoom
+    ? supportConversationId(selected)
+    : null;
+  const chatRooms = [
+    ...list(rooms.data),
+    ...list(supportRooms.data).map(toSupportRoom),
+  ];
   const registrationResource = useLoad(
-    selected ? `/tutoring/resources/chatrooms/${selected}/` : null,
+    selected && !isSupportRoom ? `/tutoring/resources/chatrooms/${selected}/` : null,
     [selected],
     { keepDataOnReload: true },
   );
@@ -1401,15 +1456,15 @@ function Chat({ initialRoomId }) {
   const [registration, setRegistration] = useState(false);
   useEffect(() => {
     if (!initialRoomId) return;
-    const targetRoom = list(rooms.data).find(
-      (item) => String(item.id) === initialRoomId,
+    const targetRoom = chatRooms.find(
+      (item) => String(item.id) === String(initialRoomId),
     );
     if (!targetRoom) return;
 
     setSelected(targetRoom.id);
     setText("");
     setRegistration(false);
-  }, [initialRoomId, rooms.data]);
+  }, [initialRoomId, rooms.data, supportRooms.data]);
   useEffect(() => {
     if (!selected) return;
     let alive = true,
@@ -1418,23 +1473,33 @@ function Chat({ initialRoomId }) {
     setError("");
     const load = () => {
       if (document.hidden) return;
-      api(`/chatrooms/${selected}/?role=${user.role}`, {
+      const detailPath = isSupportRoom
+        ? `/support/conversations/${selectedSupportConversationId}/`
+        : `/chatrooms/${selected}/?role=${user.role}`;
+      api(detailPath, {
         signal: controller.signal,
       })
         .then((d) => {
           if (alive) {
-            setRoom(d);
+            const nextRoom = isSupportRoom ? toSupportChatDetail(d) : d;
+            setRoom(nextRoom);
             setError("");
-            const latest = d.messages?.at(-1);
+            const latest = nextRoom.messages?.at(-1);
             const key = selected + ":" + latest?.id;
             if (latest && lastRead.current !== key) {
               lastRead.current = key;
-              api(`/chatrooms/${selected}/read/${latest.id}/`, {
+              const readPath = isSupportRoom
+                ? `/support/conversations/${selectedSupportConversationId}/read/`
+                : `/chatrooms/${selected}/read/${latest.id}/`;
+              api(readPath, {
                 method: "POST",
                 body: {},
               })
                 .then(() => {
-                  if (alive) rooms.reload();
+                  if (alive) {
+                    rooms.reload();
+                    supportRooms.reload();
+                  }
                 })
                 .catch(() => {
                   lastRead.current = "";
@@ -1450,13 +1515,17 @@ function Chat({ initialRoomId }) {
     const refresh = (event) => {
       if (event.event === "chat_summary" || event.event === "chat_read_state") {
         rooms.reload();
+        supportRooms.reload();
         if (String(event.room_id) === String(selected)) load();
         return;
       }
       load();
     };
     const unsubscribeNotifications = subscribeWebSocket("/ws/notifications/", refresh);
-    const unsubscribeRoom = subscribeWebSocket(`/ws/chat/${selected}/`, refresh);
+    const roomSocketPath = isSupportRoom
+      ? `/ws/support/conversations/${selectedSupportConversationId}/`
+      : `/ws/chat/${selected}/`;
+    const unsubscribeRoom = subscribeWebSocket(roomSocketPath, refresh);
     return () => {
       alive = false;
       controller.abort();
@@ -1477,13 +1546,29 @@ function Chat({ initialRoomId }) {
     if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      const m = await api(`/chatrooms/${selected}/message/`, {
-        method: "POST",
-        body: { text: text.trim() },
-      });
-      setRoom((r) => ({ ...r, messages: [...(r.messages || []), m] }));
+      if (isSupportRoom) {
+        try {
+          await sendSupportMessageViaWebSocket(
+            `/ws/support/conversations/${selectedSupportConversationId}/`,
+            text.trim(),
+          );
+        } catch (error) {
+          if (error?.sent) throw error;
+          await api(
+            `/support/conversations/${selectedSupportConversationId}/messages/`,
+            { method: "POST", body: { content: text.trim() } },
+          );
+        }
+      } else {
+        const m = await api(`/chatrooms/${selected}/message/`, {
+          method: "POST",
+          body: { text: text.trim() },
+        });
+        setRoom((r) => ({ ...r, messages: [...(r.messages || []), m] }));
+      }
       setText("");
       rooms.reload();
+      supportRooms.reload();
     } catch (e) {
       notify(e.message);
     } finally {
@@ -1496,7 +1581,7 @@ function Chat({ initialRoomId }) {
         <div className="room-list">
           <h3>나의 대화</h3>
           <State resource={rooms}>
-            {list(rooms.data).map((r) => (
+            {chatRooms.map((r) => (
               <button
                 key={r.id}
                 className={selected === r.id ? "selected" : ""}
@@ -1523,7 +1608,7 @@ function Chat({ initialRoomId }) {
                 {r.not_read_count > 0 && <em>{r.not_read_count}</em>}
               </button>
             ))}
-            {!list(rooms.data).length && (
+            {!chatRooms.length && (
               <p className="muted room-empty">아직 시작한 대화가 없어요.</p>
             )}
           </State>
@@ -1544,7 +1629,7 @@ function Chat({ initialRoomId }) {
                     room?.title ||
                     "대화"}
                 </b>
-                <div className="actions">
+                {!isSupportRoom && <div className="actions">
                   <Btn
                     disabled={!room || registrationResource.loading}
                     onClick={() => setRegistration(true)}
@@ -1638,7 +1723,7 @@ function Chat({ initialRoomId }) {
                   >
                     나가기
                   </Btn>
-                </div>
+                </div>}
               </div>
               {error && (
                 <p className="error" role="alert">
@@ -1655,11 +1740,27 @@ function Chat({ initialRoomId }) {
                   <div
                     key={m.id}
                     className={
-                      "message " + (m.sender === user.id ? "mine" : "")
+                      "message " + (
+                        (m.is_support
+                          ? m.sender_kind === "MEMBER"
+                          : m.sender === user.id)
+                          ? "mine"
+                          : ""
+                      )
                     }
                   >
                     <small>{m.sender_nickname}</small>
                     {m.text && <p>{m.text}</p>}
+                    {m.action?.url && (
+                      <a
+                        className="btn primary"
+                        href={m.action.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {m.action.label || "고객센터 바로가기"}
+                      </a>
+                    )}
                     {m.images?.map((img) => (
                       <a
                         href={img.image}
@@ -1699,12 +1800,12 @@ function Chat({ initialRoomId }) {
                   <Send size={18} />
                 </Btn>
               </form>
-              <ReportForm source="chat" id={selected} />
+              {!isSupportRoom && <ReportForm source="chat" id={selected} />}
             </>
           )}
         </div>
       </div>
-      {registration && room && (
+      {registration && room && !isSupportRoom && (
         <Registration
           room={room}
           onClose={() => {
