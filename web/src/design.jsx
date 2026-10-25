@@ -659,10 +659,6 @@ function HomeNoticeExposure() {
             onClick={() => openNotice(go, banner.id)}
           >
             {(banner.home_banner_image || banner.banner_image) && <img src={banner.home_banner_image || banner.banner_image} alt="" />}
-            <span className="notice-banner-copy">
-              <strong>{banner.title}</strong>
-              <small>{banner.summary}</small>
-            </span>
           </button>
           {banners.length > 1 && (
             <div className="notice-carousel-controls">
