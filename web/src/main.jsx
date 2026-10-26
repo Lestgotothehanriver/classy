@@ -418,6 +418,7 @@ function Detail({ kind, id, item, onClose }) {
           <video
             className="video"
             controls
+            controlsList="nodownload"
             autoPlay
             src={video}
             onError={() =>
