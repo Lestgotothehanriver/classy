@@ -9,4 +9,6 @@ Group=www-data
 WorkingDirectory=/home/ubuntu/classy-aws
 Environment=DJANGO_SETTINGS_MODULE=config.settings.aws
 EnvironmentFile=/home/ubuntu/classy-aws/.env
+# API 서비스와 동일한 root-only Firebase Admin 자격증명을 마지막에 적용합니다.
+EnvironmentFile=/etc/classy/fcm.env
 ExecStart=/home/ubuntu/classy_aws_venv/bin/python manage.py send_due_marketing_campaigns
