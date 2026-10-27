@@ -62,6 +62,7 @@ import {
   endpoints,
   pageNames,
 } from "./design";
+import { getMobileStoreUrl } from "./app_download";
 
 const chatNotificationTypes = new Set([
   "message",
@@ -98,6 +99,17 @@ function App() {
     [user?.id],
   );
   const notify = (msg) => setToast(msg);
+  useEffect(() => {
+    if (location.pathname !== "/download") return;
+
+    const storeUrl = getMobileStoreUrl();
+    if (storeUrl) {
+      location.replace(storeUrl);
+      return;
+    }
+
+    history.replaceState(null, "", "/#home");
+  }, []);
   function logoutLocal() {
     for (const key of ["classy_token", "classy_roles", "classy_role"])
       sessionStorage.removeItem(key);

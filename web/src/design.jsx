@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowRight,
   ChevronRight,
@@ -16,6 +17,7 @@ import {
   Check,
   X,
   MessageCircle,
+  QrCode,
 } from "lucide-react";
 import {
   Ctx,
@@ -30,6 +32,7 @@ import {
   RegionFields,
 } from "./shared";
 import { api, list } from "./api";
+import { appDownloadQrUrl, appStoreUrl, playStoreUrl } from "./app_download";
 
 export const endpoints = {
   teachers: "/tutoring/instructors/",
@@ -284,6 +287,7 @@ export function HomePage() {
             : "필요한 강의를 골라 듣고, 나에게 맞는 과외 선생님을 만나보세요."
         }
       />
+      <AppDownloadLinks />
       <section className="home-section home-notice-section">
         <div className="section-title">
           <h2>공지사항</h2>
@@ -599,6 +603,68 @@ export function HomePage() {
           </section>
         </aside>
       </div>
+    </>
+  );
+}
+
+function AppDownloadLinks() {
+  const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
+
+  return (
+    <>
+      <section className="home-app-download" aria-label="클래씨 앱 다운로드">
+        <div className="app-download-links">
+          <a
+            className="store-badge-link"
+            href={appStoreUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="App Store에서 클래씨 다운로드"
+          >
+            <img src="/app-icons/app-store-badge.png" alt="" />
+          </a>
+          <a
+            className="store-badge-link"
+            href={playStoreUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Google Play에서 클래씨 다운로드"
+          >
+            <img src="/app-icons/google-play-badge.png" alt="" />
+          </a>
+          <button
+            type="button"
+            className="app-download-qr-button"
+            onClick={() => setIsQrDialogOpen(true)}
+          >
+            <QrCode size={18} aria-hidden="true" />
+            QR로 다운로드
+          </button>
+        </div>
+      </section>
+      {isQrDialogOpen && (
+        <Modal
+          title="클래씨 앱 다운로드"
+          onClose={() => setIsQrDialogOpen(false)}
+        >
+          <div className="app-download-qr-dialog">
+            <QRCodeSVG
+              value={appDownloadQrUrl}
+              size={208}
+              level="M"
+              includeMargin
+              aria-label="클래씨 앱 다운로드 QR 코드"
+            />
+            <p>QR 코드를 스캔해주세요</p>
+            <Btn
+              className="primary app-download-qr-confirm"
+              onClick={() => setIsQrDialogOpen(false)}
+            >
+              확인
+            </Btn>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
