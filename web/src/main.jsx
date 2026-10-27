@@ -77,6 +77,11 @@ const contractNotificationTypes = new Set([
   "tutoring_contract_mismatch",
 ]);
 
+const lectureCommentNotificationTypes = new Set([
+  "lecture_comment",
+  "lecture_comment_reply",
+]);
+
 function App() {
   const uploadLock = useRef(false);
   const [activeRole, setActiveRole] = useState(
@@ -212,6 +217,14 @@ function App() {
 
     if (notification?.type === "support_ticket") {
       go("support");
+      return true;
+    }
+
+    if (lectureCommentNotificationTypes.has(notification?.type)) {
+      const lectureId = notification?.data?.lecture_id?.toString();
+      if (!lectureId) return false;
+      setToast("");
+      setModal({ type: "detail", kind: "lectures", id: lectureId, item: null });
       return true;
     }
 
@@ -1135,7 +1148,7 @@ function TeacherProfile({ id, teacher, item }) {
 function Comments({ id }) {
   const [commentPage, setCommentPage] = useState(1);
   const resource = useLoad(`/lectures/${id}/comments/?page=${commentPage}`);
-  const { notify } = useContext(Ctx);
+  const { notify, user } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
   async function submit(e) {
     e.preventDefault();
@@ -1146,7 +1159,7 @@ function Comments({ id }) {
     try {
       await api(`/lectures/${id}/comments/`, {
         method: "POST",
-        body: { content },
+        body: { content, author_role: user?.role },
       });
       form.reset();
       resource.reload();
@@ -1191,7 +1204,7 @@ function Comments({ id }) {
   );
 }
 function CommentRow({ comment: c, lecture, reload, reply = false }) {
-  const { notify } = useContext(Ctx),
+  const { notify, user } = useContext(Ctx),
     [mode, setMode] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
@@ -1207,6 +1220,7 @@ function CommentRow({ comment: c, lecture, reload, reply = false }) {
           method: mode === "edit" ? "PATCH" : "POST",
           body: {
             content: text,
+            author_role: user?.role,
             ...(mode === "reply"
               ? { parent: c.parent || c.id, referenced_person: c.author }
               : {}),

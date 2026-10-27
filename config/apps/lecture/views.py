@@ -650,7 +650,12 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
             raise PermissionDenied("차단 관계인 사용자의 강의에는 댓글을 작성할 수 없습니다.")
         if not can_comment_on_lecture(self.request.user, lecture):
             raise PermissionDenied("강의 소유자 또는 유효 대여자만 댓글을 작성할 수 있습니다.")
-        serializer.save(author=self.request.user, lecture=lecture)
+        comment = serializer.save(author=self.request.user, lecture=lecture)
+
+        # 댓글 저장이 실제 커밋된 경우에만 FCM·WebSocket 알림을 발생시킨다.
+        from config.apps.notification.helpers import notify_lecture_comment
+
+        transaction.on_commit(lambda: notify_lecture_comment(comment))
 
     def create(self, request, *args, **kwargs):
         # lecture 필드를 URL에서 자동 할당하므로, request.data에 lecture가 없어도 처리

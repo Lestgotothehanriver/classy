@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Count
 from django.core.files.storage import default_storage
 
-from config.apps.accounts.models import Subject, Instructor
+from config.apps.accounts.models import Subject, Instructor, Student
 from .models import Lecture, Comment, SearchHistory
 from .utils import (
     calculate_sample_preview_duration_seconds,
@@ -327,7 +327,7 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "author", "author_name", "author_profile_image",
-            "is_mine", "content", "is_blocked", "is_edited",
+            "author_role", "is_mine", "content", "is_blocked", "is_edited",
             "referenced_person", "referenced_person_name",
             "created_at",
         ]
@@ -346,7 +346,7 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "lecture", "author", "author_name", "author_profile_image",
-            "is_mine", "content", "is_blocked", "is_edited", "parent",
+            "author_role", "is_mine", "content", "is_blocked", "is_edited", "parent",
             "referenced_person", "created_at", "replies",
         ]
 
@@ -354,11 +354,51 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
 class CommentWriteSerializer(serializers.ModelSerializer):
     """댓글 생성/수정용."""
 
+    author_role = serializers.ChoiceField(
+        choices=("student", "instructor"),
+        required=False,
+    )
+
     class Meta:
         model = Comment
-        fields = ["lecture", "parent", "content", "referenced_person"]
+        fields = [
+            "lecture",
+            "parent",
+            "content",
+            "referenced_person",
+            "author_role",
+        ]
 
     def validate(self, attrs):
+        """댓글 구조와 작성 역할을 현재 인증 사용자 기준으로 검증한다."""
+        request = self.context.get("request")
+        author_role = attrs.get("author_role")
+
+        if self.instance is not None and author_role is not None:
+            raise serializers.ValidationError(
+                {"author_role": "댓글 작성 역할은 수정할 수 없습니다."}
+            )
+
+        if self.instance is None:
+            if author_role is None:
+                # 구버전 앱은 역할을 보내지 않는다. 겸업 사용자는 강사 역할을 우선한다.
+                author_role = (
+                    "instructor"
+                    if Instructor.objects.filter(user=request.user).exists()
+                    else "student"
+                )
+                attrs["author_role"] = author_role
+
+            has_profile = (
+                Instructor.objects.filter(user=request.user).exists()
+                if author_role == "instructor"
+                else Student.objects.filter(user=request.user).exists()
+            )
+            if not has_profile:
+                raise serializers.ValidationError(
+                    {"author_role": "선택한 역할 프로필을 찾을 수 없습니다."}
+                )
+
         parent = attrs.get("parent")
         lecture = attrs.get("lecture")
 

@@ -80,6 +80,7 @@ class Comment(models.Model):
     Attributes:
         lecture (ForeignKey): 댓글이 작성된 대상 강의.
         author (ForeignKey): 댓글을 작성한 사용자(강사/학생 무관).
+        author_role (str): 댓글 작성 시점의 학생 또는 강사 역할.
         parent (ForeignKey): 상위 댓글 (대댓글인 경우).
         content (str): 댓글 내용.
         referenced_person (ForeignKey): "@멘션" 기능을 통해 지목된 사용자.
@@ -90,6 +91,14 @@ class Comment(models.Model):
     )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="lecture_comments"
+    )
+    author_role = models.CharField(
+        max_length=20,
+        choices=(
+            ("student", "Student"),
+            ("instructor", "Instructor"),
+        ),
+        default="student",
     )
     parent = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies"

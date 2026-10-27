@@ -9,10 +9,11 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from config.apps.accounts.models import Instructor
+from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
 from config.apps.lecture.serializers import LectureListSerializer
+from config.apps.notification.models import Notification
 from config.apps.lecture.utils import extract_video_duration_seconds
 from config.apps.lecture.utils import calculate_sample_preview_duration_seconds
 
@@ -161,6 +162,8 @@ class LectureCommentPermissionTests(TestCase):
             user=self.owner_user,
             university="Test Univ",
         )
+        Student.objects.create(user=self.student_user)
+        Student.objects.create(user=self.other_user)
         self.paid_lecture = Lecture.objects.create(
             instructor=self.instructor,
             title="Paid Lecture",
@@ -274,3 +277,130 @@ class LectureCommentPermissionTests(TestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
         comment.refresh_from_db()
         self.assertEqual(comment.content, "old comment")
+
+
+class LectureCommentNotificationTests(TestCase):
+    """영상 댓글과 대댓글의 역할별 알림 계약을 검증한다."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create_user(
+            username="lecture-owner",
+            user_name="영상주인",
+        )
+        self.commenter = User.objects.create_user(
+            username="commenter",
+            user_name="댓글작성자",
+        )
+        self.replier = User.objects.create_user(
+            username="replier",
+            user_name="답글작성자",
+        )
+        self.instructor = Instructor.objects.create(
+            user=self.owner,
+            university="Test Univ",
+        )
+        Student.objects.create(user=self.commenter)
+        Student.objects.create(user=self.replier)
+        self.lecture = Lecture.objects.create(
+            instructor=self.instructor,
+            title="Free Lecture",
+            price=0,
+        )
+
+    def _comment_url(self):
+        return reverse("comment-list-create", args=[self.lecture.id])
+
+    def _post_comment(self, user, payload):
+        self.client.force_authenticate(user=user)
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(self._comment_url(), payload, format="json")
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_comment_notifies_only_lecture_owner(self, send_push):
+        response = self._post_comment(
+            self.commenter,
+            {"content": "강의가 좋아요", "author_role": "student"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        notification = Notification.objects.get()
+        self.assertEqual(notification.user_id, self.owner.id)
+        self.assertEqual(notification.type, "lecture_comment")
+        self.assertEqual(notification.role, "instructor")
+        self.assertEqual(notification.title, "영상주인님의 영상에 댓글이 달렸어요.")
+        self.assertEqual(notification.body, "댓글작성자: 강의가 좋아요")
+        self.assertEqual(
+            notification.data,
+            {"lecture_id": str(self.lecture.id), "comment_id": str(response.data["id"])},
+        )
+        send_push.assert_called_once()
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_reply_notifies_only_parent_author_in_parent_role(self, send_push):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="원댓글",
+        )
+
+        response = self._post_comment(
+            self.replier,
+            {
+                "content": "답글이에요",
+                "parent": parent.id,
+                "author_role": "student",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        notification = Notification.objects.get()
+        self.assertEqual(notification.user_id, self.commenter.id)
+        self.assertEqual(notification.type, "lecture_comment_reply")
+        self.assertEqual(notification.role, "student")
+        self.assertEqual(notification.title, "댓글작성자 님의 댓글에 댓글이 달렸어요.")
+        self.assertEqual(notification.body, "답글작성자: 답글이에요")
+        self.assertEqual(
+            notification.data,
+            {
+                "lecture_id": str(self.lecture.id),
+                "comment_id": str(response.data["id"]),
+                "parent_comment_id": str(parent.id),
+            },
+        )
+        send_push.assert_called_once()
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_self_comment_does_not_create_notification(self, send_push):
+        response = self._post_comment(
+            self.owner,
+            {"content": "내 영상 댓글", "author_role": "instructor"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(Notification.objects.exists())
+        send_push.assert_not_called()
+
+    def test_explicit_role_requires_matching_profile(self):
+        response = self._post_comment(
+            self.commenter,
+            {"content": "잘못된 역할", "author_role": "instructor"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author_role", response.data)
+        self.assertFalse(Comment.objects.filter(content="잘못된 역할").exists())
+
+    def test_missing_role_uses_instructor_for_dual_profile_user(self):
+        dual_user = User.objects.create_user(
+            username="dual-commenter",
+            user_name="겸업작성자",
+        )
+        Student.objects.create(user=dual_user)
+        Instructor.objects.create(user=dual_user, university="Dual Univ")
+
+        response = self._post_comment(dual_user, {"content": "구버전 댓글"})
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["author_role"], "instructor")

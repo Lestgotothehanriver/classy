@@ -62,6 +62,43 @@ def notify_payback_completed(user, *, registration_id: int, amount: int):
     _notify_with_push(user=user, ntype="payback_completed", role="student", title="페이백 지급 완료", body=f"페이백 {amount:,}원이 지급 완료되었어요.", data={"registration_id": str(registration_id)})
 
 
+def notify_lecture_comment(comment):
+    """새 영상 댓글 또는 대댓글을 수신자에게 인앱 알림과 FCM으로 전달한다."""
+    parent = comment.parent
+    is_reply = parent is not None
+    recipient = parent.author if is_reply else comment.lecture.instructor.user
+
+    # 자신의 영상 또는 댓글에 직접 작성한 경우에는 알림을 만들지 않는다.
+    if recipient.id == comment.author_id:
+        return
+
+    author_name = comment.author.user_name
+    data = {
+        "lecture_id": str(comment.lecture_id),
+        "comment_id": str(comment.id),
+    }
+    if is_reply:
+        data["parent_comment_id"] = str(parent.id)
+        _notify_with_push(
+            user=recipient,
+            ntype="lecture_comment_reply",
+            role=parent.author_role,
+            title=f"{recipient.user_name} 님의 댓글에 댓글이 달렸어요.",
+            body=f"{author_name}: {comment.content}",
+            data=data,
+        )
+        return
+
+    _notify_with_push(
+        user=recipient,
+        ntype="lecture_comment",
+        role="instructor",
+        title=f"{recipient.user_name}님의 영상에 댓글이 달렸어요.",
+        body=f"{author_name}: {comment.content}",
+        data=data,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 과외 요청 / 제안
 # ─────────────────────────────────────────────────────────────────────────────
