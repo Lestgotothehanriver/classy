@@ -1393,6 +1393,30 @@ dialog.wide {
   font-size: 13px;
   font-weight: 500;
 }
+.comment-header,
+.comment-identity,
+.comment-thread-controls {
+  display: flex;
+  align-items: center;
+}
+.comment-header {
+  gap: 12px;
+}
+.comment-thread-controls {
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.comment-thread-controls .text-button {
+  padding: 0;
+  color: var(--primary);
+}
+.comment-thread-controls svg {
+  transition: transform 160ms ease;
+}
+.comment-thread-controls .is-expanded {
+  transform: rotate(180deg);
+}
 .comment small {
   margin-left: 12px;
   color: var(--muted);

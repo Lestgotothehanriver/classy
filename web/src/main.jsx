@@ -22,6 +22,7 @@ import {
   X,
   Menu,
   ChevronRight,
+  ChevronDown,
   GraduationCap,
   ShieldCheck,
   SlidersHorizontal,
@@ -1284,28 +1285,51 @@ function CommentRow({
   }
   return (
     <article className="comment">
-      <b>{c.author_name || "수강생"}</b>
-      <small>{date(c.created_at)}</small>
+      <div className="comment-header">
+        <div className="comment-identity">
+          <b>{c.author_name || "수강생"}</b>
+          <small>{date(c.created_at)}</small>
+        </div>
+      </div>
       <p>
         {reply && replyTargetName && (
           <span className="comment-reply-target">@{replyTargetName} </span>
         )}
         {c.content}
       </p>
-      <div className="actions">
+      <div className="comment-thread-controls">
+        {!reply && c.replies?.length > 0 && (
+          <button
+            type="button"
+            className="text-button"
+            aria-expanded={repliesExpanded}
+            onClick={onToggleReplies}
+          >
+            <span>답글 {c.replies.length}개</span>
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={repliesExpanded ? "is-expanded" : ""}
+            />
+          </button>
+        )}
         <button
           type="button"
           className="text-button"
+          aria-label={`${c.author_name || "수강생"}님에게 답글`}
+          title={`${c.author_name || "수강생"}님에게 답글`}
           onClick={() => {
             setMode("reply");
             setText("");
             onReplyCreated?.(rootCommentId || c.id);
           }}
         >
-          답글
+          <MessageCircle size={18} aria-hidden="true" />
+          <span>답글 달기</span>
         </button>
-        {c.is_mine && (
-          <>
+      </div>
+      {c.is_mine && (
+        <div className="actions">
             <button
               className="text-button"
               onClick={() => {
@@ -1335,9 +1359,8 @@ function CommentRow({
             >
               삭제
             </button>
-          </>
-        )}
-      </div>
+        </div>
+      )}
       {mode && (
         <>
           {mode === "reply" && (
@@ -1366,16 +1389,6 @@ function CommentRow({
         </>
       )}
       {!c.is_mine && <ReportForm source="comment" id={c.id} />}{" "}
-      {!reply && c.replies?.length > 0 && (
-        <button
-          type="button"
-          className="text-button"
-          aria-expanded={repliesExpanded}
-          onClick={onToggleReplies}
-        >
-          {repliesExpanded ? "답글 숨기기" : `답글 ${c.replies.length}개 보기`}
-        </button>
-      )}
       {!reply && repliesExpanded &&
         c.replies?.map((r) => (
           <CommentRow
