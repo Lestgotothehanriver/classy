@@ -402,6 +402,7 @@ class LectureCommentNotificationTests(TestCase):
         self.assertEqual(response.data["parent"], parent.id)
         self.assertEqual(response.data["reply_to"], direct_target.id)
         self.assertEqual(response.data["referenced_person"], self.replier.id)
+        self.assertEqual(response.data["referenced_person_name"], "답글작성자")
         notification = Notification.objects.get()
         self.assertEqual(notification.user_id, self.replier.id)
         self.assertEqual(notification.role, "student")
@@ -416,6 +417,46 @@ class LectureCommentNotificationTests(TestCase):
             },
         )
         send_push.assert_called_once()
+
+    def test_reply_target_name_falls_back_after_target_deletion_and_for_legacy_reply(self):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="원댓글",
+        )
+        direct_target = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.replier,
+            author_role="student",
+            parent=parent,
+            content="직접 대상",
+        )
+        reply = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.owner,
+            author_role="instructor",
+            parent=parent,
+            reply_to=direct_target,
+            content="직접 답글",
+        )
+        legacy_reply = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.owner,
+            author_role="instructor",
+            parent=parent,
+            content="구버전 답글",
+        )
+
+        direct_target.delete()
+        response = self.client.get(self._comment_url())
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        replies = response.data["results"][0]["replies"]
+        reply_data = next(item for item in replies if item["id"] == reply.id)
+        legacy_data = next(item for item in replies if item["id"] == legacy_reply.id)
+        self.assertEqual(reply_data["referenced_person_name"], "답글작성자")
+        self.assertEqual(legacy_data["referenced_person_name"], "댓글작성자")
 
     def test_reply_to_must_belong_to_the_same_root_comment_group(self):
         parent = Comment.objects.create(

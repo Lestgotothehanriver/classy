@@ -1253,6 +1253,7 @@ function CommentRow({
     [mode, setMode] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
+  const replyTargetName = c.referenced_person_name || "";
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -1285,13 +1286,20 @@ function CommentRow({
     <article className="comment">
       <b>{c.author_name || "수강생"}</b>
       <small>{date(c.created_at)}</small>
-      <p>{c.content}</p>
+      <p>
+        {reply && replyTargetName && (
+          <span className="comment-reply-target">@{replyTargetName} </span>
+        )}
+        {c.content}
+      </p>
       <div className="actions">
         <button
+          type="button"
           className="text-button"
           onClick={() => {
             setMode("reply");
             setText("");
+            onReplyCreated?.(rootCommentId || c.id);
           }}
         >
           답글
@@ -1331,19 +1339,31 @@ function CommentRow({
         )}
       </div>
       {mode && (
-        <form className="inline-form" onSubmit={save}>
-          <input
-            aria-label={mode === "edit" ? "댓글 수정" : "답글 내용"}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            required
-            maxLength={2000}
-          />
-          <Btn disabled={busy}>저장</Btn>
-          <Btn type="button" onClick={() => setMode("")}>
-            취소
-          </Btn>
-        </form>
+        <>
+          {mode === "reply" && (
+            <p className="comment-replying-to">
+              ↳ {c.author_name || "수강생"}님에게 답글
+            </p>
+          )}
+          <form className="inline-form" onSubmit={save}>
+            <input
+              aria-label={mode === "edit" ? "댓글 수정" : "답글 내용"}
+              placeholder={
+                mode === "edit"
+                  ? "댓글을 수정하세요"
+                  : `${c.author_name || "수강생"}님에게 답글 작성...`
+              }
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              required
+              maxLength={2000}
+            />
+            <Btn disabled={busy}>저장</Btn>
+            <Btn type="button" onClick={() => setMode("")}>
+              취소
+            </Btn>
+          </form>
+        </>
       )}
       {!c.is_mine && <ReportForm source="comment" id={c.id} />}{" "}
       {!reply && c.replies?.length > 0 && (

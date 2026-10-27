@@ -85,7 +85,7 @@ def notify_lecture_comment(comment):
             user=recipient,
             ntype="lecture_comment_reply",
             role=target_comment.author_role,
-            title=f"{recipient.user_name} 님의 댓글에 댓글이 달렸어요.",
+            title=f"{recipient.user_name} 님의 댓글에 답글이 달렸어요.",
             body=f"{author_name}: {comment.content}",
             data=data,
         )

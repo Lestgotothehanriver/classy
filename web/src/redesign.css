@@ -1402,6 +1402,15 @@ dialog.wide {
   margin-top: 8px;
   white-space: pre-wrap;
 }
+.comment-reply-target {
+  color: var(--primary);
+  font-weight: 600;
+}
+.comment-replying-to {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .inline-form {
   display: flex;
   gap: 8px;

@@ -333,22 +333,38 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         ]
 
     def get_referenced_person_name(self, obj):
+        """평면 답글 UI에 표시할 직접 대상 이름을 반환한다."""
+        if obj.reply_to:
+            return obj.reply_to.author.user_name
         if obj.referenced_person:
             return obj.referenced_person.user_name
+        if obj.parent:
+            return obj.parent.author.user_name
         return None
 
 
 class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
     """댓글 목록 — 최상위 댓글 + replies 중첩."""
     replies = CommentReplySerializer(many=True, read_only=True)
+    referenced_person_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
         fields = [
             "id", "lecture", "author", "author_name", "author_profile_image",
             "author_role", "is_mine", "content", "is_blocked", "is_edited", "parent", "reply_to",
-            "referenced_person", "created_at", "replies",
+            "referenced_person", "referenced_person_name", "created_at", "replies",
         ]
+
+    def get_referenced_person_name(self, obj):
+        """생성 응답에서도 답글 대상 이름을 일관되게 반환한다."""
+        if obj.reply_to:
+            return obj.reply_to.author.user_name
+        if obj.referenced_person:
+            return obj.referenced_person.user_name
+        if obj.parent:
+            return obj.parent.author.user_name
+        return None
 
 
 class CommentWriteSerializer(serializers.ModelSerializer):

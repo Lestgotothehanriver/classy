@@ -633,14 +633,14 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
                     Prefetch(
                         "replies",
                         queryset=Comment.objects.exclude(author_id__in=blocked_user_ids)
-                        .select_related("author", "referenced_person", "reply_to")
+                        .select_related("author", "parent__author", "referenced_person", "reply_to__author")
                         .order_by("created_at")
                     )
                 )
             else:
-                qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person", "replies__reply_to")
+                qs = qs.prefetch_related("replies", "replies__author", "replies__parent__author", "replies__referenced_person", "replies__reply_to__author")
         else:
-            qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person", "replies__reply_to")
+            qs = qs.prefetch_related("replies", "replies__author", "replies__parent__author", "replies__referenced_person", "replies__reply_to__author")
             
         return qs.order_by("-created_at")
 
