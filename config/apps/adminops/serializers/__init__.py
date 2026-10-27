@@ -29,6 +29,11 @@ from .notice import AdminNoticeSerializer
 from .support import AdminSupportTicketSerializer
 from .support_conversation import AdminSupportConversationSerializer
 from .promotion import PromotionBenefitSerializer, PromotionCampaignSerializer
+from .marketing import (
+    MarketingPushCampaignSerializer,
+    MarketingPushMacroSerializer,
+    MarketingPushTemplateSerializer,
+)
 
 __all__ = [
     "AdminLoginSerializer",
@@ -56,4 +61,7 @@ __all__ = [
     "AdminSupportConversationSerializer",
     "PromotionCampaignSerializer",
     "PromotionBenefitSerializer",
+    "MarketingPushCampaignSerializer",
+    "MarketingPushMacroSerializer",
+    "MarketingPushTemplateSerializer",
 ]

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Classy marketing campaign dispatcher every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+Unit=classy-marketing-campaigns.service
+
+[Install]
+WantedBy=timers.target

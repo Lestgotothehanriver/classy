@@ -21,6 +21,10 @@ class DeviceToken(models.Model):
         ('android', 'Android'),
         ('web', 'Web'),
     ]
+    ACTIVE_ROLE_CHOICES = [
+        ('student', '학생'),
+        ('instructor', '선생님'),
+    ]
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -31,10 +35,24 @@ class DeviceToken(models.Model):
     platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='android')
     is_active = models.BooleanField(default=True)  # 사용자가 알림 off 시 False
     is_chat_active = models.BooleanField(default=True)
+    # 이 토큰이 마지막으로 앱에서 사용한 역할입니다. 마케팅 발송은 역할이 확인된
+    # 활성 토큰으로만 제한해, 겸업 계정의 다른 역할 단말에 중복 발송하지 않습니다.
+    active_role = models.CharField(
+        max_length=20,
+        choices=ACTIVE_ROLE_CHOICES,
+        null=True,
+        blank=True,
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=['user', 'is_active'])]
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(
+                fields=['is_active', 'active_role'],
+                name='notificatio_is_acti_2dd9e3_idx',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user.email} | {self.platform} | active={self.is_active}"
@@ -75,3 +93,158 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.type}] {self.title} → {self.user.email}"
+
+
+class MarketingPushTemplate(models.Model):
+    """관리자가 재사용하는 마케팅 알림 제목·본문 템플릿입니다."""
+
+    name = models.CharField(max_length=100, unique=True)
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_marketing_push_templates',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+    def __str__(self) -> str:
+        """관리 화면에 표시할 템플릿 이름을 반환합니다."""
+        return self.name
+
+
+class MarketingPushMacro(models.Model):
+    """KST 기준으로 반복 실행되어 개별 캠페인을 만드는 마케팅 발송 매크로입니다."""
+
+    class Recurrence(models.TextChoices):
+        """매크로 실행 반복 단위입니다."""
+
+        DAILY = 'DAILY', '매일'
+        WEEKLY = 'WEEKLY', '매주'
+        MONTHLY = 'MONTHLY', '매월'
+
+    name = models.CharField(max_length=100, unique=True)
+    target_role = models.CharField(
+        max_length=20,
+        choices=[
+            ('student', '학생'), ('instructor', '선생님'), ('all', '전체'),
+        ],
+        default='all',
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    push_only = models.BooleanField(default=True)
+    recurrence = models.CharField(max_length=16, choices=Recurrence.choices)
+    scheduled_time = models.TimeField(help_text='Asia/Seoul 기준 실행 시각')
+    weekday = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='매주 발송의 요일입니다. 월요일은 0, 일요일은 6입니다.',
+    )
+    day_of_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='매월 발송의 일자입니다. 해당 월에 없으면 말일에 발송합니다.',
+    )
+    next_scheduled_at = models.DateTimeField(db_index=True)
+    last_dispatched_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_marketing_push_macros',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+        indexes = [
+            models.Index(
+                fields=['is_active', 'next_scheduled_at'],
+                name='notificatio_macro_due_idx',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """관리 화면에 표시할 매크로 이름을 반환합니다."""
+        return self.name
+
+
+class MarketingPushCampaign(models.Model):
+    """예약 또는 즉시 발송하는 마케팅 FCM 캠페인의 불변 발송 스냅샷입니다."""
+
+    class TargetRole(models.TextChoices):
+        """캠페인의 단말 활성 역할 대상입니다."""
+
+        STUDENT = 'student', '학생'
+        INSTRUCTOR = 'instructor', '선생님'
+        ALL = 'all', '전체'
+
+    class Status(models.TextChoices):
+        """예약 발송 처리 상태입니다."""
+
+        SCHEDULED = 'SCHEDULED', '예약됨'
+        SENDING = 'SENDING', '발송 중'
+        COMPLETED = 'COMPLETED', '완료'
+        FAILED = 'FAILED', '실패'
+        CANCELLED = 'CANCELLED', '취소됨'
+
+    target_role = models.CharField(
+        max_length=20,
+        choices=TargetRole.choices,
+        default=TargetRole.ALL,
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    scheduled_at = models.DateTimeField(db_index=True)
+    push_only = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+        db_index=True,
+    )
+    sent_at = models.DateTimeField(null=True, blank=True)
+    recipient_count = models.PositiveIntegerField(default=0)
+    token_count = models.PositiveIntegerField(default=0)
+    success_count = models.PositiveIntegerField(default=0)
+    failure_count = models.PositiveIntegerField(default=0)
+    failure_detail = models.TextField(blank=True)
+    macro = models.ForeignKey(
+        MarketingPushMacro,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='campaigns',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_marketing_push_campaigns',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-scheduled_at', '-id']
+        indexes = [
+            models.Index(
+                fields=['status', 'scheduled_at'],
+                name='notificatio_status_96a662_idx',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """감사 로그와 관리자 목록용 식별자를 반환합니다."""
+        return f'#{self.pk} {self.title}'

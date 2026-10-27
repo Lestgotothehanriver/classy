@@ -1,0 +1,12 @@
+[Unit]
+Description=Dispatch due Classy marketing push campaigns
+After=network-online.target classy.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/classy-aws
+Environment=DJANGO_SETTINGS_MODULE=config.settings.aws
+EnvironmentFile=/home/ubuntu/classy-aws/.env
+ExecStart=/home/ubuntu/classy_aws_venv/bin/python manage.py send_due_marketing_campaigns

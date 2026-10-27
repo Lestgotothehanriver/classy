@@ -15,7 +15,7 @@ from .views import (
     RequestPasswordResetAPIView, VerifyPasswordResetCodeAPIView,
     ConfirmPasswordResetAPIView,
     ProfileCheckAPIView, RoleAddAPIView,
-    PolicyVersionAPIView,
+    PolicyVersionAPIView, MarketingConsentAPIView,
 )
 
 app_name = "accounts"
@@ -35,6 +35,7 @@ urlpatterns = [
     path("logout/", LogoutAPIView.as_view(), name="logout"),
     path("withdraw/", WithdrawAPIView.as_view(), name="withdraw"),
     path("me/", UserProfileAPIView.as_view(), name="user-profile"),
+    path("me/marketing-consent/", MarketingConsentAPIView.as_view(), name="marketing-consent"),
     path("me/image/", ProfileImageAPIView.as_view(), name="user-profile-image"),
     path("me/phone/request/", RequestPhoneChangeAPIView.as_view(), name="phone-change-request"),
     path("me/phone/verify/", VerifyPhoneChangeAPIView.as_view(), name="phone-change-verify"),

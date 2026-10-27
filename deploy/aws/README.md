@@ -67,6 +67,21 @@ sudo systemctl restart classy
 curl -fsS https://api.classystudy.com/healthz/
 ```
 
+## Scheduled marketing campaigns
+
+Install the reviewed `classy-marketing-campaigns.service` and
+`classy-marketing-campaigns.timer` units into `/etc/systemd/system/`, then enable
+the timer. The timer invokes `send_due_marketing_campaigns` once per minute and
+uses the same Django settings and environment as the API service.
+
+```sh
+sudo cp deploy/aws/classy-marketing-campaigns.service /etc/systemd/system/
+sudo cp deploy/aws/classy-marketing-campaigns.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now classy-marketing-campaigns.timer
+systemctl list-timers classy-marketing-campaigns.timer
+```
+
 `nginx.conf` is installed through `/etc/nginx/sites-enabled/classy`, pointing to
 `/etc/nginx/sites-available/classy-aws`. Run `sudo nginx -t` before reload.
 The previous code directory remains on disk, but restoring it alone does not

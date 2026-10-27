@@ -53,6 +53,13 @@ from .views import (
     PromotionBenefitListView,
     PromotionCampaignDetailView,
     PromotionCampaignListCreateView,
+    MarketingPushTemplateListCreateView,
+    MarketingPushTemplateDetailView,
+    MarketingPushCampaignListCreateView,
+    MarketingPushCampaignDetailView,
+    MarketingPushCampaignCancelView,
+    MarketingPushMacroListCreateView,
+    MarketingPushMacroDetailView,
 )
 
 app_name = "adminops"
@@ -63,6 +70,13 @@ urlpatterns = [
     path("promotions/", PromotionCampaignListCreateView.as_view(), name="promotion-list-create"),
     path("promotions/<int:pk>/", PromotionCampaignDetailView.as_view(), name="promotion-detail"),
     path("promotions/<int:pk>/benefits/", PromotionBenefitListView.as_view(), name="promotion-benefits"),
+    path("marketing/templates/", MarketingPushTemplateListCreateView.as_view(), name="marketing-template-list-create"),
+    path("marketing/templates/<int:pk>/", MarketingPushTemplateDetailView.as_view(), name="marketing-template-detail"),
+    path("marketing/macros/", MarketingPushMacroListCreateView.as_view(), name="marketing-macro-list-create"),
+    path("marketing/macros/<int:pk>/", MarketingPushMacroDetailView.as_view(), name="marketing-macro-detail"),
+    path("marketing/campaigns/", MarketingPushCampaignListCreateView.as_view(), name="marketing-campaign-list-create"),
+    path("marketing/campaigns/<int:pk>/", MarketingPushCampaignDetailView.as_view(), name="marketing-campaign-detail"),
+    path("marketing/campaigns/<int:pk>/cancel/", MarketingPushCampaignCancelView.as_view(), name="marketing-campaign-cancel"),
     path("inquiries/", AdminSupportTicketListView.as_view(), name="support-ticket-list"),
     path("inquiries/summary/", AdminSupportTicketSummaryView.as_view(), name="support-ticket-summary"),
     path("inquiries/<int:pk>/", AdminSupportTicketDetailView.as_view(), name="support-ticket-detail"),

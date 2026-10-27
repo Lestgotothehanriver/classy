@@ -242,10 +242,14 @@ class DeviceTokenAPIView(APIView):
             .first()
         )
         if token_obj is None:
-            return Response({"is_active": None, "is_chat_active": None}, status=200)
+            return Response(
+                {"is_active": None, "is_chat_active": None, "active_role": None},
+                status=200,
+            )
         return Response({
             "is_active": token_obj.is_active,
-            "is_chat_active": token_obj.is_chat_active
+            "is_chat_active": token_obj.is_chat_active,
+            "active_role": token_obj.active_role,
         }, status=200)
 
     def post(self, request):
@@ -253,6 +257,9 @@ class DeviceTokenAPIView(APIView):
         platform = request.data.get("platform", "android")
         explicit_state = request.data.get("is_active")
         explicit_chat_state = request.data.get("is_chat_active")
+        active_role = request.data.get("active_role")
+        if active_role not in (None, "", "student", "instructor"):
+            return Response({"error": "active_role must be student or instructor"}, status=400)
         logger.info(
             "*** [DeviceToken] Register attempt for user: %s (Platform: %s) ***",
             request.user.email,
@@ -284,6 +291,7 @@ class DeviceTokenAPIView(APIView):
                 "platform": platform,
                 "is_active": _coerce_is_active(explicit_state, default=True),
                 "is_chat_active": _coerce_is_active(explicit_chat_state, default=True),
+                "active_role": active_role or None,
             },
         )
         if not created:
@@ -300,6 +308,9 @@ class DeviceTokenAPIView(APIView):
             if explicit_chat_state is not None:
                 obj.is_chat_active = _coerce_is_active(explicit_chat_state, default=obj.is_chat_active)
                 update_fields.append("is_chat_active")
+            if active_role is not None:
+                obj.active_role = active_role or None
+                update_fields.append("active_role")
             obj.save(update_fields=update_fields)
         else:
             logger.info(
@@ -310,7 +321,8 @@ class DeviceTokenAPIView(APIView):
         return Response({
             "registered": True,
             "is_active": obj.is_active,
-            "is_chat_active": obj.is_chat_active
+            "is_chat_active": obj.is_chat_active,
+            "active_role": obj.active_role,
         }, status=201)
 
     def put(self, request):
@@ -322,6 +334,10 @@ class DeviceTokenAPIView(APIView):
         
         has_is_active = "is_active" in request.data
         has_is_chat_active = "is_chat_active" in request.data
+        has_active_role = "active_role" in request.data
+        active_role = request.data.get("active_role")
+        if has_active_role and active_role not in (None, "", "student", "instructor"):
+            return Response({"error": "active_role must be student or instructor"}, status=400)
         update_fields = ["updated_at"]
         
         if has_is_chat_active:
@@ -332,18 +348,23 @@ class DeviceTokenAPIView(APIView):
             )
             update_fields.append("is_chat_active")
             
-        if has_is_active or not has_is_chat_active:
+        if has_is_active or (not has_is_chat_active and not has_active_role):
             explicit_state = request.data.get("is_active")
             token_obj.is_active = _coerce_is_active(
                 explicit_state,
                 default=not token_obj.is_active,
             )
             update_fields.append("is_active")
+
+        if has_active_role:
+            token_obj.active_role = active_role or None
+            update_fields.append("active_role")
             
         token_obj.save(update_fields=update_fields)
         return Response({
             "is_active": token_obj.is_active,
-            "is_chat_active": token_obj.is_chat_active
+            "is_chat_active": token_obj.is_chat_active,
+            "active_role": token_obj.active_role,
         }, status=200)
 
 

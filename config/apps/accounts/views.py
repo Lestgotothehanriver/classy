@@ -687,6 +687,7 @@ class UserProfileAPIView(APIView):
             "birth_date": str(user.birth_date) if user.birth_date else None,
             "field": user.field,
             "phonenumber": user.phone,
+            "marketing_opt_in": user.marketing_opt_in,
         }
 
         if hasattr(user, "instructor_profile"):
@@ -740,6 +741,29 @@ class UserProfileAPIView(APIView):
             "district": region_parts[1] if len(region_parts) > 1 else "",
             "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
         })
+
+
+class MarketingConsentAPIView(APIView):
+    """현재 사용자의 마케팅 수신 동의를 조회하거나 변경합니다."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """현재 마케팅 수신 동의 상태를 반환합니다."""
+        return Response({"marketing_opt_in": request.user.marketing_opt_in})
+
+    def patch(self, request):
+        """요청 본문의 [marketing_opt_in] 값으로 동의를 변경합니다."""
+        if "marketing_opt_in" not in request.data:
+            return Response({"error": "marketing_opt_in is required"}, status=400)
+        value = request.data["marketing_opt_in"]
+        if not isinstance(value, bool):
+            return Response({"error": "marketing_opt_in must be a boolean"}, status=400)
+
+        from config.apps.accounts.consent import set_marketing_opt_in
+
+        set_marketing_opt_in(request.user, opted_in=value)
+        return Response({"marketing_opt_in": request.user.marketing_opt_in})
 
 
 class RequestPhoneChangeAPIView(APIView):

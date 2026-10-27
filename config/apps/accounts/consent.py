@@ -33,6 +33,7 @@ def record_consent(
     created = [
         UserConsent.objects.create(
             user=user,
+            user_email=user.email,
             doc_type=UserConsent.DOC_TERMS,
             version=terms_version or versions.get("terms", ""),
             agreed=True,
@@ -40,6 +41,7 @@ def record_consent(
         ),
         UserConsent.objects.create(
             user=user,
+            user_email=user.email,
             doc_type=UserConsent.DOC_PRIVACY,
             version=privacy_version or versions.get("privacy", ""),
             agreed=True,
@@ -52,6 +54,7 @@ def record_consent(
         created.append(
             UserConsent.objects.create(
                 user=user,
+                user_email=user.email,
                 doc_type=UserConsent.DOC_MARKETING,
                 version=versions.get("marketing", ""),
                 agreed=True,
@@ -63,3 +66,26 @@ def record_consent(
         user.save(update_fields=["marketing_opt_in"])
 
     return created
+
+
+def set_marketing_opt_in(user, *, opted_in: bool):
+    """[user]의 마케팅 수신 상태를 갱신하고 append-only 동의 이력을 남깁니다.
+
+    거래성 알림 설정과 독립적으로 동작하며, 같은 값으로 반복 요청해도 불필요한
+    동의 이력을 추가하지 않습니다.
+    """
+    opted_in = bool(opted_in)
+    if user.marketing_opt_in == opted_in:
+        return None
+
+    UserConsent.objects.create(
+        user=user,
+        user_email=user.email,
+        doc_type=UserConsent.DOC_MARKETING,
+        version=getattr(settings, "POLICY_VERSIONS", {}).get("marketing", ""),
+        agreed=opted_in,
+        agreed_at=timezone.now(),
+    )
+    user.marketing_opt_in = opted_in
+    user.save(update_fields=["marketing_opt_in"])
+    return opted_in

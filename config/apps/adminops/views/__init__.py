@@ -59,6 +59,15 @@ from .promotion import (
     PromotionCampaignDetailView,
     PromotionCampaignListCreateView,
 )
+from .marketing import (
+    MarketingPushCampaignCancelView,
+    MarketingPushCampaignDetailView,
+    MarketingPushCampaignListCreateView,
+    MarketingPushMacroDetailView,
+    MarketingPushMacroListCreateView,
+    MarketingPushTemplateDetailView,
+    MarketingPushTemplateListCreateView,
+)
 
 __all__ = [
     "AdminLoginAPIView",
@@ -110,4 +119,11 @@ __all__ = [
     "PromotionCampaignListCreateView",
     "PromotionCampaignDetailView",
     "PromotionBenefitListView",
+    "MarketingPushTemplateListCreateView",
+    "MarketingPushTemplateDetailView",
+    "MarketingPushCampaignListCreateView",
+    "MarketingPushCampaignDetailView",
+    "MarketingPushCampaignCancelView",
+    "MarketingPushMacroListCreateView",
+    "MarketingPushMacroDetailView",
 ]
