@@ -328,7 +328,7 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         fields = [
             "id", "author", "author_name", "author_profile_image",
             "author_role", "is_mine", "content", "is_blocked", "is_edited",
-            "referenced_person", "referenced_person_name",
+            "parent", "referenced_person", "referenced_person_name", "reply_to",
             "created_at",
         ]
 
@@ -346,7 +346,7 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         model = Comment
         fields = [
             "id", "lecture", "author", "author_name", "author_profile_image",
-            "author_role", "is_mine", "content", "is_blocked", "is_edited", "parent",
+            "author_role", "is_mine", "content", "is_blocked", "is_edited", "parent", "reply_to",
             "referenced_person", "created_at", "replies",
         ]
 
@@ -364,6 +364,7 @@ class CommentWriteSerializer(serializers.ModelSerializer):
         fields = [
             "lecture",
             "parent",
+            "reply_to",
             "content",
             "referenced_person",
             "author_role",
@@ -400,6 +401,7 @@ class CommentWriteSerializer(serializers.ModelSerializer):
                 )
 
         parent = attrs.get("parent")
+        reply_to = attrs.get("reply_to")
         lecture = attrs.get("lecture")
 
         if parent:
@@ -413,6 +415,24 @@ class CommentWriteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"parent": "대댓글에 대한 답글은 허용되지 않습니다."}
                 )
+        if reply_to:
+            if not parent:
+                raise serializers.ValidationError(
+                    {"reply_to": "답글 대상에는 원댓글이 필요합니다."}
+                )
+            if reply_to.lecture_id != lecture.id:
+                raise serializers.ValidationError(
+                    {"reply_to": "답글 대상은 같은 강의의 댓글이어야 합니다."}
+                )
+            if reply_to.id != parent.id and reply_to.parent_id != parent.id:
+                raise serializers.ValidationError(
+                    {"reply_to": "답글 대상은 같은 원댓글 묶음 안에 있어야 합니다."}
+                )
+            # 답글의 멘션 및 수신 기준은 클라이언트 입력이 아니라 직접 대상 댓글로 고정한다.
+            attrs["referenced_person"] = reply_to.author
+        elif parent:
+            # reply_to를 모르는 구버전 클라이언트는 원댓글 작성자를 수신 대상으로 유지한다.
+            attrs["referenced_person"] = parent.author
         return attrs
 
 

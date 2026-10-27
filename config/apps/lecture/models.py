@@ -74,14 +74,16 @@ class Comment(models.Model):
     강의(VOD) 하단에 달리는 '질문 및 댓글' 데이터를 관리하는 모델입니다.
     
     학생이 질문을 남기고 강사가 답변을 달거나, 학생들끼리 의견을 나눌 수 있습니다.
-    Self-Referencing을 통해 대댓글(Reply)을 지원하지만, 
-    대대댓글(Depth 2 이상)은 모델의 clean() 메서드를 통해 구조적으로 차단합니다.
+    화면상 대댓글은 원댓글 아래 한 단계로만 표시합니다. ``parent``는 그 원댓글을,
+    ``reply_to``는 실제 답글 대상(알림 수신자)을 가리켜 대댓글의 대댓글도
+    같은 화면 묶음 안에서 직접 수신자에게 알릴 수 있게 합니다.
     
     Attributes:
         lecture (ForeignKey): 댓글이 작성된 대상 강의.
         author (ForeignKey): 댓글을 작성한 사용자(강사/학생 무관).
         author_role (str): 댓글 작성 시점의 학생 또는 강사 역할.
         parent (ForeignKey): 상위 댓글 (대댓글인 경우).
+        reply_to (ForeignKey): 알림 수신자를 정하는 직접 답글 대상 댓글.
         content (str): 댓글 내용.
         referenced_person (ForeignKey): "@멘션" 기능을 통해 지목된 사용자.
         created_at (DateTimeField): 댓글 작성 일시.
@@ -102,6 +104,13 @@ class Comment(models.Model):
     )
     parent = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies"
+    )
+    reply_to = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="direct_replies",
     )
     content = models.TextField()
     referenced_person = models.ForeignKey(
@@ -133,6 +142,17 @@ class Comment(models.Model):
         # 대대댓글 금지: parent가 이미 reply(=parent가 있는 댓글)이면 불가
         if self.parent and self.parent.parent_id is not None:
             raise ValidationError("대댓글에 대한 답글은 허용되지 않습니다.")
+        if self.reply_to:
+            if not self.parent:
+                raise ValidationError("답글 대상에는 원댓글이 필요합니다.")
+            if self.reply_to.lecture_id != self.lecture_id:
+                raise ValidationError("답글 대상은 같은 강의의 댓글이어야 합니다.")
+            if (
+                self.reply_to_id != self.parent_id
+                and self.reply_to.parent_id != self.parent_id
+            ):
+                raise ValidationError("답글 대상은 같은 원댓글 묶음 안에 있어야 합니다.")
+            self.referenced_person_id = self.reply_to.author_id
 
     def save(self, *args, **kwargs):
         self.full_clean()

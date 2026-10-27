@@ -224,7 +224,16 @@ function App() {
       const lectureId = notification?.data?.lecture_id?.toString();
       if (!lectureId) return false;
       setToast("");
-      setModal({ type: "detail", kind: "lectures", id: lectureId, item: null });
+      setModal({
+        type: "detail",
+        kind: "lectures",
+        id: lectureId,
+        item: null,
+        initialExpandedCommentId:
+          notification?.data?.parent_comment_id?.toString() ||
+          notification?.data?.comment_id?.toString() ||
+          null,
+      });
       return true;
     }
 
@@ -364,13 +373,14 @@ function App() {
           kind={modal.kind}
           id={modal.id}
           item={modal.item}
+          initialExpandedCommentId={modal.initialExpandedCommentId}
           onClose={() => setModal(null)}
         />
       )}
     </Ctx.Provider>
   );
 }
-function Detail({ kind, id, item, onClose }) {
+function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
   const { notify, user, refreshUser } = useContext(Ctx);
   const base = (endpoints[kind] || "/lectures/") + id + "/";
   const resource = useLoad(base);
@@ -613,7 +623,10 @@ function Detail({ kind, id, item, onClose }) {
               보유 캐시는 기존 계정과 연동됩니다. 마이페이지의 캐시 관리에서
               캐시 잔액과 이용 내역을 확인하세요.
             </p>
-            <Comments id={id} />
+            <Comments
+              id={id}
+              initialExpandedCommentId={initialExpandedCommentId}
+            />
           </>
         ) : isPost ? (
           <>
@@ -1145,11 +1158,30 @@ function TeacherProfile({ id, teacher, item }) {
     </section>
   );
 }
-function Comments({ id }) {
+function Comments({ id, initialExpandedCommentId }) {
   const [commentPage, setCommentPage] = useState(1);
+  const [expandedCommentIds, setExpandedCommentIds] = useState(() => new Set());
   const resource = useLoad(`/lectures/${id}/comments/?page=${commentPage}`);
   const { notify, user } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!initialExpandedCommentId) return;
+    const commentId = initialExpandedCommentId.toString();
+    setExpandedCommentIds((current) => new Set([...current, commentId]));
+  }, [initialExpandedCommentId]);
+  const toggleReplies = (commentId) => {
+    const normalizedCommentId = commentId.toString();
+    setExpandedCommentIds((current) => {
+      const next = new Set(current);
+      if (next.has(normalizedCommentId)) next.delete(normalizedCommentId);
+      else next.add(normalizedCommentId);
+      return next;
+    });
+  };
+  const revealReplies = (commentId) => {
+    const normalizedCommentId = commentId.toString();
+    setExpandedCommentIds((current) => new Set([...current, normalizedCommentId]));
+  };
   async function submit(e) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1179,6 +1211,10 @@ function Comments({ id }) {
             comment={c}
             lecture={id}
             reload={resource.reload}
+            rootCommentId={c.id}
+            repliesExpanded={expandedCommentIds.has(c.id.toString())}
+            onToggleReplies={() => toggleReplies(c.id)}
+            onReplyCreated={revealReplies}
           />
         ))}
       </State>
@@ -1203,7 +1239,16 @@ function Comments({ id }) {
     </div>
   );
 }
-function CommentRow({ comment: c, lecture, reload, reply = false }) {
+function CommentRow({
+  comment: c,
+  lecture,
+  reload,
+  reply = false,
+  rootCommentId,
+  repliesExpanded = false,
+  onToggleReplies,
+  onReplyCreated,
+}) {
   const { notify, user } = useContext(Ctx),
     [mode, setMode] = useState(""),
     [text, setText] = useState(""),
@@ -1222,12 +1267,13 @@ function CommentRow({ comment: c, lecture, reload, reply = false }) {
             content: text,
             author_role: user?.role,
             ...(mode === "reply"
-              ? { parent: c.parent || c.id, referenced_person: c.author }
+              ? { parent: c.parent || c.id, reply_to: c.id }
               : {}),
           },
         },
       );
       setMode("");
+      if (mode === "reply") onReplyCreated?.(rootCommentId || c.id);
       reload();
     } catch (e) {
       notify(e.message);
@@ -1300,7 +1346,17 @@ function CommentRow({ comment: c, lecture, reload, reply = false }) {
         </form>
       )}
       {!c.is_mine && <ReportForm source="comment" id={c.id} />}{" "}
-      {!reply &&
+      {!reply && c.replies?.length > 0 && (
+        <button
+          type="button"
+          className="text-button"
+          aria-expanded={repliesExpanded}
+          onClick={onToggleReplies}
+        >
+          {repliesExpanded ? "답글 숨기기" : `답글 ${c.replies.length}개 보기`}
+        </button>
+      )}
+      {!reply && repliesExpanded &&
         c.replies?.map((r) => (
           <CommentRow
             key={r.id}
@@ -1308,6 +1364,8 @@ function CommentRow({ comment: c, lecture, reload, reply = false }) {
             lecture={lecture}
             reload={reload}
             reply
+            rootCommentId={rootCommentId || c.id}
+            onReplyCreated={onReplyCreated}
           />
         ))}
     </article>

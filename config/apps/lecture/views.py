@@ -599,7 +599,8 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
     특정 강의의 '댓글(Comment)' 목록을 조회하고 새 댓글을 작성하는 API View입니다.
 
     GET 요청 시, 특정 강의에 작성된 최상위 부모 댓글 목록만 정렬하여 가져오며, 각 부모 댓글 객체 안에 대댓글(replies) 리스트가 중첩되어 반환됩니다. 차단한 유저의 댓글 및 대댓글은 목록에서 제외됩니다.
-    POST 요청 시, 로그인한 사용자의 새 댓글 또는 대댓글 작성을 처리하며, 대댓글의 경우 부모 댓글(parent) ID 및 언급 대상 유저(referenced_person) ID를 추가로 전달받아 연결합니다.
+    POST 요청 시, 로그인한 사용자의 새 댓글 또는 대댓글 작성을 처리합니다. 대댓글은
+    원댓글 묶음(parent)과 실제 답글 대상(reply_to)을 함께 받아 수신자를 결정합니다.
 
     Path Parameters:
         lecture_id (int): 댓글을 작성하거나 조회할 강의 ID.
@@ -607,7 +608,7 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
     Request Body (POST):
         content (str): 댓글 내용.
         parent (int, optional): 대댓글인 경우 부모 댓글 ID.
-        referenced_person (int, optional): 멘션 대상의 User ID.
+        reply_to (int, optional): 알림 수신자를 정하는 직접 답글 대상 댓글 ID.
 
     Returns:
         Response (GET): List[CommentSerializer] 데이터
@@ -622,7 +623,7 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         lecture_id = self.kwargs["lecture_id"]
-        qs = Comment.objects.filter(lecture_id=lecture_id, parent__isnull=True).select_related("author", "referenced_person")
+        qs = Comment.objects.filter(lecture_id=lecture_id, parent__isnull=True).select_related("author", "referenced_person", "reply_to")
         
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)
@@ -632,14 +633,14 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
                     Prefetch(
                         "replies",
                         queryset=Comment.objects.exclude(author_id__in=blocked_user_ids)
-                        .select_related("author", "referenced_person")
+                        .select_related("author", "referenced_person", "reply_to")
                         .order_by("created_at")
                     )
                 )
             else:
-                qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person")
+                qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person", "replies__reply_to")
         else:
-            qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person")
+            qs = qs.prefetch_related("replies", "replies__author", "replies__referenced_person", "replies__reply_to")
             
         return qs.order_by("-created_at")
 

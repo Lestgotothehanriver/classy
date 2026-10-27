@@ -367,9 +367,146 @@ class LectureCommentNotificationTests(TestCase):
                 "lecture_id": str(self.lecture.id),
                 "comment_id": str(response.data["id"]),
                 "parent_comment_id": str(parent.id),
+                "reply_to_comment_id": str(parent.id),
             },
         )
         send_push.assert_called_once()
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_reply_to_reply_notifies_direct_target_author_in_target_role(self, send_push):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="원댓글",
+        )
+        direct_target = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.replier,
+            author_role="student",
+            parent=parent,
+            content="첫 답글",
+        )
+
+        response = self._post_comment(
+            self.owner,
+            {
+                "content": "답글에 답글이에요",
+                "parent": parent.id,
+                "reply_to": direct_target.id,
+                "author_role": "instructor",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["parent"], parent.id)
+        self.assertEqual(response.data["reply_to"], direct_target.id)
+        self.assertEqual(response.data["referenced_person"], self.replier.id)
+        notification = Notification.objects.get()
+        self.assertEqual(notification.user_id, self.replier.id)
+        self.assertEqual(notification.role, "student")
+        self.assertEqual(notification.title, "답글작성자 님의 댓글에 댓글이 달렸어요.")
+        self.assertEqual(
+            notification.data,
+            {
+                "lecture_id": str(self.lecture.id),
+                "comment_id": str(response.data["id"]),
+                "parent_comment_id": str(parent.id),
+                "reply_to_comment_id": str(direct_target.id),
+            },
+        )
+        send_push.assert_called_once()
+
+    def test_reply_to_must_belong_to_the_same_root_comment_group(self):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="첫 원댓글",
+        )
+        other_parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.replier,
+            author_role="student",
+            content="다른 원댓글",
+        )
+
+        response = self._post_comment(
+            self.owner,
+            {
+                "content": "잘못된 직접 대상",
+                "parent": parent.id,
+                "reply_to": other_parent.id,
+                "author_role": "instructor",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reply_to", response.data)
+        self.assertFalse(Comment.objects.filter(content="잘못된 직접 대상").exists())
+
+    def test_reply_to_must_belong_to_the_same_lecture(self):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="현재 강의 원댓글",
+        )
+        other_lecture = Lecture.objects.create(
+            instructor=self.instructor,
+            title="다른 강의",
+            price=0,
+        )
+        other_lecture_comment = Comment.objects.create(
+            lecture=other_lecture,
+            author=self.replier,
+            author_role="student",
+            content="다른 강의 댓글",
+        )
+
+        response = self._post_comment(
+            self.owner,
+            {
+                "content": "다른 강의 직접 대상",
+                "parent": parent.id,
+                "reply_to": other_lecture_comment.id,
+                "author_role": "instructor",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reply_to", response.data)
+        self.assertFalse(Comment.objects.filter(content="다른 강의 직접 대상").exists())
+
+    @patch("config.apps.notification.fcm.send_push_to_user")
+    def test_reply_to_self_does_not_create_notification(self, send_push):
+        parent = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.commenter,
+            author_role="student",
+            content="원댓글",
+        )
+        own_reply = Comment.objects.create(
+            lecture=self.lecture,
+            author=self.replier,
+            author_role="student",
+            parent=parent,
+            content="내 답글",
+        )
+
+        response = self._post_comment(
+            self.replier,
+            {
+                "content": "내 답글에 답글",
+                "parent": parent.id,
+                "reply_to": own_reply.id,
+                "author_role": "student",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(Notification.objects.exists())
+        send_push.assert_not_called()
 
     @patch("config.apps.notification.fcm.send_push_to_user")
     def test_self_comment_does_not_create_notification(self, send_push):

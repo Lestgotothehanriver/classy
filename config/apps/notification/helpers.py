@@ -66,7 +66,8 @@ def notify_lecture_comment(comment):
     """새 영상 댓글 또는 대댓글을 수신자에게 인앱 알림과 FCM으로 전달한다."""
     parent = comment.parent
     is_reply = parent is not None
-    recipient = parent.author if is_reply else comment.lecture.instructor.user
+    target_comment = (comment.reply_to or parent) if is_reply else None
+    recipient = target_comment.author if is_reply else comment.lecture.instructor.user
 
     # 자신의 영상 또는 댓글에 직접 작성한 경우에는 알림을 만들지 않는다.
     if recipient.id == comment.author_id:
@@ -79,10 +80,11 @@ def notify_lecture_comment(comment):
     }
     if is_reply:
         data["parent_comment_id"] = str(parent.id)
+        data["reply_to_comment_id"] = str(target_comment.id)
         _notify_with_push(
             user=recipient,
             ntype="lecture_comment_reply",
-            role=parent.author_role,
+            role=target_comment.author_role,
             title=f"{recipient.user_name} 님의 댓글에 댓글이 달렸어요.",
             body=f"{author_name}: {comment.content}",
             data=data,
