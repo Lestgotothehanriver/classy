@@ -337,7 +337,7 @@ class LectureCommentNotificationTests(TestCase):
         send_push.assert_called_once()
 
     @patch("config.apps.notification.fcm.send_push_to_user")
-    def test_reply_notifies_only_parent_author_in_parent_role(self, send_push):
+    def test_reply_notifies_thread_author_in_parent_role(self, send_push):
         parent = Comment.objects.create(
             lecture=self.lecture,
             author=self.commenter,
@@ -373,7 +373,7 @@ class LectureCommentNotificationTests(TestCase):
         send_push.assert_called_once()
 
     @patch("config.apps.notification.fcm.send_push_to_user")
-    def test_reply_to_reply_notifies_direct_target_author_in_target_role(self, send_push):
+    def test_reply_to_reply_notifies_direct_target_and_thread_author(self, send_push):
         parent = Comment.objects.create(
             lecture=self.lecture,
             author=self.commenter,
@@ -403,12 +403,21 @@ class LectureCommentNotificationTests(TestCase):
         self.assertEqual(response.data["reply_to"], direct_target.id)
         self.assertEqual(response.data["referenced_person"], self.replier.id)
         self.assertEqual(response.data["referenced_person_name"], "답글작성자")
-        notification = Notification.objects.get()
-        self.assertEqual(notification.user_id, self.replier.id)
-        self.assertEqual(notification.role, "student")
-        self.assertEqual(notification.title, "답글작성자 님의 댓글에 댓글이 달렸어요.")
+        self.assertEqual(Notification.objects.count(), 2)
+        direct_target_notification = Notification.objects.get(user=self.replier)
+        thread_author_notification = Notification.objects.get(user=self.commenter)
+        self.assertEqual(direct_target_notification.role, "student")
+        self.assertEqual(thread_author_notification.role, "student")
         self.assertEqual(
-            notification.data,
+            direct_target_notification.title,
+            "답글작성자 님의 댓글에 댓글이 달렸어요.",
+        )
+        self.assertEqual(
+            thread_author_notification.title,
+            "댓글작성자 님의 댓글에 댓글이 달렸어요.",
+        )
+        self.assertEqual(
+            direct_target_notification.data,
             {
                 "lecture_id": str(self.lecture.id),
                 "comment_id": str(response.data["id"]),
@@ -416,7 +425,8 @@ class LectureCommentNotificationTests(TestCase):
                 "reply_to_comment_id": str(direct_target.id),
             },
         )
-        send_push.assert_called_once()
+        self.assertEqual(thread_author_notification.data, direct_target_notification.data)
+        self.assertEqual(send_push.call_count, 2)
 
     def test_reply_target_name_falls_back_after_target_deletion_and_for_legacy_reply(self):
         parent = Comment.objects.create(
@@ -520,7 +530,7 @@ class LectureCommentNotificationTests(TestCase):
         self.assertFalse(Comment.objects.filter(content="다른 강의 직접 대상").exists())
 
     @patch("config.apps.notification.fcm.send_push_to_user")
-    def test_reply_to_self_does_not_create_notification(self, send_push):
+    def test_reply_to_self_skips_self_but_notifies_thread_author(self, send_push):
         parent = Comment.objects.create(
             lecture=self.lecture,
             author=self.commenter,
@@ -546,8 +556,11 @@ class LectureCommentNotificationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertFalse(Notification.objects.exists())
-        send_push.assert_not_called()
+        notification = Notification.objects.get()
+        self.assertEqual(notification.user_id, self.commenter.id)
+        self.assertEqual(notification.role, "student")
+        self.assertEqual(notification.title, "댓글작성자 님의 댓글에 댓글이 달렸어요.")
+        send_push.assert_called_once()
 
     @patch("config.apps.notification.fcm.send_push_to_user")
     def test_self_comment_does_not_create_notification(self, send_push):

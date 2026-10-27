@@ -67,11 +67,6 @@ def notify_lecture_comment(comment):
     parent = comment.parent
     is_reply = parent is not None
     target_comment = (comment.reply_to or parent) if is_reply else None
-    recipient = target_comment.author if is_reply else comment.lecture.instructor.user
-
-    # 자신의 영상 또는 댓글에 직접 작성한 경우에는 알림을 만들지 않는다.
-    if recipient.id == comment.author_id:
-        return
 
     author_name = comment.author.user_name
     data = {
@@ -81,16 +76,31 @@ def notify_lecture_comment(comment):
     if is_reply:
         data["parent_comment_id"] = str(parent.id)
         data["reply_to_comment_id"] = str(target_comment.id)
-        _notify_with_push(
-            user=recipient,
-            ntype="lecture_comment_reply",
-            role=target_comment.author_role,
-            title=f"{recipient.user_name} 님의 댓글에 답글이 달렸어요.",
-            body=f"{author_name}: {comment.content}",
-            data=data,
-        )
+        # 직접 대상과 원댓글 작성자는 스레드의 새 답글을 받아야 한다.
+        # 동일 사용자에게는 직접 대상 역할을 우선해 한 번만 전송한다.
+        notified_user_ids = set()
+        for recipient_comment in (target_comment, parent):
+            recipient = recipient_comment.author
+            if (
+                recipient.id == comment.author_id
+                or recipient.id in notified_user_ids
+            ):
+                continue
+            notified_user_ids.add(recipient.id)
+            _notify_with_push(
+                user=recipient,
+                ntype="lecture_comment_reply",
+                role=recipient_comment.author_role,
+                title=f"{recipient.user_name} 님의 댓글에 댓글이 달렸어요.",
+                body=f"{author_name}: {comment.content}",
+                data=data,
+            )
         return
 
+    recipient = comment.lecture.instructor.user
+    # 자신의 영상에 직접 작성한 경우에는 알림을 만들지 않는다.
+    if recipient.id == comment.author_id:
+        return
     _notify_with_push(
         user=recipient,
         ntype="lecture_comment",
