@@ -1385,7 +1385,6 @@ function CommentRow({
           onClick={() => {
             setMode("reply");
             setText("");
-            onReplyUpdated?.(rootCommentId || c.id);
           }}
         >
           <MessageCircle size={18} aria-hidden="true" />
