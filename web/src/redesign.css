@@ -1435,6 +1435,32 @@ dialog.wide {
   color: var(--muted);
   font-size: 12px;
 }
+.comment-reply-skeleton {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0 22px;
+}
+.comment-reply-skeleton span {
+  display: block;
+  height: 54px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--tint), #f4f5f8, var(--tint));
+  background-size: 200% 100%;
+  animation: comment-reply-shimmer 1.2s ease-in-out infinite;
+}
+.comment-reply-load-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0 22px;
+  color: var(--muted);
+  font-size: 13px;
+}
+@keyframes comment-reply-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
 .inline-form {
   display: flex;
   gap: 8px;

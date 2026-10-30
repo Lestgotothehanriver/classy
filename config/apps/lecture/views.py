@@ -23,6 +23,8 @@ from .serializers import (
     LectureSamplePreviewSerializer,
     LectureStreamSerializer,
     LectureWriteSerializer,
+    CommentReplySerializer,
+    CommentThreadSerializer,
     CommentSerializer,
     CommentWriteSerializer,
     SearchHistorySerializer,
@@ -598,7 +600,10 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     특정 강의의 '댓글(Comment)' 목록을 조회하고 새 댓글을 작성하는 API View입니다.
 
-    GET 요청 시, 특정 강의에 작성된 최상위 부모 댓글 목록만 정렬하여 가져오며, 각 부모 댓글 객체 안에 대댓글(replies) 리스트가 중첩되어 반환됩니다. 차단한 유저의 댓글 및 대댓글은 목록에서 제외됩니다.
+    기본 GET 응답은 구버전 앱 호환성을 위해 부모 댓글과 중첩된 답글을 반환합니다.
+    `lazy_replies=true`이면 부모 댓글과 `reply_count`만 반환하고, `parent_id` 쿼리
+    파라미터로 해당 부모 댓글의 답글만 평면 목록으로 조회할 수 있습니다.
+    차단한 유저의 댓글과 답글은 목록에서 제외됩니다.
     POST 요청 시, 로그인한 사용자의 새 댓글 또는 대댓글 작성을 처리합니다. 대댓글은
     원댓글 묶음(parent)과 실제 답글 대상(reply_to)을 함께 받아 수신자를 결정합니다.
 
@@ -619,30 +624,73 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         if self.request.method == "POST":
             return CommentWriteSerializer
+        if self.request.query_params.get("parent_id") is not None:
+            return CommentReplySerializer
+        if self.request.query_params.get("lazy_replies", "").lower() == "true":
+            return CommentThreadSerializer
         return CommentSerializer
 
     def get_queryset(self):
         lecture_id = self.kwargs["lecture_id"]
-        qs = Comment.objects.filter(lecture_id=lecture_id, parent__isnull=True).select_related("author", "referenced_person", "reply_to")
-        
+        parent_id = self.request.query_params.get("parent_id")
+        use_lazy_replies = self.request.query_params.get(
+            "lazy_replies", ""
+        ).lower() == "true"
+        qs = Comment.objects.filter(lecture_id=lecture_id)
+        reply_count = Count("replies")
+
         if self.request.user.is_authenticated:
             blocked_user_ids = get_blocked_user_ids(self.request.user)
             if blocked_user_ids:
+                qs = qs.exclude(author_id__in=blocked_user_ids)
+                reply_count = Count(
+                    "replies",
+                    filter=~Q(replies__author_id__in=blocked_user_ids),
+                )
+
+        if parent_id is not None:
+            return qs.filter(parent_id=parent_id).select_related(
+                "author",
+                "parent__author",
+                "referenced_person",
+                "reply_to__author",
+            ).order_by("created_at")
+
+        if not use_lazy_replies:
+            parent_qs = qs.filter(parent__isnull=True).select_related(
+                "author", "referenced_person", "reply_to"
+            )
+            if self.request.user.is_authenticated and blocked_user_ids:
                 from django.db.models import Prefetch
-                qs = qs.exclude(author_id__in=blocked_user_ids).prefetch_related(
+
+                return parent_qs.prefetch_related(
                     Prefetch(
                         "replies",
-                        queryset=Comment.objects.exclude(author_id__in=blocked_user_ids)
-                        .select_related("author", "parent__author", "referenced_person", "reply_to__author")
-                        .order_by("created_at")
+                        queryset=Comment.objects.exclude(
+                            author_id__in=blocked_user_ids
+                        )
+                        .select_related(
+                            "author",
+                            "parent__author",
+                            "referenced_person",
+                            "reply_to__author",
+                        )
+                        .order_by("created_at"),
                     )
-                )
-            else:
-                qs = qs.prefetch_related("replies", "replies__author", "replies__parent__author", "replies__referenced_person", "replies__reply_to__author")
-        else:
-            qs = qs.prefetch_related("replies", "replies__author", "replies__parent__author", "replies__referenced_person", "replies__reply_to__author")
-            
-        return qs.order_by("-created_at")
+                ).order_by("-created_at")
+            return parent_qs.prefetch_related(
+                "replies",
+                "replies__author",
+                "replies__parent__author",
+                "replies__referenced_person",
+                "replies__reply_to__author",
+            ).order_by("-created_at")
+
+        return qs.filter(parent__isnull=True).select_related(
+            "author",
+            "referenced_person",
+            "reply_to",
+        ).annotate(reply_count=reply_count).order_by("-created_at")
 
     def perform_create(self, serializer):
         # 소프트 삭제된 강의에는 댓글 작성 불가 (is_delete=False).

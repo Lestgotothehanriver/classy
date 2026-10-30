@@ -343,6 +343,20 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
         return None
 
 
+class CommentThreadSerializer(CommentReplySerializer):
+    """부모 댓글 목록용 — 답글 본문 대신 [reply_count]만 반환한다."""
+
+    reply_count = serializers.IntegerField(read_only=True)
+
+    class Meta(CommentReplySerializer.Meta):
+        fields = [
+            "id", "lecture", "author", "author_name", "author_profile_image",
+            "author_role", "is_mine", "content", "is_blocked", "is_edited",
+            "parent", "reply_to", "referenced_person", "referenced_person_name",
+            "created_at", "reply_count",
+        ]
+
+
 class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
     """댓글 목록 — 최상위 댓글 + replies 중첩."""
     replies = CommentReplySerializer(many=True, read_only=True)

@@ -1162,26 +1162,79 @@ function TeacherProfile({ id, teacher, item }) {
 function Comments({ id, initialExpandedCommentId }) {
   const [commentPage, setCommentPage] = useState(1);
   const [expandedCommentIds, setExpandedCommentIds] = useState(() => new Set());
-  const resource = useLoad(`/lectures/${id}/comments/?page=${commentPage}`);
+  const [replyThreads, setReplyThreads] = useState({});
+  const [loadingReplyIds, setLoadingReplyIds] = useState(() => new Set());
+  const [replyErrors, setReplyErrors] = useState({});
+  const resource = useLoad(
+    `/lectures/${id}/comments/?page=${commentPage}&lazy_replies=true`,
+  );
   const { notify, user } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
+
+  async function loadReplies(commentId, { force = false } = {}) {
+    const normalizedCommentId = commentId.toString();
+    if (
+      !force &&
+      Object.prototype.hasOwnProperty.call(replyThreads, normalizedCommentId)
+    ) {
+      return;
+    }
+    if (loadingReplyIds.has(normalizedCommentId)) return;
+
+    setLoadingReplyIds((current) => new Set([...current, normalizedCommentId]));
+    setReplyErrors((current) => {
+      const next = { ...current };
+      delete next[normalizedCommentId];
+      return next;
+    });
+    try {
+      const data = await api(
+        `/lectures/${id}/comments/?lazy_replies=true&parent_id=${encodeURIComponent(commentId)}`,
+      );
+      setReplyThreads((current) => ({
+        ...current,
+        [normalizedCommentId]: list(data),
+      }));
+    } catch (e) {
+      setReplyErrors((current) => ({
+        ...current,
+        [normalizedCommentId]: e.message,
+      }));
+    } finally {
+      setLoadingReplyIds((current) => {
+        const next = new Set(current);
+        next.delete(normalizedCommentId);
+        return next;
+      });
+    }
+  }
+
   useEffect(() => {
     if (!initialExpandedCommentId) return;
     const commentId = initialExpandedCommentId.toString();
     setExpandedCommentIds((current) => new Set([...current, commentId]));
-  }, [initialExpandedCommentId]);
+    const parentComment = list(resource.data).find(
+      (comment) => comment.id.toString() === commentId,
+    );
+    if (parentComment) loadReplies(parentComment.id);
+  }, [initialExpandedCommentId, resource.data]);
+
   const toggleReplies = (commentId) => {
     const normalizedCommentId = commentId.toString();
+    const isOpening = !expandedCommentIds.has(normalizedCommentId);
     setExpandedCommentIds((current) => {
       const next = new Set(current);
       if (next.has(normalizedCommentId)) next.delete(normalizedCommentId);
       else next.add(normalizedCommentId);
       return next;
     });
+    if (isOpening) loadReplies(commentId);
   };
-  const revealReplies = (commentId) => {
+  const refreshReplies = (commentId) => {
     const normalizedCommentId = commentId.toString();
     setExpandedCommentIds((current) => new Set([...current, normalizedCommentId]));
+    loadReplies(commentId, { force: true });
+    resource.reload();
   };
   async function submit(e) {
     e.preventDefault();
@@ -1214,8 +1267,12 @@ function Comments({ id, initialExpandedCommentId }) {
             reload={resource.reload}
             rootCommentId={c.id}
             repliesExpanded={expandedCommentIds.has(c.id.toString())}
+            replies={replyThreads[c.id.toString()] || c.replies || []}
+            repliesLoading={loadingReplyIds.has(c.id.toString())}
+            repliesError={replyErrors[c.id.toString()]}
             onToggleReplies={() => toggleReplies(c.id)}
-            onReplyCreated={revealReplies}
+            onRetryReplies={() => loadReplies(c.id, { force: true })}
+            onReplyUpdated={refreshReplies}
           />
         ))}
       </State>
@@ -1247,8 +1304,12 @@ function CommentRow({
   reply = false,
   rootCommentId,
   repliesExpanded = false,
+  replies = [],
+  repliesLoading = false,
+  repliesError,
   onToggleReplies,
-  onReplyCreated,
+  onRetryReplies,
+  onReplyUpdated,
 }) {
   const { notify, user } = useContext(Ctx),
     [mode, setMode] = useState(""),
@@ -1275,8 +1336,11 @@ function CommentRow({
         },
       );
       setMode("");
-      if (mode === "reply") onReplyCreated?.(rootCommentId || c.id);
-      reload();
+      if (mode === "reply" || reply) {
+        onReplyUpdated?.(rootCommentId || c.id);
+      } else {
+        reload();
+      }
     } catch (e) {
       notify(e.message);
     } finally {
@@ -1298,14 +1362,14 @@ function CommentRow({
         {c.content}
       </p>
       <div className="comment-thread-controls">
-        {!reply && c.replies?.length > 0 && (
+        {!reply && Number(c.reply_count ?? c.replies?.length ?? 0) > 0 && (
           <button
             type="button"
             className="text-button"
             aria-expanded={repliesExpanded}
             onClick={onToggleReplies}
           >
-            <span>답글 {c.replies.length}개</span>
+            <span>답글 {c.reply_count ?? c.replies?.length ?? 0}개</span>
             <ChevronDown
               size={14}
               aria-hidden="true"
@@ -1321,7 +1385,7 @@ function CommentRow({
           onClick={() => {
             setMode("reply");
             setText("");
-            onReplyCreated?.(rootCommentId || c.id);
+            onReplyUpdated?.(rootCommentId || c.id);
           }}
         >
           <MessageCircle size={18} aria-hidden="true" />
@@ -1349,7 +1413,8 @@ function CommentRow({
                   await api(`/lectures/comments/${c.id}/`, {
                     method: "DELETE",
                   });
-                  reload();
+                  if (reply) onReplyUpdated?.(rootCommentId || c.id);
+                  else reload();
                 } catch (e) {
                   notify(e.message);
                 } finally {
@@ -1389,8 +1454,17 @@ function CommentRow({
         </>
       )}
       {!c.is_mine && <ReportForm source="comment" id={c.id} />}{" "}
-      {!reply && repliesExpanded &&
-        c.replies?.map((r) => (
+      {!reply && repliesExpanded && repliesLoading && <ReplyThreadSkeleton />}
+      {!reply && repliesExpanded && repliesError && (
+        <div className="comment-reply-load-error" role="alert">
+          <span>답글을 불러오지 못했어요.</span>
+          <button type="button" className="text-button" onClick={onRetryReplies}>
+            다시 시도
+          </button>
+        </div>
+      )}
+      {!reply && repliesExpanded && !repliesLoading && !repliesError &&
+        replies.map((r) => (
           <CommentRow
             key={r.id}
             comment={r}
@@ -1398,10 +1472,19 @@ function CommentRow({
             reload={reload}
             reply
             rootCommentId={rootCommentId || c.id}
-            onReplyCreated={onReplyCreated}
+            onReplyUpdated={onReplyUpdated}
           />
         ))}
     </article>
+  );
+}
+
+function ReplyThreadSkeleton() {
+  return (
+    <div className="comment-reply-skeleton" role="status" aria-label="답글 불러오는 중">
+      <span />
+      <span />
+    </div>
   );
 }
 function Notifications() {
