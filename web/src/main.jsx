@@ -2019,8 +2019,25 @@ function Chat({ initialRoomId }) {
     </>
   );
 }
-const isPublicLanding = location.pathname === "/" && !location.hash;
+const legacyHash = location.hash.slice(1);
+const legacyPage = legacyHash.split("/")[0];
+const isLegacyAppRoute =
+  location.pathname === "/" && Boolean(legacyHash) && pageNames[legacyPage];
 
-createRoot(document.getElementById("root")).render(
-  isPublicLanding ? <LandingPage /> : <App />,
-);
+if (isLegacyAppRoute) {
+  const destination =
+    legacyPage === "home" ? "/home" : `/home#${legacyHash}`;
+  location.replace(destination);
+} else {
+  const root = document.getElementById("root");
+  const isPublicLanding = location.pathname === "/" && !location.hash;
+
+  if (isPublicLanding) {
+    // The landing HTML is prerendered for crawlers and no-JavaScript visitors.
+    // Mount it as a client view so React's automatic image resource hints do
+    // not produce a hydration mismatch with Vite's static document template.
+    createRoot(root).render(<LandingPage />);
+  } else {
+    createRoot(root).render(<App />);
+  }
+}

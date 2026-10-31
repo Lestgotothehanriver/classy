@@ -7,6 +7,11 @@ const page=await browser.newPage({viewport:{width:1440,height:1050}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
 await page.goto('http://127.0.0.1:4173');
+await page.getByRole('heading',{name:/클래씨에서는 강의와 과외를/}).waitFor();
+await page.getByRole('button',{name:'QR 코드로 클래씨 앱 다운로드',exact:true}).click();
+await page.getByRole('dialog').getByRole('heading',{name:'클래씨 앱 다운로드',exact:true}).waitFor();
+await page.keyboard.press('Escape');
+await page.goto('http://127.0.0.1:4173/home');
 await page.getByRole('heading',{name:'나에게 필요한 배움, CLASSY'}).waitFor();
 await page.evaluate(()=>document.fonts.ready);
 await page.screenshot({path:'test-results/redesign-home-desktop.png',fullPage:true});
@@ -18,12 +23,12 @@ await page.route('**/api/accounts/login/',r=>r.fulfill({status:400,contentType:'
 await page.getByRole('dialog').getByRole('button',{name:'로그인',exact:true}).click();
 await page.getByRole('alert').filter({hasText:'이메일 또는 비밀번호'}).waitFor();
 await page.keyboard.press('Escape');
-await page.goto('http://127.0.0.1:4173/#posts');
+await page.goto('http://127.0.0.1:4173/home#posts');
 await page.getByRole('heading',{name:'과외 찾기',exact:true}).waitFor();
 await page.screenshot({path:'test-results/redesign-posts-guest.png',fullPage:true});
 for(const width of [390,768,1024]){
   await page.setViewportSize({width,height:844});
-  await page.goto('http://127.0.0.1:4173/#home');
+  await page.goto('http://127.0.0.1:4173/home#home');
   await page.getByRole('heading',{name:'나에게 필요한 배움, CLASSY'}).waitFor();
   await page.evaluate(()=>document.fonts.ready);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow at '+width);

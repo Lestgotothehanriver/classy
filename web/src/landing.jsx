@@ -128,7 +128,15 @@ export function LandingPage() {
               </h2>
               <p>시범 과외보다 빠르게 온라인으로 선생님의 수업 스타일을 강의로 먼저 확인해요.</p>
             </div>
-            <img className="landing-feature-art" src="/landing/lecture-preview-illustration.png" alt="강의 미리보기를 나타내는 영상 플레이어 일러스트" />
+            <img
+              className="landing-feature-art"
+              src="/landing/lecture-preview-illustration.webp"
+              alt="강의 미리보기를 나타내는 영상 플레이어 일러스트"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </section>
 
@@ -146,7 +154,15 @@ export function LandingPage() {
               </h2>
               <p>직접 만든 강의를 올리고, 원하는 가격으로 강의를 판매할 수 있어요.</p>
             </div>
-            <img className="landing-feature-art" src="/landing/lecture-upload-illustration.png" alt="강의 업로드를 나타내는 클라우드 일러스트" />
+            <img
+              className="landing-feature-art"
+              src="/landing/lecture-upload-illustration.webp"
+              alt="강의 업로드를 나타내는 클라우드 일러스트"
+              width="1312"
+              height="1199"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </section>
 
@@ -174,7 +190,15 @@ export function LandingPage() {
                 </article>
               </div>
             </div>
-            <img className="landing-feature-art" src="/landing/fee-illustration.png" alt="낮은 수수료를 나타내는 저울과 화살표 일러스트" />
+            <img
+              className="landing-feature-art"
+              src="/landing/fee-illustration.webp"
+              alt="낮은 수수료를 나타내는 저울과 화살표 일러스트"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </section>
 
@@ -192,7 +216,15 @@ export function LandingPage() {
               </h2>
               <p>선생님과 학생이 직접 대화하며 나에게 맞는 수업을 찾아요.</p>
             </div>
-            <img className="landing-feature-art" src="/landing/consultation-illustration.png" alt="무료 상담을 나타내는 말풍선 일러스트" />
+            <img
+              className="landing-feature-art"
+              src="/landing/consultation-illustration.webp"
+              alt="무료 상담을 나타내는 말풍선 일러스트"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </section>
 
@@ -210,7 +242,15 @@ export function LandingPage() {
               </h2>
               <p>학력 인증 정보를 확인하고 안심하고 수업을 시작해요.</p>
             </div>
-            <img className="landing-feature-art" src="/landing/verification-illustration.png" alt="학력 인증을 나타내는 방패와 인증서 일러스트" />
+            <img
+              className="landing-feature-art"
+              src="/landing/verification-illustration.webp"
+              alt="학력 인증을 나타내는 방패와 인증서 일러스트"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </section>
       </main>
