@@ -10,7 +10,7 @@ const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try{
-  await page.goto(origin);
+  await page.goto(origin + "/home");
   await page.getByRole('heading',{name:'나에게 필요한 배움, CLASSY'}).waitFor();
   await page.evaluate(()=>document.fonts.ready);
   assert.match(await page.locator('body').evaluate(e=>getComputedStyle(e).fontFamily),/Pretendard/);

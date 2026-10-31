@@ -64,6 +64,7 @@ import {
   pageNames,
 } from "./design";
 import { getMobileStoreUrl } from "./app_download";
+import { LandingPage } from "./landing";
 
 const chatNotificationTypes = new Set([
   "message",
@@ -114,7 +115,7 @@ function App() {
       return;
     }
 
-    history.replaceState(null, "", "/#home");
+    location.replace("/home");
   }, []);
   function logoutLocal() {
     for (const key of ["classy_token", "classy_roles", "classy_role"])
@@ -2018,4 +2019,8 @@ function Chat({ initialRoomId }) {
     </>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+const isPublicLanding = location.pathname === "/" && !location.hash;
+
+createRoot(document.getElementById("root")).render(
+  isPublicLanding ? <LandingPage /> : <App />,
+);
