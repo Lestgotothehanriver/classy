@@ -8,6 +8,7 @@ const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
 await page.goto('http://127.0.0.1:4173');
 await page.getByRole('heading',{name:/클래씨에서는 강의와 과외를/}).waitFor();
+assert.equal(await page.getByRole('link',{name:'CLASSY 홈으로 이동',exact:true}).getAttribute('href'),'/home');
 await page.getByRole('button',{name:'QR 코드로 클래씨 앱 다운로드',exact:true}).click();
 await page.getByRole('dialog').getByRole('heading',{name:'클래씨 앱 다운로드',exact:true}).waitFor();
 await page.keyboard.press('Escape');
@@ -28,6 +29,19 @@ await page.getByRole('heading',{name:'과외 찾기',exact:true}).waitFor();
 await page.screenshot({path:'test-results/redesign-posts-guest.png',fullPage:true});
 for(const width of [390,768,1024]){
   await page.setViewportSize({width,height:844});
+  if(width===390){
+    await page.goto('http://127.0.0.1:4173');
+    await page.getByRole('heading',{name:/클래씨에서는 강의와 과외를/}).waitFor();
+    assert.match(await page.locator('#landing-title').innerText(),/과외를\s+동시에/);
+    assert.equal(await page.locator('.landing-hero-symbol').evaluate(el=>getComputedStyle(el).display),'grid');
+    assert.equal(await page.locator('.landing-hero-symbol').evaluate(el=>el.getBoundingClientRect().height>0),true);
+    for(const badge of await page.locator('.landing-downloads > a img').all()){
+      const ratio=await badge.evaluate(el=>{const box=el.getBoundingClientRect();return box.width/box.height});
+      assert.ok(Math.abs(ratio-(720/208))<0.03,'store badge keeps its original aspect ratio');
+    }
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'landing overflow at 390');
+    await page.screenshot({path:'test-results/landing-mobile.png',fullPage:true});
+  }
   await page.goto('http://127.0.0.1:4173/home#home');
   await page.getByRole('heading',{name:'나에게 필요한 배움, CLASSY'}).waitFor();
   await page.evaluate(()=>document.fonts.ready);

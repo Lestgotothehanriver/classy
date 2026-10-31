@@ -314,11 +314,16 @@
 
 @media (max-width: 480px) {
   .landing-hero {
-    min-height: 620px;
+    min-height: 0;
+    padding: 42px 0 44px;
   }
 
   .landing-hero-copy h1 br {
     display: none;
+  }
+
+  .landing-hero-copy h1 {
+    word-break: keep-all;
   }
 
   .landing-web-cta {
@@ -327,16 +332,40 @@
   }
 
   .landing-downloads {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    align-items: center;
     gap: 7px;
   }
 
-  .landing-downloads > a,
-  .landing-downloads > a img {
-    height: 37px;
+  .landing-downloads > a:not(.landing-qr),
+  .landing-downloads > a:not(.landing-qr) img {
+    height: 38px;
+    flex: none;
   }
 
   .landing-hero-symbol {
-    display: none;
+    order: -1;
+    width: 100%;
+    height: 116px;
+    justify-self: center;
+    margin: 0;
+  }
+
+  .landing-hero-symbol img {
+    width: 108px;
+    height: 108px;
+  }
+
+  .landing-downloads .app-download-qr-button {
+    grid-column: 1 / -1;
+    min-height: 38px;
+    justify-self: start;
+    font-size: 13px;
+  }
+
+  .landing-hero-inner {
+    gap: 28px;
   }
 
   .landing-section {
@@ -364,5 +393,12 @@
 
   .landing-fee-cards span {
     font-size: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .landing-downloads > a:not(.landing-qr),
+  .landing-downloads > a:not(.landing-qr) img {
+    height: 33px;
   }
 }

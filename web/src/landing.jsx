@@ -55,7 +55,7 @@ export function LandingPage() {
       </a>
       <header className="site-header landing-header">
         <div className="header-inner">
-          <a href="/" className="brand" aria-label="CLASSY 랜딩 첫 화면">
+          <a href="/home" className="brand" aria-label="CLASSY 홈으로 이동">
             <img src="/app-icons/logo.svg" alt="" />
             <span>CLASSY</span>
           </a>
@@ -73,7 +73,7 @@ export function LandingPage() {
               <h1 id="landing-title">
                 클래씨에서는 강의와 과외를
                 <br />
-                동시에 만나 볼 수 있어요.
+                {" "}동시에 만나 볼 수 있어요.
               </h1>
               <p>강의를 듣고, 마음에 드는 선생님과 상담해 보세요.</p>
               <a className="landing-web-cta" href="/home">
