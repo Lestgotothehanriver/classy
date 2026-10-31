@@ -1001,9 +1001,12 @@ class UserDetailAPIView(APIView):
     """
     URL: /accounts/user/<pk>/
 
-    지정한 특정 사용자의 공개 프로필 정보를 조회하는 API View입니다.
+    지정한 특정 사용자의 최소 공개 프로필을 조회하는 API View입니다.
 
-    GET 요청 시, 지정한 pk에 해당하는 유저의 닉네임, 역할군(student 또는 instructor), 활동 지역, 성별, 생년월일, 프로필 이미지 URL, 관심/지도 과목 리스트, 그리고 강사일 경우 서류 심사 인증 상태(certified, pending, rejected) 정보를 한 번에 결합하여 제공합니다.
+    GET 요청 시 인증된 사용자에게 지정한 pk의 닉네임, 역할군,
+    프로필 이미지 URL, 관심/지도 과목만 제공합니다. 이메일, 실명,
+    생년월일, 성별, 지역, 심사 상태 등 개인정보와 내부 상태는
+    현재 사용자 프로필 API에서만 조회할 수 있습니다.
 
     Path Parameters:
         pk (int): 정보를 조회할 대상 사용자(User) ID.
@@ -1011,47 +1014,24 @@ class UserDetailAPIView(APIView):
     Returns:
         Response: {
             "id": int,
-            "email": str,
             "nickname": str,
-            "first_name": str,
-            "last_name": str,
             "role": "student" | "instructor",
-            "region": str,
-            "province": str,
-            "district": str,
-            "sex": str,
-            "field": str,
-            "birth_date": str,
             "profile_image": str,
-            "verification_status": "certified" | "pending" | "resubmitRequired" | "rejected" | None,
             "subjects": List[str]
         }
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
         
         is_instructor = hasattr(user, 'instructor_profile')
         role = 'instructor' if is_instructor else 'student'
-        region_parts = user.region.split(' ') if user.region else ['', '']
-
-        _STATUS_MAP = {
-            'PENDING': 'pending',
-            'VERIFIED': 'certified',
-            'RESUBMIT_REQUIRED': 'resubmitRequired',
-            'SUSPENDED': 'rejected',
-        }
-        verification_status = None
-        subjects = []
 
         from config.apps.tutoring.constant import STUDENT_SUBJECT_CHOICES
         _choices_map = dict(STUDENT_SUBJECT_CHOICES)
 
         if is_instructor:
-            pending_info = getattr(user.instructor_profile, 'pending_info', None)
-            raw_status = pending_info.status if pending_info else 'PENDING'
-            verification_status = _STATUS_MAP.get(raw_status, 'pending')
             subjects = [
                 _choices_map.get(n, str(n))
                 for n in user.instructor_profile.subjects.values_list('number', flat=True)
@@ -1064,19 +1044,9 @@ class UserDetailAPIView(APIView):
 
         return Response({
             "id": user.id,
-            "email": user.email,
             "nickname": user.user_name,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
             "role": role,
-            "region": user.region,
-            "province": region_parts[0] if len(region_parts) > 0 else "",
-            "district": region_parts[1] if len(region_parts) > 1 else "",
-            "sex": user.sex,
-            "field": user.field,
-            "birth_date": str(user.birth_date) if user.birth_date else None,
             "profile_image": request.build_absolute_uri(user.profile_image.url) if user.profile_image else None,
-            "verification_status": verification_status,
             "subjects": subjects,
         })
 class SubjectListAPIView(APIView):
@@ -1139,8 +1109,7 @@ class SendAuthSMSAPIView(APIView):
 
     Returns:
         Response: {
-            "message": "인증번호가 발송되었습니다.",
-            "code": str
+            "message": "인증번호가 발송되었습니다."
         }
     """
     permission_classes = []
@@ -1165,8 +1134,7 @@ class SendAuthSMSAPIView(APIView):
         )
         
         return Response({
-            "message": "인증번호가 발송되었습니다.",
-            "code": auth_code
+            "message": "인증번호가 발송되었습니다."
         }, status=status.HTTP_200_OK)
 
 
