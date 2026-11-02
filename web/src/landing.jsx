@@ -10,9 +10,8 @@ import "./landing.css";
 
 /** Landing-page navigation targets in visual order. */
 const landingSections = [
-  { id: "class-preview", label: "강의 미리보기" },
-  { id: "lecture-upload", label: "강의 업로드" },
-  { id: "fees", label: "수수료" },
+  { id: "class-preview", label: "강의와 과외" },
+  { id: "lecture-upload", label: "수업 미리보기" },
   { id: "consultation", label: "무료 상담" },
   { id: "verification", label: "학력 인증" },
 ];
@@ -122,11 +121,9 @@ export function LandingPage() {
           <div className="landing-container landing-section-inner">
             <div className="landing-section-copy">
               <h2 id="class-preview-title">
-                강의를 먼저 시청하고,
-                <br />
-                선생님을 구해보세요.
+                강의와 과외를 한 곳에서
               </h2>
-              <p>시범 과외보다 빠르게 온라인으로 선생님의 수업 스타일을 강의로 먼저 확인해요.</p>
+              <p>강의를 보고, 마음에 드는 선생님에게 과외를 문의해보세요.</p>
             </div>
             <img
               className="landing-feature-art"
@@ -148,11 +145,9 @@ export function LandingPage() {
           <div className="landing-container landing-section-inner">
             <div className="landing-section-copy">
               <h2 id="lecture-upload-title">
-                나만의 강의로 선생님의
-                <br />
-                실력을 보여주세요.
+                이제 검증 없는 과외 선택은 그만
               </h2>
-              <p>직접 만든 강의를 올리고, 원하는 가격으로 강의를 판매할 수 있어요.</p>
+              <p>온라인으로 선생님의 수업을 먼저 확인할 수 있어요.</p>
             </div>
             <img
               className="landing-feature-art"
@@ -167,54 +162,16 @@ export function LandingPage() {
         </section>
 
         <section
-          id="fees"
-          className="landing-section landing-section-fee"
-          aria-labelledby="fees-title"
-        >
-          <div className="landing-container landing-section-inner">
-            <div className="landing-section-copy">
-              <h2 id="fees-title">
-                수수료 부담은 Down
-                <br />
-                수업 집중력은 Up!
-              </h2>
-              <p>클래씨에서는 과외 수수료로 인한 선생님의 부담을 낮추려 노력하고 있어요.</p>
-              <div className="landing-fee-cards" aria-label="과외 성사 수수료">
-                <article>
-                  <span>단기 수업 (1개월 미만)</span>
-                  <strong>7%</strong>
-                </article>
-                <article>
-                  <span>정규 수업 (1개월 이상)</span>
-                  <strong>15%</strong>
-                </article>
-              </div>
-            </div>
-            <img
-              className="landing-feature-art"
-              src="/landing/fee-illustration.webp"
-              alt="낮은 수수료를 나타내는 저울과 화살표 일러스트"
-              width="1536"
-              height="1024"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        </section>
-
-        <section
           id="consultation"
-          className="landing-section"
+          className="landing-section landing-section-tint"
           aria-labelledby="consultation-title"
         >
           <div className="landing-container landing-section-inner">
             <div className="landing-section-copy">
               <h2 id="consultation-title">
-                궁금한 건 편하게,
-                <br />
-                상담은 무료로 할 수 있어요.
+                비용 걱정 없는 무제한 상담
               </h2>
-              <p>선생님과 학생이 직접 대화하며 나에게 맞는 수업을 찾아요.</p>
+              <p>마음에 드는 학생/선생님에게 무제한으로 문의할 수 있어요.</p>
             </div>
             <img
               className="landing-feature-art"
@@ -230,17 +187,15 @@ export function LandingPage() {
 
         <section
           id="verification"
-          className="landing-section landing-section-tint"
+          className="landing-section"
           aria-labelledby="verification-title"
         >
           <div className="landing-container landing-section-inner">
             <div className="landing-section-copy">
               <h2 id="verification-title">
-                확인된 학력,
-                <br />
-                더 믿음직한 선택.
+                안전한 과외를 위한 노력
               </h2>
-              <p>학력 인증 정보를 확인하고 안심하고 수업을 시작해요.</p>
+              <p>클래씨는 신원 및 학력 인증을 통해 신뢰할 수 있는 과외 서비스를 제공해요.</p>
             </div>
             <img
               className="landing-feature-art"

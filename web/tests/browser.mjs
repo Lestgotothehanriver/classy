@@ -33,6 +33,8 @@ for(const width of [390,768,1024]){
     await page.goto('http://127.0.0.1:4173');
     await page.getByRole('heading',{name:/클래씨에서는 강의와 과외를/}).waitFor();
     assert.match(await page.locator('#landing-title').innerText(),/과외를\s+동시에/);
+    assert.equal(await page.locator('.landing-page-indicator a').count(),5,'indicator matches the five visible landing sections');
+    assert.equal(await page.locator('.landing-page-indicator a[href="#fees"]').count(),0,'indicator does not link to the removed fee section');
     assert.equal(await page.locator('.landing-hero-symbol').evaluate(el=>getComputedStyle(el).display),'grid');
     assert.equal(await page.locator('.landing-hero-symbol').evaluate(el=>el.getBoundingClientRect().height>0),true);
     for(const badge of await page.locator('.landing-downloads > a img').all()){
