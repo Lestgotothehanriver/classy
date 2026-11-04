@@ -80,6 +80,7 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
         # 과외 프로필(InstructorInfo)을 등록 완료한 강사만 노출한다.
         qs = Instructor.objects.filter(
             tutoring_profile__isnull=False,
+            is_tutoring=True,
             is_official_creator=False,
         ).select_related("tutoring_profile")
 
