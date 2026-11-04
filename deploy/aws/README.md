@@ -67,6 +67,23 @@ sudo systemctl restart classy
 curl -fsS https://api.classystudy.com/healthz/
 ```
 
+## Emergency: fail stuck video transcodes
+
+Lecture rows are created only after H.264 normalization and sample-preview
+generation succeed. If retries leave normalization `ffmpeg` processes consuming
+the host CPU, inspect the intended targets first and then explicitly fail only
+those in-flight requests:
+
+```sh
+cd /home/ubuntu/classy-aws
+bash deploy/aws/fail-stuck-video-transcodes.sh
+bash deploy/aws/fail-stuck-video-transcodes.sh --confirm
+```
+
+The first command is a dry run. The confirmation command sends `SIGTERM`, then
+uses `SIGKILL` only if a matching process remains after 10 seconds. It does not
+touch completed lectures, S3 objects, or unrelated `ffmpeg` commands.
+
 ## Scheduled marketing campaigns
 
 Install the reviewed `classy-marketing-campaigns.service` and
