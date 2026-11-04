@@ -43,6 +43,8 @@ class StudentMainAPIView(APIView):
 
         queryset = Instructor.objects.filter(
             tutoring_profile__isnull=False,
+            is_tutoring=True,
+            is_official_creator=False,
         ).select_related(
             "user",
             "pending_info",
