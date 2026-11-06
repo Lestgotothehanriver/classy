@@ -170,6 +170,37 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(response.json()["payment"]["amount"], 21000)
         self.assertEqual(CommissionInvoice.objects.get().commission_rate_bps, 700)
 
+    def test_requoting_after_class_type_change_updates_standard_rate(self):
+        quote_payload = self.instructor_payload(
+            fee=300000,
+            class_type="SHORT_TERM",
+        )
+        quote_payload.pop("feeConfirmationFiles")
+        quote_payload["preparePayment"] = "true"
+        first = self.instructor_client.put(self.url, quote_payload, format="multipart")
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.json()["payment"]["commissionRateBps"], 700)
+        self.assertEqual(first.json()["payment"]["amount"], 21000)
+
+        revised_payload = self.instructor_payload(
+            fee=300000,
+            class_type="REGULAR",
+        )
+        revised_payload.pop("feeConfirmationFiles")
+        revised_payload["preparePayment"] = "true"
+        revised = self.instructor_client.put(
+            self.url,
+            revised_payload,
+            format="multipart",
+        )
+        self.assertEqual(revised.status_code, 200, revised.data)
+        self.assertEqual(revised.json()["payment"]["commissionRateBps"], 1500)
+        self.assertEqual(revised.json()["payment"]["amount"], 45000)
+
+        invoice = CommissionInvoice.objects.get()
+        self.assertEqual(invoice.commission_rate_bps, 1500)
+        self.assertEqual(invoice.commission_amount, 45000)
+
     def test_prepare_payment_snapshots_promotion_before_proof_upload(self):
         """증빙 화면 진입 전 수수료 확정값을 만들고 최종 등록에도 유지한다."""
         now = timezone.now()
@@ -226,6 +257,43 @@ class TutoringRegistrationFlowTest(APITestCase):
         invoice = CommissionInvoice.objects.get()
         self.assertEqual(benefit.used_tutoring_registration_count, 1)
         self.assertEqual(invoice.promotion_usage_number, 1)
+
+    def test_requoting_with_promotion_preserves_snapshot_rate(self):
+        now = timezone.now()
+        campaign = PromotionCampaign.objects.create(
+            name="수수료율 스냅샷 프로모션",
+            signup_starts_at=now - timedelta(days=1),
+            signup_ends_at=now + timedelta(days=1),
+        )
+        InstructorPromotionBenefit.objects.create(
+            campaign=campaign,
+            instructor=self.instructor,
+            benefit_starts_at=now - timedelta(days=1),
+            benefit_ends_at=now + timedelta(days=1),
+        )
+
+        first_payload = self.instructor_payload(
+            fee=300000,
+            class_type="SHORT_TERM",
+        )
+        first_payload.pop("feeConfirmationFiles")
+        first_payload["preparePayment"] = "true"
+        self.instructor_client.put(self.url, first_payload, format="multipart")
+
+        revised_payload = self.instructor_payload(
+            fee=400000,
+            class_type="REGULAR",
+        )
+        revised_payload.pop("feeConfirmationFiles")
+        revised_payload["preparePayment"] = "true"
+        response = self.instructor_client.put(
+            self.url,
+            revised_payload,
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.json()["payment"]["commissionRateBps"], 50)
+        self.assertEqual(response.json()["payment"]["amount"], 2000)
 
     def test_mismatch_is_reported_without_exposing_counterparty_values(self):
         instructor_response = self.instructor_client.put(
@@ -351,7 +419,7 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(CommissionInvoice.objects.get().status, "PAID")
         self.assertEqual(registration.contract_status, "ACTIVE")
 
-    def test_paid_mismatch_activates_after_corrected_submission(self):
+    def test_rejected_mismatch_requires_both_parties_to_resubmit(self):
         self.instructor_client.put(
             self.url,
             self.instructor_payload(fee=400000),
@@ -363,7 +431,7 @@ class TutoringRegistrationFlowTest(APITestCase):
             format="json",
         )
         resource = TutoringResource.objects.get()
-        confirm_fee_payment(
+        reject_fee_payment(
             Mock(),
             Mock(),
             TutoringResource.objects.filter(pk=resource.pk),
@@ -380,23 +448,49 @@ class TutoringRegistrationFlowTest(APITestCase):
             2,
         )
 
-        corrected = self.student_client.put(
+        corrected_student = self.student_client.put(
             self.url,
             self.student_payload(fee=400000),
             format="json",
         )
-        self.assertEqual(corrected.status_code, 200)
+        self.assertEqual(corrected_student.status_code, 200)
         self.assertEqual(
-            corrected.json()["registration"]["contractStatus"], "ACTIVE"
+            corrected_student.json()["registration"]["contractStatus"],
+            "COLLECTING",
         )
-        # 값 정정 후 ACTIVE 전환 시 양측에 성사 완료 알림 (불일치 2 + 완료 2).
+
+        corrected_instructor = self.instructor_client.put(
+            self.url,
+            self.instructor_payload(fee=400000),
+            format="multipart",
+        )
+        self.assertEqual(corrected_instructor.status_code, 200)
         self.assertEqual(
-            Notification.objects.filter(
-                type="tutoring_contract_confirmed"
-            ).count(),
-            2,
+            corrected_instructor.json()["registration"]["contractStatus"],
+            "REGISTERED",
         )
-        self.assertEqual(Notification.objects.count(), 4)
+        resource.refresh_from_db()
+        self.assertEqual(resource.fee_payment_status, "AWAITING_CONFIRMATION")
+        self.assertEqual(resource.files.count(), 2)
+
+    def test_final_submission_is_locked_until_an_admin_rejects(self):
+        first = self.student_client.put(
+            self.url,
+            self.student_payload(fee=500000),
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200)
+
+        changed = self.student_client.put(
+            self.url,
+            self.student_payload(fee=400000),
+            format="json",
+        )
+        self.assertEqual(changed.status_code, 400)
+        self.assertEqual(
+            changed.data["detail"],
+            "제출한 성사 등록은 반려된 경우에만 수정할 수 있습니다.",
+        )
 
     def test_reject_fee_payment_notifies_both_parties_once(self):
         self.student_client.put(self.url, self.student_payload(), format="json")

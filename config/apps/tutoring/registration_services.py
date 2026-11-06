@@ -81,6 +81,7 @@ def _submission_comparison(registration):
     submissions = {
         submission.role: submission
         for submission in registration.submissions.all()
+        if submission.is_finalized
     }
     student = submissions.get(TutoringSubmission.Role.STUDENT)
     instructor = submissions.get(TutoringSubmission.Role.INSTRUCTOR)
@@ -256,6 +257,38 @@ def _replace_proof_files(resource, proof_files):
         )
 
 
+def _reopen_rejected_registration(registration):
+    """반려된 성사 등록을 양측 재제출 가능한 상태로 되돌린다."""
+    resource = getattr(registration, "resource", None)
+    if resource is None or resource.fee_payment_status != "FAILED":
+        return
+
+    _replace_proof_files(resource, ())
+    resource.fee_payment_status = "PENDING"
+    resource.save(update_fields=["fee_payment_status"])
+    registration.submissions.update(is_finalized=False)
+    registration.rejection_reason = ""
+    registration.save(update_fields=["rejection_reason", "updated_at"])
+
+    invoice = registration.commission_invoices.select_for_update().filter(
+        invoice_type=CommissionInvoice.InvoiceType.INITIAL
+    ).first()
+    if invoice is not None:
+        invoice.status = CommissionInvoice.Status.READY
+        invoice.paid_at = None
+        invoice.save(update_fields=["status", "paid_at", "updated_at"])
+
+    from config.apps.adminops.models import AdminActionLog
+
+    AdminActionLog.record(
+        admin=None,
+        action="tutoring_registration.reopen_after_rejection",
+        target_type="TutoringRegistration",
+        target_id=registration.pk,
+        metadata={"resource_id": resource.pk, "proof_files_removed": True},
+    )
+
+
 def _sync_resource(
     registration,
     room,
@@ -296,7 +329,7 @@ def _sync_resource(
     invoice = registration.commission_invoices.filter(
         invoice_type=CommissionInvoice.InvoiceType.INITIAL
     ).first()
-    if invoice is None:
+    if invoice is None or invoice.status == CommissionInvoice.Status.READY:
         resource.fee_payment_status = "PENDING"
     elif invoice.status == CommissionInvoice.Status.PAID:
         resource.fee_payment_status = "PAID"
@@ -335,16 +368,24 @@ def save_my_registration(
         if registration.contract_status == TutoringRegistration.ContractStatus.ACTIVE:
             raise RegistrationLockedError("성사 등록 완료 후에는 수정할 수 없습니다.")
 
+        existing_submission = registration.submissions.filter(role=role).first()
+        if existing_submission and existing_submission.is_finalized:
+            resource = getattr(registration, "resource", None)
+            if resource is None or resource.fee_payment_status != "FAILED":
+                raise RegistrationLockedError("제출한 성사 등록은 반려된 경우에만 수정할 수 있습니다.")
+            _reopen_rejected_registration(registration)
+
         registration.subject = validated_data["subject"]
         registration.start_date = validated_data["start_date"]
 
-        TutoringSubmission.objects.update_or_create(
+        current_submission, _ = TutoringSubmission.objects.update_or_create(
             registration=registration,
             role=role,
             defaults={
                 "submitted_by": user,
                 "class_type": validated_data["class_type"],
                 "first_month_fee": validated_data["first_month_fee"],
+                "is_finalized": not prepare_payment,
             },
         )
 
@@ -400,28 +441,48 @@ def save_my_registration(
                 promotion_benefit.tutoring_commission_rate_bps
                 if promotion_benefit is not None
                 else invoice.commission_rate_bps
-                if invoice is not None
-                else commission_rate_bps(instructor_submission.class_type)
+                if invoice is not None and invoice.promotion_benefit_id is not None
+                else commission_rate_bps(current_submission.class_type)
             )
             commission_amount = (
-                instructor_submission.first_month_fee * rate_bps // 10000
+                current_submission.first_month_fee * rate_bps // 10000
             )
             if invoice is None:
                 invoice = CommissionInvoice.objects.create(
                     registration=registration,
                     invoice_type=CommissionInvoice.InvoiceType.INITIAL,
-                    base_amount=instructor_submission.first_month_fee,
+                    base_amount=current_submission.first_month_fee,
                     commission_rate_bps=rate_bps,
                     commission_amount=commission_amount,
-                    status=CommissionInvoice.Status.PAYMENT_PENDING,
+                    status=(
+                        CommissionInvoice.Status.READY
+                        if prepare_payment
+                        else CommissionInvoice.Status.PAYMENT_PENDING
+                    ),
                     paid_at=None,
                     promotion_benefit=promotion_benefit,
                     promotion_usage_number=promotion_usage_number,
                 )
             else:
-                invoice.base_amount = instructor_submission.first_month_fee
+                invoice.base_amount = current_submission.first_month_fee
+                invoice.commission_rate_bps = rate_bps
                 invoice.commission_amount = commission_amount
-                invoice.save(update_fields=["base_amount", "commission_amount", "updated_at"])
+                invoice.status = (
+                    CommissionInvoice.Status.READY
+                    if prepare_payment
+                    else CommissionInvoice.Status.PAYMENT_PENDING
+                )
+                invoice.paid_at = None
+                invoice.save(
+                    update_fields=[
+                        "base_amount",
+                        "commission_rate_bps",
+                        "commission_amount",
+                        "status",
+                        "paid_at",
+                        "updated_at",
+                    ]
+                )
 
         if prepare_payment:
             return {
@@ -521,10 +582,19 @@ def serialize_registration(registration, user, role=None, mismatched_fields=None
         },
         "attributeValidationStatus": registration.attribute_validation_status,
         "contractStatus": registration.contract_status,
-        "studentSubmitted": TutoringSubmission.Role.STUDENT in submissions,
-        "instructorSubmitted": TutoringSubmission.Role.INSTRUCTOR in submissions,
+        "studentSubmitted": bool(
+            submissions.get(TutoringSubmission.Role.STUDENT)
+            and submissions[TutoringSubmission.Role.STUDENT].is_finalized
+        ),
+        "instructorSubmitted": bool(
+            submissions.get(TutoringSubmission.Role.INSTRUCTOR)
+            and submissions[TutoringSubmission.Role.INSTRUCTOR].is_finalized
+        ),
+        "mySubmissionFinalized": mine.is_finalized if mine else False,
         "mySubmission": None,
-        "counterpartySubmission": {"submitted": counterparty is not None},
+        "counterpartySubmission": {
+            "submitted": bool(counterparty and counterparty.is_finalized),
+        },
     }
     if mine:
         data["mySubmission"] = {
@@ -532,6 +602,7 @@ def serialize_registration(registration, user, role=None, mismatched_fields=None
             "classType": mine.class_type,
             "firstMonthFee": mine.first_month_fee,
             "submittedAt": mine.updated_at,
+            "isFinalized": mine.is_finalized,
         }
     if (
         registration.attribute_validation_status

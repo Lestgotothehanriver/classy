@@ -40,6 +40,8 @@ def confirm_fee(registration, *, admin, request_id: str = ""):
         ConflictError: 확인 대기 상태가 아닌 경우.
     """
     resource = _lock_resource(registration)
+    if registration.attribute_validation_status != "MATCHED":
+        raise ConflictError("양측 수업 조건이 일치한 경우에만 입금을 확인할 수 있습니다.")
     if resource.fee_payment_status != "AWAITING_CONFIRMATION":
         raise ConflictError(
             "확인 대기(AWAITING_CONFIRMATION) 상태에서만 확인할 수 있습니다."
@@ -65,20 +67,27 @@ def confirm_fee(registration, *, admin, request_id: str = ""):
 
 @transaction.atomic
 def reject_fee(registration, *, admin, reason: str = "", request_id: str = ""):
-    """수수료 입금을 반려 처리한다(PENDING·AWAITING_CONFIRMATION → FAILED).
+    """수수료 또는 양측 조건 불일치 건을 반려 처리한다.
 
     Raises:
         ValidationError: 연결된 리소스가 없는 경우.
         ConflictError: 입금 전·확인 대기 상태가 아닌 경우.
     """
     resource = _lock_resource(registration)
-    if resource.fee_payment_status not in ("PENDING", "AWAITING_CONFIRMATION"):
+    is_mismatched = registration.attribute_validation_status == "MISMATCHED"
+    can_reject_mismatch = is_mismatched and resource.fee_payment_status in (
+        "PENDING",
+        "AWAITING_CONFIRMATION",
+    )
+    if not can_reject_mismatch and resource.fee_payment_status != "AWAITING_CONFIRMATION":
         raise ConflictError(
-            "입금 전(PENDING)·확인 대기(AWAITING_CONFIRMATION) 상태에서만 반려할 수 있습니다."
+            "조건 불일치 또는 확인 대기(AWAITING_CONFIRMATION) 상태에서만 반려할 수 있습니다."
         )
 
     before = resource.fee_payment_status
     _mark_fee_payment_failed(resource, notify=True)
+    registration.rejection_reason = reason or ""
+    registration.save(update_fields=["rejection_reason", "updated_at"])
 
     AdminActionLog.record(
         admin=admin,
@@ -90,6 +99,7 @@ def reject_fee(registration, *, admin, reason: str = "", request_id: str = ""):
             "before": before,
             "after": resource.fee_payment_status,
             "resource_id": resource.pk,
+            "attribute_validation_status": registration.attribute_validation_status,
         },
         request_id=request_id,
     )

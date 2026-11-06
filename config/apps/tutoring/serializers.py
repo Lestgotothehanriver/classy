@@ -758,6 +758,12 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
                 registration.attribute_validation_status
             )
             ret['contract_status'] = registration.contract_status
+            ret['chat_room_id'] = registration.chat_room_id
+            ret['created_at'] = registration.created_at.isoformat()
+            ret['my_submission_finalized'] = bool(
+                mine and mine.is_finalized
+            )
+            ret['rejection_reason'] = registration.rejection_reason
             if instance.student.user == request.user:
                 ret['files'] = []
         return ret
@@ -833,6 +839,12 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
                     registration.attribute_validation_status
                 )
                 ret['contract_status'] = registration.contract_status
+                ret['chat_room_id'] = registration.chat_room_id
+                ret['created_at'] = registration.created_at.isoformat()
+                ret['my_submission_finalized'] = bool(
+                    mine and mine.is_finalized
+                )
+                ret['rejection_reason'] = registration.rejection_reason
                 if instance.student.user == request.user:
                     ret['files'] = []
                 

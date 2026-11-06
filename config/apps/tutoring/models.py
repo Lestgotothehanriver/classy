@@ -407,6 +407,7 @@ class TutoringRegistration(models.Model):
     confirmed_class_type = models.CharField(max_length=20, blank=True)
     confirmed_first_month_fee = models.PositiveBigIntegerField(null=True, blank=True)
     terms_confirmed_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -433,6 +434,8 @@ class TutoringSubmission(models.Model):
     )
     class_type = models.CharField(max_length=20, choices=ClassType.choices)
     first_month_fee = models.PositiveBigIntegerField()
+    # 견적 생성 단계의 임시 입력과 증빙까지 제출한 최종 확인을 구분한다.
+    is_finalized = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 from django.utils import timezone
 from django.utils.html import format_html
 from config.apps.tutoring.models import (
@@ -131,7 +132,10 @@ from config.apps.tutoring.registration_services import (
 @admin.action(description='수수료 납부 확인 (PAID 처리 + 강사 알림)')
 def confirm_fee_payment(modeladmin, request, queryset):
     updated = 0
-    for resource in queryset.filter(fee_payment_status='AWAITING_CONFIRMATION'):
+    for resource in queryset.filter(
+        fee_payment_status='AWAITING_CONFIRMATION',
+        registration__attribute_validation_status='MATCHED',
+    ):
         confirm_fee_payment_service(resource)
         updated += 1
     modeladmin.message_user(
@@ -143,7 +147,14 @@ def confirm_fee_payment(modeladmin, request, queryset):
 @admin.action(description='수수료 납부 실패 처리 (FAILED + 양측 알림)')
 def reject_fee_payment(modeladmin, request, queryset):
     resources = queryset.filter(
-        fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION']
+        models.Q(
+            fee_payment_status='AWAITING_CONFIRMATION',
+            registration__attribute_validation_status='MATCHED',
+        )
+        | models.Q(
+            registration__attribute_validation_status='MISMATCHED',
+            fee_payment_status__in=['PENDING', 'AWAITING_CONFIRMATION'],
+        )
     )
     updated = 0
     for resource in resources:
