@@ -609,4 +609,19 @@ def serialize_registration(registration, user, role=None, mismatched_fields=None
         == TutoringRegistration.AttributeValidationStatus.MISMATCHED
     ):
         data["mismatchedFields"] = mismatched_fields
+    if role == TutoringSubmission.Role.STUDENT:
+        try:
+            payback_account = registration.student_payback_account
+        except StudentPaybackAccount.DoesNotExist:
+            payback_account = None
+        if payback_account:
+            # 계좌번호는 본인 학생의 재제출 폼에만 복호화해 전달한다.
+            # 상대 강사와 일반 리소스 목록에는 절대 포함하지 않는다.
+            data["myPaybackAccount"] = {
+                "bankCode": payback_account.bank_code,
+                "accountNumber": decrypt_account_number(
+                    payback_account.encrypted_account_number
+                ),
+                "accountHolder": payback_account.account_holder,
+            }
     return data

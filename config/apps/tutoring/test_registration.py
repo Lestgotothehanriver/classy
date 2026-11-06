@@ -139,6 +139,20 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertTrue(lookup.json()["counterpartySubmission"]["submitted"])
         self.assertNotIn("classType", lookup.json()["counterpartySubmission"])
         self.assertNotIn("firstMonthFee", lookup.json()["counterpartySubmission"])
+        self.assertNotIn("myPaybackAccount", lookup.json())
+
+        student_lookup = self.student_client.get(
+            f"/tutoring/resources/chatrooms/{self.room.pk}/"
+        )
+        self.assertEqual(student_lookup.status_code, 200)
+        self.assertEqual(
+            student_lookup.json()["myPaybackAccount"],
+            {
+                "bankCode": "우리은행",
+                "accountNumber": "123456789012",
+                "accountHolder": "홍길동",
+            },
+        )
 
         instructor_response = self.instructor_client.put(
             self.url,

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db import models
+from django.contrib.admin import forms
 from django.utils import timezone
-from django.utils.html import format_html
 from config.apps.tutoring.models import (
     Region,
     TutoringPost,
@@ -70,6 +70,9 @@ class InstructorInfoAdmin(admin.ModelAdmin):
     list_filter   = ("method",)
     search_fields = ("instructor__user__username", "instructor__user__email", "location")
     ordering      = ("-id",)
+    formfield_overrides = {
+        models.CharField: {'widget': forms.Textarea(attrs={'rows': 3, 'cols': 40})},
+    }
 
     def get_instructor(self, obj):
         return obj.instructor.user.username
