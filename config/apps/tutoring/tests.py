@@ -385,11 +385,20 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
         self.assertEqual(likes_map[self.inst2.id], True)
         self.assertEqual(likes_map[self.inst3.id], False)
 
-    def test_unauthenticated_liked_false(self):
-        """비인증 사용자는 401"""
+    def test_unauthenticated_list_is_public_and_not_liked(self):
+        """비로그인 방문자는 목록을 보고 찜 상태를 false로 받는다."""
+        self.inst3.is_tutoring = True
+        self.inst3.save(update_fields=["is_tutoring"])
+
         client = APIClient()
         resp = client.get("/tutoring/instructors/")
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            item for item in resp.json()["results"] if item["id"] == self.inst3.id
+        )
+        self.assertFalse(item["is_liked"])
+        self.assertNotIn("student_number", item)
+        self.assertNotIn("birth_date", item)
 
 
 class TutoringPostLikeSortingTest(LikeSortingTestBase):
@@ -430,6 +439,16 @@ class TutoringPostLikeSortingTest(LikeSortingTestBase):
         ids = [d["id"] for d in data]
         # post3 > post2 > post1 (id 내림차순)
         self.assertEqual(ids, sorted(ids, reverse=True))
+
+    def test_unauthenticated_list_is_public(self):
+        """비로그인 방문자는 활성 학생 공고 목록을 조회할 수 있다."""
+        response = APIClient().get("/tutoring/posts/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["id"] for item in response.json()["results"]},
+            {self.post1.id, self.post2.id, self.post3.id},
+        )
 
     def test_unique_together_prevents_duplicate_like(self):
         """같은 강사가 같은 공고에 두 번 좋아요하면 IntegrityError"""

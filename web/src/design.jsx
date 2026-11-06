@@ -894,7 +894,8 @@ export function Catalog({ kind, mode }) {
       .map((s) => s.number);
     if (ids.length) params.set("subject", ids.join(","));
   }
-  const publicBrowse = mode === "lectures";
+  // 비로그인 방문자에게는 목록과 검색만 열고 상세·찜·상담은 로그인 뒤에 진행한다.
+  const publicBrowse = ["lectures", "teachers", "posts"].includes(mode);
   const Access = publicBrowse ? React.Fragment : Gate;
   const resource = useLoad(
       user || publicBrowse ? endpoint + "?" + params : null,
@@ -1144,7 +1145,7 @@ export function Catalog({ kind, mode }) {
 
 // Original TutorCard/StudentPostCard anatomy: avatar, identity, location, subject.
 export function Card({ item, kind, onClick }) {
-  const { notify } = useContext(Ctx);
+  const { user, login, notify } = useContext(Ctx);
   const [liked, setLiked] = useState(item.is_liked),
     [busy, setBusy] = useState(false);
   const name =
@@ -1154,6 +1155,10 @@ export function Card({ item, kind, onClick }) {
     : item.region;
   async function like(e) {
     e.stopPropagation();
+    if (!user) {
+      login();
+      return;
+    }
     setBusy(true);
     try {
       const result = await api(`/tutoring/instructors/${item.id}/like/`, {

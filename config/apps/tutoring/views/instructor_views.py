@@ -67,7 +67,8 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
     Returns:
         Response: List[InstructorListSerializer] 데이터
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # 비로그인 방문자도 목록을 탐색할 수 있지만, 찜 여부는 항상 false로 반환한다.
+    permission_classes = [permissions.AllowAny]
     serializer_class = InstructorListSerializer
 
     def get_serializer_context(self):

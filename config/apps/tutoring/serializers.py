@@ -138,19 +138,24 @@ class InstructorListSerializer(SafeModelSerializer):
     def to_representation(self, instance):
         """공식 강의 계정에서 과외용 개인정보·통계를 공개하지 않는다."""
         data = super().to_representation(instance)
-        if not instance.is_official_creator:
-            return data
-        for field in (
-            "university", "department", "instruction", "student_number",
-            "is_tutoring", "subjects", "average_rate", "review_count",
-            "current_rank", "tutoring_count", "average_cost", "sex", "region",
-            "birth_date", "verification_status", "is_certified", "is_unverified",
-        ):
-            data[field] = None if field in {"sex", "region", "birth_date", "average_rate", "current_rank", "average_cost"} else ""
-        data["is_tutoring"] = False
-        data["subjects"] = []
-        data["review_count"] = 0
-        data["tutoring_count"] = 0
+        if instance.is_official_creator:
+            for field in (
+                "university", "department", "instruction", "student_number",
+                "is_tutoring", "subjects", "average_rate", "review_count",
+                "current_rank", "tutoring_count", "average_cost", "sex", "region",
+                "birth_date", "verification_status", "is_certified", "is_unverified",
+            ):
+                data[field] = None if field in {"sex", "region", "birth_date", "average_rate", "current_rank", "average_cost"} else ""
+            data["is_tutoring"] = False
+            data["subjects"] = []
+            data["review_count"] = 0
+            data["tutoring_count"] = 0
+
+        request = self.context.get("request")
+        if request is not None and not request.user.is_authenticated:
+            # 공개 목록에는 카드 UI에 사용하지 않는 계정 식별·활동 정보를 포함하지 않는다.
+            for field in ("user", "student_number", "last_login", "birth_date"):
+                data.pop(field, None)
         return data
 
     def get_verification_status(self, obj):

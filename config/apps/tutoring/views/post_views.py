@@ -40,7 +40,8 @@ class TutoringPostListAPIView(generics.ListAPIView):
     Returns:
         Response: List[TutoringPostListSerializer] 데이터
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # 비로그인 방문자도 활성 공고 목록을 탐색할 수 있다.
+    permission_classes = [permissions.AllowAny]
     serializer_class = TutoringPostListSerializer
 
     def get_queryset(self):
