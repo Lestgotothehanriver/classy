@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.db import models
-from django.contrib.admin import forms
+from django import forms
 from django.utils import timezone
 from config.apps.tutoring.models import (
     Region,
