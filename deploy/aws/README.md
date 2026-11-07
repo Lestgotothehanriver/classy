@@ -67,22 +67,28 @@ sudo systemctl restart classy
 curl -fsS https://api.classystudy.com/healthz/
 ```
 
-## Emergency: fail stuck video transcodes
+## S3 direct lecture upload prerequisite
 
-Lecture rows are created only after H.264 normalization and sample-preview
-generation succeed. If retries leave normalization `ffmpeg` processes consuming
-the host CPU, inspect the intended targets first and then explicitly fail only
-those in-flight requests:
+Before deploying a client that uses `/lectures/uploads/`, apply the reviewed S3
+configuration once. It permits browser POSTs only from the public web origins
+and removes abandoned staging objects after one day:
 
 ```sh
-cd /home/ubuntu/classy-aws
-bash deploy/aws/fail-stuck-video-transcodes.sh
-bash deploy/aws/fail-stuck-video-transcodes.sh --confirm
+aws s3api put-bucket-cors \
+  --bucket classy-prod-media-482178843291-apne2 \
+  --cors-configuration file://deploy/aws/s3-direct-upload-cors.json
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket classy-prod-media-482178843291-apne2 \
+  --lifecycle-configuration file://deploy/aws/s3-direct-upload-lifecycle.json
 ```
 
-The first command is a dry run. The confirmation command sends `SIGTERM`, then
-uses `SIGKILL` only if a matching process remains after 10 seconds. It does not
-touch completed lectures, S3 objects, or unrelated `ffmpeg` commands.
+Attach `s3-direct-upload-ec2-role-policy.json` to the EC2 instance role. S3
+authorizes `HeadObject` with `s3:GetObject`, and `CopyObject` with source
+`s3:GetObject` plus destination `s3:PutObject`; `s3:HeadObject` and
+`s3:CopyObject` are not valid IAM action names.
+Direct-upload POST policies require `x-amz-server-side-encryption=AES256`.
+Do not add public object access: the bucket stays private and the API creates
+short-lived GET URLs only for its internal codec probe.
 
 ## Scheduled marketing campaigns
 
@@ -135,12 +141,11 @@ recommended.
 
 ## Verification
 
-235 automated tests passed locally with isolated test caches and a fast test-only
-password hasher; production password hashing was not changed. Live verification
-passed 23 checks covering HTTPS, RDS/Redis, admin/user login, static assets, CORS,
-S3 uploads and unsigned access denial, H.264 conversion and duration, byte-range
-video playback, authenticated notifications, Redis broadcasts, and two-client
-chat. Synthetic users, files, and chat records were removed afterward.
+The prior deployment verification predates direct S3 lecture uploads. Before
+rolling this change out, verify one H.264/AAC MP4 creates a lecture and plays,
+HEVC/VP9 and damaged MP4s return a `video` field error, and three simultaneous
+completion requests yield at most two in progress plus one `429`. Monitor the
+completion success/rejection/429 ratio and API CPU during the app transition.
 
 This is a single-instance / single-AZ starting configuration, without automatic
 horizontal scaling or high-availability failover.

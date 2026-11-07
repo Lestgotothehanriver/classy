@@ -1,42 +1,54 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { api, apiPath, errorText, list } from "./api";
+import { api, list } from "./api";
 import { Ctx, Btn, State, Empty, useLoad, money, Modal } from "./shared";
 import { PageHeading } from "./design";
 
 export function uploadLecture(body, onProgress) {
+  const video = body.get("video");
+  if (!(video instanceof File))
+    return Promise.reject(new Error("업로드할 영상을 찾을 수 없습니다."));
+
+  return api("/lectures/uploads/initiate/", {
+    method: "POST",
+    body: {
+      filename: video.name,
+      content_type: "video/mp4",
+      size: video.size,
+    },
+  }).then(async (upload) => {
+    await uploadLectureVideoToS3(upload, video, onProgress);
+    body.delete("video");
+    return api(`/lectures/uploads/${upload.upload_id}/complete/`, {
+      method: "POST",
+      body,
+      signal: AbortSignal.timeout(90000),
+    });
+  });
+}
+
+function uploadLectureVideoToS3(upload, video, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", apiPath("/lectures/write/"));
-    xhr.setRequestHeader(
-      "Authorization",
-      "Token " + sessionStorage.getItem("classy_token"),
-    );
+    xhr.open("POST", upload.url);
     xhr.timeout = 900000;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable)
         onProgress(Math.round((e.loaded / e.total) * 100));
     };
     xhr.onload = () => {
-      let data;
-      try {
-        data = JSON.parse(xhr.responseText);
-      } catch {
-        data = { detail: "서버 응답을 확인할 수 없습니다." };
-      }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else {
-        if (xhr.status === 401)
-          window.dispatchEvent(new Event("classy:expired"));
-        reject(new Error(errorText(data)));
-      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("영상 저장소 업로드에 실패했습니다. 다시 시도해주세요."));
     };
     xhr.onerror = xhr.ontimeout = () =>
       reject(
         new Error(
-          "연결이 끊겼습니다. 서버에서 처리 중일 수 있으니 콘텐츠 목록을 확인한 뒤 다시 시도하세요.",
+          "영상 저장소 연결이 끊겼습니다. 다시 시도해주세요.",
         ),
       );
-    xhr.send(body);
+    const form = new FormData();
+    Object.entries(upload.fields).forEach(([name, value]) => form.append(name, value));
+    form.append("file", video);
+    xhr.send(form);
   });
 }
 function useFileUrl(file) {

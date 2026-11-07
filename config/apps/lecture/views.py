@@ -1,7 +1,7 @@
 import logging
 from rest_framework import generics, mixins, permissions, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
@@ -15,6 +15,20 @@ from config.apps.common.permissions import IsInstructorUser
 from config.apps.cash.models import LectureRentalHistory
 from .models import Lecture, Comment, SearchHistory
 from .services import can_comment_on_lecture
+from .direct_uploads import (
+    DirectUploadError,
+    acquire_completion_lock,
+    acquire_finalization_slot,
+    complete_upload_session,
+    create_staging_read_url,
+    create_upload_session,
+    delete_object,
+    get_upload_session,
+    promote_staging_object,
+    release_completion_lock,
+    release_finalization_slot,
+    verify_staging_object,
+)
 from .serializers import (
     LectureListSerializer,
     LectureDetailSerializer,
@@ -28,6 +42,11 @@ from .serializers import (
     CommentSerializer,
     CommentWriteSerializer,
     SearchHistorySerializer,
+)
+from .utils import (
+    calculate_sample_preview_duration_seconds,
+    create_stream_copy_sample_preview_from_url,
+    is_supported_lecture_video_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +93,146 @@ VIDEO_LENGTH_RANGES = {
     "60_90": {"video_duration__gte": 60 * 60, "video_duration__lt": 90 * 60},
     "over_90": {"video_duration__gte": 90 * 60},
 }
+
+
+class LectureUploadInitiateAPIView(APIView):
+    """Issue a private S3 POST policy for one instructor-owned lecture video."""
+
+    permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
+
+    def post(self, request):
+        """Validate upload metadata and return a time-limited S3 form policy."""
+        try:
+            size = int(request.data.get("size", 0))
+        except (TypeError, ValueError):
+            return Response({"size": ["파일 크기가 올바르지 않습니다."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payload = create_upload_session(
+                user_id=request.user.pk,
+                filename=str(request.data.get("filename", "")),
+                content_type=str(request.data.get("content_type", "")),
+                size=size,
+            )
+        except DirectUploadError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class LectureUploadCompleteAPIView(APIView):
+    """Validate one direct S3 upload and publish it as a lecture."""
+
+    permission_classes = [permissions.IsAuthenticated, IsInstructorUser]
+
+    def post(self, request, upload_id: str):
+        """Finalize [upload_id] after codec checks and optional preview generation."""
+        if "video" in request.FILES:
+            return Response(
+                {"video": ["영상은 발급된 S3 업로드 정책으로만 전송할 수 있습니다."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            session = get_upload_session(upload_id=upload_id, user_id=request.user.pk)
+            completion_token = acquire_completion_lock(upload_id)
+        except DirectUploadError as exc:
+            return self._error_response(exc)
+
+        slot_key = None
+        slot_token = None
+        preview_cleanup = None
+        promoted_key = None
+        try:
+            try:
+                slot_key, slot_token = acquire_finalization_slot()
+            except DirectUploadError as exc:
+                return self._error_response(exc)
+
+            verify_staging_object(session)
+            source_url = create_staging_read_url(session["object_key"])
+            is_supported, video_duration = is_supported_lecture_video_url(source_url)
+            if not is_supported or video_duration is None:
+                delete_object(session["object_key"])
+                complete_upload_session(upload_id)
+                return Response(
+                    {"video": ["MP4(H.264 비디오, AAC 오디오) 형식의 영상만 업로드할 수 있습니다."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            serializer = LectureWriteSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            instructor = get_object_or_404(Instructor, user=request.user)
+            is_preview = serializer.validated_data.get("is_preview", False)
+            price = serializer.validated_data.get("price", 0)
+            sample_preview = None
+            sample_preview_duration = 0
+
+            if price > 0 and not is_preview:
+                sample_preview_duration = calculate_sample_preview_duration_seconds(video_duration)
+                sample_preview, preview_cleanup = create_stream_copy_sample_preview_from_url(
+                    source_url,
+                    sample_preview_duration,
+                )
+
+            promoted_key = f"lectures/videos/{upload_id}.mp4"
+            promote_staging_object(
+                source_key=session["object_key"],
+                destination_key=promoted_key,
+            )
+
+            with transaction.atomic():
+                if is_preview:
+                    Lecture.objects.filter(instructor=instructor, is_preview=True).delete()
+                lecture = serializer.create_from_finalized_upload(
+                    serializer.validated_data,
+                    instructor=instructor,
+                    video_name=promoted_key,
+                    video_duration=video_duration,
+                    sample_preview=sample_preview,
+                    sample_preview_duration=sample_preview_duration,
+                )
+
+            delete_object(session["object_key"])
+            complete_upload_session(upload_id)
+            logger.info(
+                "[LECTURE] direct upload finalized. instructor_id=%s, lecture_id=%s, is_preview=%s",
+                instructor.pk,
+                lecture.pk,
+                is_preview,
+            )
+            return Response(LectureWriteSerializer(lecture).data, status=status.HTTP_201_CREATED)
+        except DirectUploadError as exc:
+            return self._error_response(exc)
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            delete_object(session["object_key"])
+            complete_upload_session(upload_id)
+            return Response(
+                {"video": ["미리보기 영상을 생성하지 못했습니다. 다시 업로드해주세요."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception:
+            if promoted_key:
+                delete_object(promoted_key)
+            logger.exception("[LECTURE] direct upload finalization failed. upload_id=%s", upload_id)
+            return Response(
+                {"detail": "강의 등록 처리에 실패했습니다. 잠시 후 다시 시도해주세요."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        finally:
+            if preview_cleanup:
+                preview_cleanup()
+            if slot_key and slot_token:
+                release_finalization_slot(slot_key, slot_token)
+            release_completion_lock(upload_id, completion_token)
+
+    @staticmethod
+    def _error_response(error: DirectUploadError) -> Response:
+        """Convert a workflow error into a stable public API response."""
+        response = Response({"detail": error.detail}, status=error.status_code)
+        if error.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            response["Retry-After"] = "30"
+        return response
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -425,13 +584,6 @@ class LectureStreamAPIView(generics.RetrieveAPIView):
             "[STREAM] 스트리밍 허용. user_id=%s, lecture_id=%s",
             request.user.pk, lecture.pk
         )
-        from .utils import normalize_field_file_for_mobile_playback
-        if normalize_field_file_for_mobile_playback(lecture.video):
-            lecture.save(update_fields=["video"])
-            logger.info(
-                "[STREAM] 모바일 재생 호환 포맷으로 영상 변환 완료. lecture_id=%s",
-                lecture.pk
-            )
         serializer = self.get_serializer(lecture)
         return Response(serializer.data)
 

@@ -1,9 +1,11 @@
 from datetime import timedelta
+from subprocess import TimeoutExpired
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -14,8 +16,23 @@ from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
 from config.apps.lecture.serializers import LectureListSerializer
 from config.apps.notification.models import Notification
-from config.apps.lecture.utils import extract_video_duration_seconds
-from config.apps.lecture.utils import calculate_sample_preview_duration_seconds
+from config.apps.lecture.direct_uploads import (
+    DirectUploadError,
+    acquire_completion_lock,
+    acquire_finalization_slot,
+    create_upload_session,
+    get_upload_session,
+    release_completion_lock,
+    release_finalization_slot,
+    verify_staging_object,
+)
+from config.apps.lecture.utils import (
+    calculate_sample_preview_duration_seconds,
+    create_stream_copy_sample_preview,
+    extract_video_duration_seconds,
+    is_supported_lecture_video,
+    is_supported_lecture_video_url,
+)
 
 
 User = get_user_model()
@@ -70,7 +87,14 @@ class LectureDurationExtractionTests(TestCase):
             patch("config.apps.lecture.utils.shutil.which", return_value="ffprobe"),
             patch(
                 "config.apps.lecture.utils.subprocess.run",
-                return_value=SimpleNamespace(stdout="9.9\n"),
+                return_value=SimpleNamespace(
+                    stdout=(
+                        '{"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2",'
+                        '"duration":"9.9"},"streams":[{"codec_type":"video",'
+                        '"codec_name":"h264"},{"codec_type":"audio",'
+                        '"codec_name":"aac"}]}'
+                    ),
+                ),
             ),
         ):
             self.assertEqual(extract_video_duration_seconds("video.mp4"), 9)
@@ -79,6 +103,127 @@ class LectureDurationExtractionTests(TestCase):
         self.assertEqual(calculate_sample_preview_duration_seconds(4), 1)
         self.assertEqual(calculate_sample_preview_duration_seconds(299), 59)
         self.assertEqual(calculate_sample_preview_duration_seconds(300), 60)
+
+
+class LectureUploadCodecPolicyTests(SimpleTestCase):
+    """The no-transcode upload policy accepts only the player-safe contract."""
+
+    @patch("config.apps.lecture.utils.inspect_video_file")
+    def test_h264_aac_mp4_is_accepted(self, inspect_video_file):
+        inspect_video_file.return_value = {
+            "container": "mp4", "video": "h264", "audio": "aac", "duration": 30,
+        }
+
+        self.assertTrue(is_supported_lecture_video("video.mp4"))
+
+    @patch("config.apps.lecture.utils.inspect_video_file")
+    def test_hevc_and_vp9_are_rejected(self, inspect_video_file):
+        for codec in ("hevc", "vp9"):
+            inspect_video_file.return_value = {
+                "container": "mp4", "video": codec, "audio": "aac", "duration": 30,
+            }
+            self.assertFalse(is_supported_lecture_video("video.mp4"))
+
+    @patch("config.apps.lecture.utils.inspect_video_url", return_value=None)
+    def test_damaged_video_is_rejected(self, inspect_video_url):
+        self.assertEqual(is_supported_lecture_video_url("https://signed.invalid/video"), (False, None))
+
+    @patch("config.apps.lecture.utils.shutil.which", return_value="ffmpeg")
+    @patch("config.apps.lecture.utils.subprocess.run")
+    def test_preview_uses_stream_copy_with_bounded_timeout(self, run, _which):
+        preview, cleanup = create_stream_copy_sample_preview("video.mp4", 60)
+        try:
+            command = run.call_args.args[0]
+            self.assertIn("-c", command)
+            self.assertEqual(command[command.index("-c") + 1], "copy")
+            self.assertEqual(run.call_args.kwargs["timeout"], 60)
+        finally:
+            cleanup()
+
+    @patch("config.apps.lecture.utils.shutil.which", return_value="ffmpeg")
+    @patch(
+        "config.apps.lecture.utils.subprocess.run",
+        side_effect=TimeoutExpired("ffmpeg", 60),
+    )
+    def test_preview_timeout_fails_the_upload(self, _run, _which):
+        with self.assertRaises(ValueError):
+            create_stream_copy_sample_preview("video.mp4", 60)
+
+
+@override_settings(AWS_STORAGE_BUCKET_NAME="test-lecture-media", AWS_S3_REGION_NAME="ap-northeast-2")
+class LectureDirectUploadServiceTests(SimpleTestCase):
+    """Direct-upload sessions protect ownership, object checks, and CPU slots."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    @patch("config.apps.lecture.direct_uploads.s3_client")
+    def test_initiate_rejects_oversize_and_records_an_owned_session(self, s3_client):
+        with self.assertRaises(DirectUploadError) as oversize:
+            create_upload_session(
+                user_id=3,
+                filename="lesson.mp4",
+                content_type="video/mp4",
+                size=1024 * 1024 * 1024 + 1,
+            )
+        self.assertEqual(oversize.exception.status_code, 400)
+        s3_client.return_value.generate_presigned_post.return_value = {
+            "url": "https://bucket.s3.amazonaws.com/",
+            "fields": {"key": "lecture-uploads/3/upload.mp4"},
+        }
+
+        payload = create_upload_session(
+            user_id=3, filename="lesson.mp4", content_type="video/mp4", size=10,
+        )
+
+        self.assertEqual(get_upload_session(upload_id=payload["upload_id"], user_id=3)["size"], 10)
+        self.assertEqual(
+            s3_client.return_value.generate_presigned_post.call_args.kwargs["Fields"]
+            ["x-amz-server-side-encryption"],
+            "AES256",
+        )
+        with self.assertRaises(DirectUploadError) as wrong_owner:
+            get_upload_session(upload_id=payload["upload_id"], user_id=4)
+        self.assertEqual(wrong_owner.exception.status_code, 404)
+
+    @patch("config.apps.lecture.direct_uploads.s3_client")
+    def test_head_object_requires_expected_size_and_content_type(self, s3_client):
+        session = {"object_key": "lecture-uploads/3/upload.mp4", "size": 10}
+        s3_client.return_value.head_object.return_value = {
+            "ContentLength": 10,
+            "ContentType": "video/mp4",
+        }
+        verify_staging_object(session)
+
+        s3_client.return_value.head_object.return_value = {
+            "ContentLength": 10,
+            "ContentType": "application/octet-stream",
+        }
+        with self.assertRaises(DirectUploadError):
+            verify_staging_object(session)
+
+        s3_client.return_value.head_object.side_effect = Exception("not found")
+        with self.assertRaises(DirectUploadError) as missing:
+            verify_staging_object(session)
+        self.assertEqual(missing.exception.status_code, 400)
+
+    def test_duplicate_completion_is_blocked_and_only_two_finalizations_run(self):
+        completion_token = acquire_completion_lock("one")
+        with self.assertRaises(DirectUploadError) as duplicate:
+            acquire_completion_lock("one")
+        self.assertEqual(duplicate.exception.status_code, 409)
+        release_completion_lock("one", completion_token)
+
+        first = acquire_finalization_slot()
+        second = acquire_finalization_slot()
+        try:
+            with self.assertRaises(DirectUploadError) as full:
+                acquire_finalization_slot()
+            self.assertEqual(full.exception.status_code, 429)
+        finally:
+            release_finalization_slot(*first)
+            release_finalization_slot(*second)
 
 
 class LectureSamplePreviewApiTests(TestCase):

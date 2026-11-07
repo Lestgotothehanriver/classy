@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "ID": "ExpireLectureUploadStagingObjects",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "lecture-uploads/"},
+      "Expiration": {"Days": 1},
+      "NoncurrentVersionExpiration": {"NoncurrentDays": 1},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+    }
+  ]
+}

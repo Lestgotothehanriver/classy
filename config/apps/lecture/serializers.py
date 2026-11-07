@@ -6,9 +6,9 @@ from config.apps.accounts.models import Subject, Instructor, Student
 from .models import Lecture, Comment, SearchHistory
 from .utils import (
     calculate_sample_preview_duration_seconds,
-    create_sample_preview,
+    create_stream_copy_sample_preview,
     extract_video_duration_seconds,
-    transcode_video_for_mobile_playback,
+    is_supported_lecture_video,
 )
 from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
 
@@ -187,6 +187,13 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         from config.apps.cash.constants import LECTURE_RENTAL_DAYS
         return LECTURE_RENTAL_DAYS
 
+    def validate(self, attrs):
+        """Probe a newly submitted multipart video before the view saves it."""
+        if attrs.get("video"):
+            self._validate_video_playback_contract(attrs)
+            self._populate_video_duration(attrs)
+        return attrs
+
     def _populate_video_duration(self, validated_data):
         # 클라이언트가 보낸 길이는 UI 표시용일 뿐, 유료 프리뷰 정책은 서버가
         # 실제 파일로 확정한 길이를 반드시 사용한다.
@@ -194,6 +201,14 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         if inferred_duration is None:
             raise serializers.ValidationError({"video": "영상 길이를 확인할 수 없습니다."})
         validated_data["video_duration"] = inferred_duration
+
+    def _validate_video_playback_contract(self, validated_data):
+        """Reject a video that the mobile player cannot reliably decode."""
+        video = validated_data.get("video")
+        if video and not is_supported_lecture_video(video):
+            raise serializers.ValidationError({
+                "video": "MP4(H.264 비디오, AAC 오디오) 형식의 영상만 업로드할 수 있습니다.",
+            })
 
     def _prepare_sample_preview(
         self, validated_data, *, source_video=None, price=None, is_preview=None
@@ -205,28 +220,17 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         if not is_paid_regular_lecture:
             return None
         duration = calculate_sample_preview_duration_seconds(validated_data["video_duration"])
-        preview, cleanup = create_sample_preview(
+        preview, cleanup = create_stream_copy_sample_preview(
             source_video or validated_data["video"], duration
         )
         validated_data["sample_preview"] = preview
         validated_data["sample_preview_duration"] = duration
         return cleanup
 
-    def _prepare_video_for_playback(self, validated_data):
-        video = validated_data.get("video")
-        if not video:
-            return None
-
-        playable_video, cleanup = transcode_video_for_mobile_playback(video)
-        validated_data["video"] = playable_video
-        return cleanup
-
     def create(self, validated_data):
         subjects_data = validated_data.pop("subjects", None)
-        cleanup = self._prepare_video_for_playback(validated_data)
         preview_cleanup = None
         try:
-            self._populate_video_duration(validated_data)
             preview_cleanup = self._prepare_sample_preview(validated_data)
             instance = super().create(validated_data)
             if subjects_data is not None:
@@ -235,17 +239,12 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         finally:
             if preview_cleanup:
                 preview_cleanup()
-            if cleanup:
-                cleanup()
 
     def update(self, instance, validated_data):
         old_sample_preview_name = instance.sample_preview.name if instance.sample_preview else ""
         subjects_data = validated_data.pop("subjects", None)
-        cleanup = self._prepare_video_for_playback(validated_data)
         preview_cleanup = None
         try:
-            if "video" in validated_data:
-                self._populate_video_duration(validated_data)
             next_price = validated_data.get("price", instance.price)
             next_is_preview = validated_data.get("is_preview", instance.is_preview)
             needs_sample = next_price > 0 and not next_is_preview
@@ -282,8 +281,30 @@ class LectureWriteSerializer(serializers.ModelSerializer):
         finally:
             if preview_cleanup:
                 preview_cleanup()
-            if cleanup:
-                cleanup()
+
+    def create_from_finalized_upload(
+        self,
+        validated_data,
+        *,
+        instructor,
+        video_name: str,
+        video_duration: int,
+        sample_preview=None,
+        sample_preview_duration: int = 0,
+    ):
+        """Create a lecture whose validated video already exists in S3."""
+        subjects_data = validated_data.pop("subjects", None)
+        validated_data.update({
+            "instructor": instructor,
+            "video": video_name,
+            "video_duration": video_duration,
+            "sample_preview": sample_preview,
+            "sample_preview_duration": sample_preview_duration,
+        })
+        instance = super().create(validated_data)
+        if subjects_data is not None:
+            _sync_subjects(instance.subjects, subjects_data)
+        return instance
 
 
 # ────────────────────────────────────────────────────────────────────

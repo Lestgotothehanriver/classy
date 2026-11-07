@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DirectLectureUploadObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::classy-prod-media-482178843291-apne2/lecture-uploads/*",
+        "arn:aws:s3:::classy-prod-media-482178843291-apne2/lectures/videos/*",
+        "arn:aws:s3:::classy-prod-media-482178843291-apne2/lectures/sample_previews/*"
+      ]
+    }
+  ]
+}

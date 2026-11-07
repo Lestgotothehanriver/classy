@@ -1,0 +1,27 @@
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "HEAD"],
+      "AllowedOrigins": [
+        "https://api.classystudy.com",
+        "https://classystudy.com",
+        "https://www.classystudy.com",
+        "https://classy-admin-web-qsog.onrender.com",
+        "https://classy-web.onrender.com"
+      ],
+      "ExposeHeaders": ["Accept-Ranges", "Content-Length", "Content-Range", "ETag"],
+      "MaxAgeSeconds": 3600
+    },
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["POST"],
+      "AllowedOrigins": [
+        "https://classystudy.com",
+        "https://www.classystudy.com"
+      ],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}

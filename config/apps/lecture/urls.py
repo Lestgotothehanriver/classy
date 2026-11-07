@@ -12,6 +12,8 @@ from .views import (
     SearchHistoryCreateAPIView,
     SearchHistoryDeleteAPIView,
     LectureLikeAPIView,
+    LectureUploadInitiateAPIView,
+    LectureUploadCompleteAPIView,
 )
 
 
@@ -23,6 +25,10 @@ router = SimpleRouter()
 router.register(r"write", LectureViewSet, basename="lecture-write")
 
 urlpatterns = [
+    # ── 직접 S3 강의 업로드 ───────────────────────────────────
+    path("uploads/initiate/", LectureUploadInitiateAPIView.as_view(), name="lecture-upload-initiate"),
+    path("uploads/<str:upload_id>/complete/", LectureUploadCompleteAPIView.as_view(), name="lecture-upload-complete"),
+
     # ── 강의 목록 (필터링) ────────────────────────────────────
     path("", LectureListAPIView.as_view(), name="lecture-list"),
 
