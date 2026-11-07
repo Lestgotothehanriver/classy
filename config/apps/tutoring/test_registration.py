@@ -1,9 +1,10 @@
 import tempfile
 from datetime import timedelta
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import transaction
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
@@ -20,6 +21,7 @@ from config.apps.tutoring.admin import (
     sync_linked_payment_state,
 )
 from config.apps.tutoring.registration_services import (
+    _notify_after_commit,
     confirm_fee_payment as confirm_fee_payment_service,
     decrypt_account_number,
 )
@@ -337,7 +339,7 @@ class TutoringRegistrationFlowTest(APITestCase):
         registration = TutoringRegistration.objects.get()
         self.assertEqual(
             registration.rejection_reason,
-            "양측이 입력한 수업 유형 또는 수업료가 일치하지 않습니다.",
+            "양측이 입력한 수업 유형 또는 수업료가 일치하지 않아요. 다시 확인 후 성사 등록을 진행해 주세요.",
         )
 
     def test_contract_activates_only_after_match_and_deposit_confirmation(self):
@@ -352,11 +354,13 @@ class TutoringRegistrationFlowTest(APITestCase):
 
         resource = TutoringResource.objects.get()
         model_admin = Mock()
-        confirm_fee_payment(
-            model_admin,
-            Mock(),
-            TutoringResource.objects.filter(pk=resource.pk),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            confirm_fee_payment(
+                model_admin,
+                Mock(),
+                TutoringResource.objects.filter(pk=resource.pk),
+            )
+            self.assertEqual(Notification.objects.count(), 0)
         registration.refresh_from_db()
         resource.refresh_from_db()
         self.assertEqual(resource.fee_payment_status, "PAID")
@@ -445,11 +449,18 @@ class TutoringRegistrationFlowTest(APITestCase):
             self.instructor_payload(fee=400000),
             format="multipart",
         )
-        self.student_client.put(
-            self.url,
-            self.student_payload(fee=500000),
-            format="json",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.student_client.put(
+                self.url,
+                self.student_payload(fee=500000),
+                format="json",
+            )
+            self.assertEqual(
+                Notification.objects.filter(
+                    type="tutoring_contract_mismatch"
+                ).count(),
+                0,
+            )
         resource = TutoringResource.objects.get()
         self.assertEqual(resource.fee_payment_status, "FAILED")
 
@@ -463,6 +474,10 @@ class TutoringRegistrationFlowTest(APITestCase):
             ).count(),
             2,
         )
+
+        # 수수료 FAILED 반영이 지연되어도 조건 불일치 자체로 재제출을 허용한다.
+        resource.fee_payment_status = "PENDING"
+        resource.save(update_fields=["fee_payment_status"])
 
         corrected_student = self.student_client.put(
             self.url,
@@ -517,11 +532,18 @@ class TutoringRegistrationFlowTest(APITestCase):
         )
         resource = TutoringResource.objects.get()
 
-        reject_fee_payment(
-            Mock(),
-            Mock(),
-            TutoringResource.objects.filter(pk=resource.pk),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            reject_fee_payment(
+                Mock(),
+                Mock(),
+                TutoringResource.objects.filter(pk=resource.pk),
+            )
+            self.assertEqual(
+                Notification.objects.filter(
+                    type="tutoring_contract_failed"
+                ).count(),
+                0,
+            )
         resource.refresh_from_db()
         self.assertEqual(resource.fee_payment_status, "FAILED")
         self.assertEqual(
@@ -539,6 +561,48 @@ class TutoringRegistrationFlowTest(APITestCase):
             ).count(),
             2,
         )
+
+    def test_rolled_back_mismatch_does_not_create_notifications(self):
+        self.instructor_client.put(
+            self.url,
+            self.instructor_payload(fee=400000),
+            format="multipart",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    response = self.student_client.put(
+                        self.url,
+                        self.student_payload(fee=500000),
+                        format="json",
+                    )
+                    self.assertEqual(response.status_code, 200, response.data)
+                    self.assertEqual(
+                        Notification.objects.filter(
+                            type="tutoring_contract_mismatch"
+                        ).count(),
+                        0,
+                    )
+                    raise RuntimeError("force transaction rollback")
+
+        self.assertEqual(
+            Notification.objects.filter(
+                type="tutoring_contract_mismatch"
+            ).count(),
+            0,
+        )
+
+    def test_notification_delivery_failure_is_logged_after_commit(self):
+        notification = Mock(side_effect=RuntimeError("FCM unavailable"))
+
+        with patch("config.apps.tutoring.registration_services.logger") as logger:
+            with self.captureOnCommitCallbacks(execute=True):
+                _notify_after_commit(notification, "registered")
+                notification.assert_not_called()
+
+        notification.assert_called_once_with("registered")
+        logger.exception.assert_called_once()
 
     def test_outsider_cannot_read_or_submit_registration(self):
         outsider_client = APIClient()

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 
 from cryptography.fernet import Fernet
 from django.conf import settings
@@ -21,6 +22,9 @@ from .models import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class RegistrationPermissionError(Exception):
     pass
 
@@ -29,6 +33,25 @@ class RegistrationLockedError(Exception):
     """성사 등록 완료 후 참가자가 제출값을 다시 바꾸려 할 때 발생한다."""
 
     pass
+
+
+def _notify_after_commit(notification, *args):
+    """Registers a tutoring notification after the surrounding transaction commits.
+
+    Notification delivery must never change a successfully committed registration
+    request into an error response. Delivery failures are therefore recorded and
+    isolated from the database state transition.
+    """
+
+    def send_notification():
+        try:
+            notification(*args)
+        except Exception:
+            logger.exception(
+                "Failed to deliver committed tutoring registration notification."
+            )
+
+    transaction.on_commit(send_notification)
 
 
 def participant_role(chat_room, user):
@@ -181,9 +204,9 @@ def sync_linked_payment_state(resource, notify=True):
     registration = getattr(resource, "registration", None)
     if registration is None:
         if notify and resource.fee_payment_status == "PAID":
-            notify_fee_payment_confirmed(resource)
+            _notify_after_commit(notify_fee_payment_confirmed, resource)
         elif notify and resource.fee_payment_status == "FAILED":
-            notify_fee_payment_failed(resource)
+            _notify_after_commit(notify_fee_payment_failed, resource)
         return
 
     previous_contract_status = registration.contract_status
@@ -218,14 +241,14 @@ def sync_linked_payment_state(resource, notify=True):
         and contract_status == TutoringRegistration.ContractStatus.ACTIVE
         and previous_contract_status != TutoringRegistration.ContractStatus.ACTIVE
     ):
-        notify_fee_payment_confirmed(resource)
+        _notify_after_commit(notify_fee_payment_confirmed, resource)
     elif (
         notify
         and resource.fee_payment_status == "FAILED"
         and previous_invoice_status != CommissionInvoice.Status.FAILED
     ):
         # FAILED 전환 시 1회만 발송 (invoice 상태 전환 edge-guard)
-        notify_fee_payment_failed(resource)
+        _notify_after_commit(notify_fee_payment_failed, resource)
 
 
 @transaction.atomic
@@ -257,10 +280,19 @@ def _replace_proof_files(resource, proof_files):
         )
 
 
+def _is_registration_rejected(registration, resource):
+    """수수료 상태와 독립적으로 성사 등록의 재제출 가능 여부를 판단한다."""
+    return (
+        registration.attribute_validation_status
+        == TutoringRegistration.AttributeValidationStatus.MISMATCHED
+        or (resource is not None and resource.fee_payment_status == "FAILED")
+    )
+
+
 def _reopen_rejected_registration(registration):
     """반려된 성사 등록을 양측 재제출 가능한 상태로 되돌린다."""
     resource = getattr(registration, "resource", None)
-    if resource is None or resource.fee_payment_status != "FAILED":
+    if resource is None or not _is_registration_rejected(registration, resource):
         return
 
     _replace_proof_files(resource, ())
@@ -299,8 +331,8 @@ def _auto_reject_mismatched_registration(registration, resource):
         return
 
     before = resource.fee_payment_status
-    _mark_fee_payment_failed(resource, notify=False)
-    registration.rejection_reason = "양측이 입력한 수업 유형 또는 수업료가 일치하지 않습니다."
+    mark_fee_payment_failed(resource, notify=False)
+    registration.rejection_reason = "양측이 입력한 수업 유형 또는 수업료가 일치하지 않아요. 다시 확인 후 성사 등록을 진행해 주세요."
     registration.save(update_fields=["rejection_reason", "updated_at"])
 
     from config.apps.adminops.models import AdminActionLog
@@ -401,7 +433,9 @@ def save_my_registration(
         existing_submission = registration.submissions.filter(role=role).first()
         if existing_submission and existing_submission.is_finalized:
             resource = getattr(registration, "resource", None)
-            if resource is None or resource.fee_payment_status != "FAILED":
+            if resource is None or not _is_registration_rejected(
+                registration, resource
+            ):
                 raise RegistrationLockedError("제출한 성사 등록은 반려된 경우에만 수정할 수 있습니다.")
             _reopen_rejected_registration(registration)
 
@@ -454,7 +488,7 @@ def save_my_registration(
                 notify_registration_mismatched,
             )
 
-            notify_registration_mismatched(registration)
+            _notify_after_commit(notify_registration_mismatched, registration)
 
         invoice = None
         if role == TutoringSubmission.Role.INSTRUCTOR:
@@ -545,7 +579,7 @@ def save_my_registration(
                 notify_fee_payment_confirmed,
             )
 
-            notify_fee_payment_confirmed(resource)
+            _notify_after_commit(notify_fee_payment_confirmed, resource)
 
         if invoice is None:
             invoice = registration.commission_invoices.filter(
