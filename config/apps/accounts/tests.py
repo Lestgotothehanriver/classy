@@ -78,6 +78,27 @@ class InstructorAcademicInfoUpdateTests(APITestCase):
         self.assertEqual(self.instructor.department, "컴퓨터공학과")
         self.assertEqual(self.instructor.student_number, "2024")
 
+    def test_patch_limits_instruction_to_300_characters(self):
+        accepted = "가" * 300
+        accepted_response = self.client.patch(
+            reverse("accounts:signup-instructor"),
+            {"instruction": accepted},
+            format="json",
+        )
+
+        self.assertEqual(accepted_response.status_code, 200)
+        self.instructor.refresh_from_db()
+        self.assertEqual(self.instructor.instruction, accepted)
+
+        rejected_response = self.client.patch(
+            reverse("accounts:signup-instructor"),
+            {"instruction": "가" * 301},
+            format="json",
+        )
+
+        self.assertEqual(rejected_response.status_code, 400)
+        self.assertIn("instruction", rejected_response.data)
+
     def test_patch_after_verification_requires_document_resubmission(self):
         from config.apps.pending.models import PendingInstructor
 

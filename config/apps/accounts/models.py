@@ -224,7 +224,7 @@ class Instructor(models.Model):
     university = models.CharField(max_length=100)
     department = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    instruction = models.TextField(blank=True, default="")  # 자기소개 같은 용도로 쓰는 필드
+    instruction = models.TextField(max_length=300, blank=True, default="")  # 자기소개 같은 용도로 쓰는 필드
     student_number = models.CharField(max_length=20, blank=True)  # 학번 (인증에 필요하면 추가)
     is_tutoring = models.BooleanField(default=False)  # 과외 진행 중 여부
     # 공개 프로필을 일반 과외 강사가 아닌 플랫폼의 공식 강의 계정으로 표시한다.

@@ -55,7 +55,6 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
         liked (bool, optional): 본인이 찜한 강사만 볼지 여부.
         subject (str, optional): 과목 ID 목록 (콤마 구분, 예: '1,2').
         region (str, optional): 지역 ID 목록 (콤마 구분, 예: '11110,11120').
-        cost (int, optional): 최대 수업료 상한액 필터.
         method (str, optional): 수업 방식 ('ONLINE' | 'OFFLINE', 콤마 구분 가능).
         sex (str, optional): 강사 성별 ('M' | 'F').
         age (str, optional): 강사 나이 또는 나이 범위 (콤마 구분, 예: '25-30,35').
@@ -110,10 +109,6 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
         region_ids = parse_int_list(self.request.query_params.get("region"))
         if region_ids:
             qs = qs.filter(tutoring_profile__regions__number__in=region_ids).distinct()
-
-        cost = self.request.query_params.get("cost")
-        if cost and cost.isdigit():
-            qs = qs.filter(tutoring_profile__cost__lte=int(cost))
 
         method = self.request.query_params.get("method")
         if method:

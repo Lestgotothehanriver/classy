@@ -173,7 +173,7 @@ class InstructorSignupSerializer(serializers.Serializer):
     # InstructorProfile 필드
     university = serializers.CharField()
     department = serializers.CharField(required=False, allow_blank=True)
-    instruction = serializers.CharField(required=False, allow_blank=True)
+    instruction = serializers.CharField(required=False, allow_blank=True, max_length=300)
     student_number = serializers.CharField(required=False, allow_blank=True)
 
     # Subject id 리스트
@@ -363,7 +363,7 @@ class InstructorUpdateSerializer(serializers.Serializer):
     birth_date = serializers.DateField(required=False, allow_null=True)
     region = serializers.CharField(required=False, allow_blank=True)
 
-    instruction = serializers.CharField(required=False, allow_blank=True)
+    instruction = serializers.CharField(required=False, allow_blank=True, max_length=300)
     is_tutoring = serializers.BooleanField(required=False)
     university = serializers.CharField(required=False, allow_blank=True)
     department = serializers.CharField(required=False, allow_blank=True)
@@ -512,7 +512,7 @@ class InstructorRoleAddSerializer(serializers.Serializer):
     """
     university = serializers.CharField()
     department = serializers.CharField(required=False, allow_blank=True, default='')
-    instruction = serializers.CharField(required=False, allow_blank=True, default='')
+    instruction = serializers.CharField(required=False, allow_blank=True, default='', max_length=300)
     student_number = serializers.CharField(required=False, allow_blank=True, default='')
     instructorsubject = serializers.CharField(
         required=False,

@@ -226,7 +226,7 @@ class InstructorInfoSerializer(serializers.ModelSerializer):
         return not self.get_is_certified(obj)
 
     def get_cost_display(self, obj):
-        return obj.cost if obj.cost is not None else "협의 후 결정"
+        return obj.cost or "협의 후 결정"
 
 
 def _review_resource_subjects(review):
@@ -441,9 +441,6 @@ class InstructorInfoWriteSerializer(M2MSyncMixin, serializers.ModelSerializer):
     class Meta:
         model = InstructorInfo
         exclude = ["instructor"]
-
-    def validate_cost(self, value):
-        return validate_cost_unit(value)
 
     def to_representation(self, instance):
         # POST/PATCH 응답도 GET /mine/과 같은 완전한 형태로 반환한다.

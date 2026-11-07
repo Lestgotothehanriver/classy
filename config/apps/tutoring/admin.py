@@ -33,6 +33,9 @@ class TutoringPostAdmin(admin.ModelAdmin):
     filter_horizontal = ("regions", "subjects")
     search_fields = ("title", "student__user__username", "student__user__email", "region")
     ordering      = ("-id",)
+    formfield_overrides = {
+            models.CharField: {'widget': forms.Textarea(attrs={'rows': 3, 'cols': 40})},
+    }
 
     def get_student(self, obj):
         return obj.student.user.username

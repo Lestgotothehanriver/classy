@@ -184,20 +184,20 @@ class InstructorInfo(models.Model):
     
     Attributes:
         instructor (OneToOneField): 프로필 주체인 강사.
-        cost (int): 강사의 희망 과외비(시급/월급 등 기준).
+        cost (str): 강사가 자유 형식으로 작성한 수업료 안내.
         schedule (str): 과외 가능한 요일 및 시간대.
         method (str): 과외 진행 방식 (대면/비대면).
         location (str): 주 수업 가능 지역 설명 텍스트.
-        etc (str): 기타 어필하고 싶은 특이사항.
+        etc (str): 상세 어필 내용.
         subjects (ManyToManyField): 강사가 지도할 수 있는 과목 목록.
         regions (ManyToManyField): 강사가 수업 가능한 지역(마스터 데이터) 목록.
     """
     instructor = models.OneToOneField(Instructor, on_delete=models.CASCADE, related_name="tutoring_profile")
-    cost = models.IntegerField(blank=True, null=True)
+    cost = models.CharField(max_length=255, blank=True, default="")
     schedule = models.CharField(max_length=255, blank=True)
     method = models.CharField(max_length=255, blank=True, validators=[validate_method])
     location = models.CharField(max_length=255, blank=True)
-    etc = models.CharField(max_length=255, blank=True)
+    etc = models.TextField(blank=True)
     subjects = models.ManyToManyField(Subject, blank=True, related_name='instructor_infos')
     regions = models.ManyToManyField(Region, blank=True, related_name='instructor_infos')
 

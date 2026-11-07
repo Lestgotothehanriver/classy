@@ -564,10 +564,10 @@ class InstructorUnverifiedStatusTest(TestCase):
 
         # InstructorInfo 생성 (info-read API 조회를 위해)
         from config.apps.tutoring.models import InstructorInfo
-        self.info_no_pending = InstructorInfo.objects.create(instructor=self.inst_no_pending, cost=10000)
-        self.info_pending = InstructorInfo.objects.create(instructor=self.inst_pending, cost=20000)
-        self.info_verified = InstructorInfo.objects.create(instructor=self.inst_verified, cost=30000)
-        self.info_suspended = InstructorInfo.objects.create(instructor=self.inst_suspended, cost=40000)
+        self.info_no_pending = InstructorInfo.objects.create(instructor=self.inst_no_pending, cost="1시간당 1만원")
+        self.info_pending = InstructorInfo.objects.create(instructor=self.inst_pending, cost="1시간당 2만원")
+        self.info_verified = InstructorInfo.objects.create(instructor=self.inst_verified, cost="1시간당 3만원")
+        self.info_suspended = InstructorInfo.objects.create(instructor=self.inst_suspended, cost="1시간당 4만원")
 
         # pending_info 생성 및 상태 설정
         PendingInstructor.objects.create(instructor_profile=self.inst_pending, status=PendingInstructor.Status.PENDING)
@@ -600,15 +600,20 @@ class InstructorUnverifiedStatusTest(TestCase):
         self.assertEqual(verified_data["verification_status"], "VERIFIED")
         self.assertEqual(suspended_data["verification_status"], "SUSPENDED")
 
-    def test_list_instructors_filters_by_max_cost(self):
-        """cost 상한 이하의 과외비를 등록한 강사만 반환한다."""
+    def test_list_instructors_ignores_cost_query(self):
+        """cost 쿼리는 자유 형식 수업료에 적용하지 않는다."""
         resp = self.client.get("/tutoring/instructors/", {"cost": "25000"})
 
         self.assertEqual(resp.status_code, 200)
         instructor_ids = {item["id"] for item in resp.json()["results"]}
         self.assertEqual(
             instructor_ids,
-            {self.inst_no_pending.id, self.inst_pending.id},
+            {
+                self.inst_no_pending.id,
+                self.inst_pending.id,
+                self.inst_verified.id,
+                self.inst_suspended.id,
+            },
         )
 
     def test_retrieve_instructor_detail_returns_is_unverified_correctly(self):
@@ -679,7 +684,7 @@ class InstructorInfoRegistrationTest(TestCase):
         from config.apps.tutoring.models import InstructorInfo
         InstructorInfo.objects.create(
             instructor=self.instructor,
-            cost=25000,
+            cost="1시간당 2만 5천원",
             schedule="Sat, Sun",
             method="대면",
             location="Seoul"
@@ -694,13 +699,17 @@ class InstructorInfoRegistrationTest(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
         payload = {
-            "cost": 30000,
+            "cost": "1시간당 5만원",
             "schedule": "Monday",
             "method": "비대면",
-            "location": "Online"
+            "location": "Online",
+            "etc": "상세 안내" * 100,
         }
         resp = self.client.post("/tutoring/instructor-info/", data=payload, format="json")
         self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["cost"], "1시간당 5만원")
+        self.assertEqual(resp.json()["cost_display"], "1시간당 5만원")
+        self.assertEqual(resp.json()["etc"], "상세 안내" * 100)
 
         self.instructor.refresh_from_db()
         self.assertTrue(self.instructor.is_tutoring)
@@ -711,11 +720,11 @@ class InstructorInfoRegistrationTest(TestCase):
         from config.apps.tutoring.models import InstructorInfo, Region
         from rest_framework.authtoken.models import Token
 
-        subject = Subject.objects.create(number=1)
+        subject, _ = Subject.objects.get_or_create(number=1)
         region = Region.objects.create(number=1)
         info = InstructorInfo.objects.create(
             instructor=self.instructor,
-            cost=30000,
+            cost="월 30만원 이하",
             schedule="Monday",
             method="대면",
             location=str(region),
@@ -760,7 +769,7 @@ class InstructorProfileStatsTest(TestCase):
         )
         self.info = InstructorInfo.objects.create(
             instructor=self.instructor,
-            cost=None,
+            cost="",
         )
         token = Token.objects.create(user=self.viewer_user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
