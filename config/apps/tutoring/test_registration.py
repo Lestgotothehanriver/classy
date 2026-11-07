@@ -333,6 +333,12 @@ class TutoringRegistrationFlowTest(APITestCase):
             body["registration"]["counterpartySubmission"], {"submitted": True}
         )
         self.assertEqual(body["payment"]["amount"], 60000)
+        self.assertEqual(body["payment"]["status"], "FAILED")
+        registration = TutoringRegistration.objects.get()
+        self.assertEqual(
+            registration.rejection_reason,
+            "양측이 입력한 수업 유형 또는 수업료가 일치하지 않습니다.",
+        )
 
     def test_contract_activates_only_after_match_and_deposit_confirmation(self):
         self.student_client.put(self.url, self.student_payload(), format="json")
@@ -433,7 +439,7 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertEqual(CommissionInvoice.objects.get().status, "PAID")
         self.assertEqual(registration.contract_status, "ACTIVE")
 
-    def test_rejected_mismatch_requires_both_parties_to_resubmit(self):
+    def test_mismatch_is_automatically_rejected_and_requires_both_resubmissions(self):
         self.instructor_client.put(
             self.url,
             self.instructor_payload(fee=400000),
@@ -445,11 +451,7 @@ class TutoringRegistrationFlowTest(APITestCase):
             format="json",
         )
         resource = TutoringResource.objects.get()
-        reject_fee_payment(
-            Mock(),
-            Mock(),
-            TutoringResource.objects.filter(pk=resource.pk),
-        )
+        self.assertEqual(resource.fee_payment_status, "FAILED")
 
         registration = TutoringRegistration.objects.get()
         registration.refresh_from_db()

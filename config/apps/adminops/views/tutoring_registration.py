@@ -59,7 +59,7 @@ def _request_id(request) -> str:
 class TutoringRegistrationListView(ListAPIView):
     """GET /admin-api/v1/tutoring-registrations/
 
-    필터: ``contract_status``, ``attribute_validation_status``,
+    필터: ``contract_status``(``IN_PROGRESS``는 COLLECTING·REGISTERED 통합), ``attribute_validation_status``,
     ``fee_payment_status``, ``q``(학생/강사 실명·닉네임·이메일 검색), ``ordering``.
     기본 PageNumberPagination(20/page).
     """
@@ -72,7 +72,14 @@ class TutoringRegistrationListView(ListAPIView):
         params = self.request.query_params
 
         contract = params.get("contract_status")
-        if contract in _CONTRACT_VALUES:
+        if contract == "IN_PROGRESS":
+            qs = qs.filter(
+                contract_status__in=(
+                    TutoringRegistration.ContractStatus.COLLECTING,
+                    TutoringRegistration.ContractStatus.REGISTERED,
+                )
+            )
+        elif contract in _CONTRACT_VALUES:
             qs = qs.filter(contract_status=contract)
 
         validation = params.get("attribute_validation_status")
@@ -128,7 +135,7 @@ class TutoringRegistrationSummaryView(APIView):
     """GET /admin-api/v1/tutoring-registrations/summary/
 
     계약 상태별 건수 + 수수료 확인 대기 건수(관리자 액션 필요 지표)를 반환합니다.
-    예) {"COLLECTING": 2, "REGISTERED": 3, "ACTIVE": 5, "CANCELLED": 1,
+    예) {"in_progress": 5, "ACTIVE": 5, "CANCELLED": 1,
          "total": 11, "awaiting_confirmation": 2}
     """
 
@@ -140,6 +147,10 @@ class TutoringRegistrationSummaryView(APIView):
         )
         counts = {row["contract_status"]: row["n"] for row in rows}
         data = {value: counts.get(value, 0) for value in _CONTRACT_VALUES}
+        data["in_progress"] = (
+            data[TutoringRegistration.ContractStatus.COLLECTING]
+            + data[TutoringRegistration.ContractStatus.REGISTERED]
+        )
         data["total"] = sum(data.values())
         data["awaiting_confirmation"] = TutoringResource.objects.filter(
             fee_payment_status="AWAITING_CONFIRMATION",

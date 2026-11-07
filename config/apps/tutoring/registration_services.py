@@ -289,6 +289,36 @@ def _reopen_rejected_registration(registration):
     )
 
 
+def _auto_reject_mismatched_registration(registration, resource):
+    """양측 최종 수업 조건 불일치를 즉시 반려 상태로 전환한다."""
+    if (
+        registration.attribute_validation_status
+        != TutoringRegistration.AttributeValidationStatus.MISMATCHED
+        or resource.fee_payment_status == "FAILED"
+    ):
+        return
+
+    before = resource.fee_payment_status
+    _mark_fee_payment_failed(resource, notify=False)
+    registration.rejection_reason = "양측이 입력한 수업 유형 또는 수업료가 일치하지 않습니다."
+    registration.save(update_fields=["rejection_reason", "updated_at"])
+
+    from config.apps.adminops.models import AdminActionLog
+
+    AdminActionLog.record(
+        admin=None,
+        action="tutoring_registration.auto_reject_mismatch",
+        target_type="TutoringRegistration",
+        target_id=registration.pk,
+        reason=registration.rejection_reason,
+        metadata={
+            "before": before,
+            "after": resource.fee_payment_status,
+            "resource_id": resource.pk,
+        },
+    )
+
+
 def _sync_resource(
     registration,
     room,
@@ -501,6 +531,9 @@ def save_my_registration(
             validated_data.get("subject_ids", []),
             proof_files,
         )
+        _auto_reject_mismatched_registration(registration, resource)
+        if invoice is not None:
+            invoice.refresh_from_db()
         previous_contract_status = registration.contract_status
         contract_status = refresh_contract_status(registration)
         if (

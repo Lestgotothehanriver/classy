@@ -67,21 +67,19 @@ def confirm_fee(registration, *, admin, request_id: str = ""):
 
 @transaction.atomic
 def reject_fee(registration, *, admin, reason: str = "", request_id: str = ""):
-    """수수료 또는 양측 조건 불일치 건을 반려 처리한다.
+    """수수료 입금 확인 대기 건을 반려 처리한다.
 
     Raises:
         ValidationError: 연결된 리소스가 없는 경우.
-        ConflictError: 입금 전·확인 대기 상태가 아닌 경우.
+        ConflictError: 확인 대기 상태가 아닌 경우.
     """
     resource = _lock_resource(registration)
-    is_mismatched = registration.attribute_validation_status == "MISMATCHED"
-    can_reject_mismatch = is_mismatched and resource.fee_payment_status in (
-        "PENDING",
-        "AWAITING_CONFIRMATION",
-    )
-    if not can_reject_mismatch and resource.fee_payment_status != "AWAITING_CONFIRMATION":
+    if (
+        registration.attribute_validation_status != "MATCHED"
+        or resource.fee_payment_status != "AWAITING_CONFIRMATION"
+    ):
         raise ConflictError(
-            "조건 불일치 또는 확인 대기(AWAITING_CONFIRMATION) 상태에서만 반려할 수 있습니다."
+            "양측 조건이 일치하고 확인 대기(AWAITING_CONFIRMATION) 상태인 건만 반려할 수 있습니다."
         )
 
     before = resource.fee_payment_status

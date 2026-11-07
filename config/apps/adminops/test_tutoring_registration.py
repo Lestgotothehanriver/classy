@@ -205,9 +205,16 @@ class TutoringRegistrationAdminAPITests(APITestCase):
         self.assertEqual(self.client.get(self.LIST, {"q": "등록강사"}).data["count"], 1)
         self.assertEqual(self.client.get(self.LIST, {"q": "없는사람"}).data["count"], 0)
 
+        self._bare_registration(suffix="collecting", commission=30000)
+        self.assertEqual(
+            self.client.get(self.LIST, {"contract_status": "IN_PROGRESS"}).data["count"],
+            2,
+        )
+
         summary = self.client.get(f"{self.LIST}summary/").data
         self.assertEqual(summary["REGISTERED"], 1)
-        self.assertEqual(summary["total"], 1)
+        self.assertEqual(summary["in_progress"], 2)
+        self.assertEqual(summary["total"], 2)
         self.assertEqual(summary["awaiting_confirmation"], 1)
 
     def test_ordering_by_commission_amount(self):

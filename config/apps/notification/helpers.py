@@ -180,7 +180,7 @@ def notify_fee_payment_confirmed(resource):
         user=resource.student.user,
         ntype='tutoring_contract_confirmed',
         role='student',
-        title='과외 성사 완료 알림',
+        title='과외 성사 등록 완료 알림',
         body='수수료 납부가 확인되어 수업 성사가 완료되었습니다. 과외 내역에서 확인해 보세요.',
         data={
             'resource_id': str(resource.id),
@@ -201,8 +201,8 @@ def notify_fee_payment_failed(resource):
             user=user,
             ntype='tutoring_contract_failed',
             role=role,
-            title='과외 성사 실패 알림',
-            body='수수료 납부 확인에 실패했어요. 수업 관리에서 다시 확인해 주세요.',
+            title='과외 성사 등록 실패 알림',
+            body='과외 성사 등록에 실패했어요. 수업 관리에서 다시 확인해 주세요.',
             data={
                 'resource_id': str(resource.id),
             },
