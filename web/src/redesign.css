@@ -2809,6 +2809,31 @@ dialog.wide {
   padding: 4px;
   border: 0;
 }
+.codec-guide {
+  margin: 12px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid #d9dcf8;
+  border-radius: 6px;
+  background: #f7f8ff;
+  color: #4f5663;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.codec-guide summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 700;
+}
+.codec-guide p {
+  margin: 10px 0 6px;
+}
+.codec-guide ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.codec-guide li + li {
+  margin-top: 6px;
+}
 .upload-preview {
   border-left: 1px solid #eceef0;
   padding-left: 24px;

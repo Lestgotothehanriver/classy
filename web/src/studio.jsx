@@ -342,9 +342,32 @@ function UploadForm({ onComplete, onBusy }) {
           <small>
             {video
               ? `${video.name} · ${(video.size / 1024 / 1024).toFixed(1)} MB`
-              : "최대 950MB · MP4 권장"}
+              : "최대 950MB · MP4(H.264/AVC + AAC)만 가능"}
           </small>
         </label>
+        <details className="codec-guide">
+          <summary>아이폰·갤럭시 HEVC(H.265) 영상 변환 안내</summary>
+          <p>
+            <strong>MP4 확장자여도 HEVC(H.265) 영상은 업로드할 수 없습니다.</strong>
+            <br />
+            MP4 컨테이너에 H.264/AVC 비디오와 AAC 오디오로 저장된 파일만 지원합니다.
+          </p>
+          <ul>
+            <li>
+              <strong>iPhone 앞으로 촬영:</strong> 설정 → 카메라 → 포맷 → “높은 호환성”을
+              선택하세요.
+            </li>
+            <li>
+              <strong>Galaxy 앞으로 촬영:</strong> 카메라 → 설정 → 고급 동영상 옵션 →
+              “고효율 동영상(HEVC)”을 끄세요.
+            </li>
+            <li>
+              <strong>이미 촬영한 영상:</strong> 사진/갤러리의 공유·내보내기에서 호환 형식
+              또는 H.264 옵션을 선택하세요. 옵션이 없으면 Mac 사진 앱의 내보내기나 Windows
+              HandBrake로 H.264 MP4로 변환한 뒤 업로드하세요.
+            </li>
+          </ul>
+        </details>
         {videoUrl && (
           <>
             <video
