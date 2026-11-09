@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.db import IntegrityError
 from django.test import TestCase
@@ -1350,6 +1351,85 @@ class DuplicateProposalPreventionTest(LikeSortingTestBase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(TutoringProposal.objects.exists())
+
+
+class InstructorProposalEligibilityTest(LikeSortingTestBase):
+    """강사의 과외 프로필·학력 인증이 제안 생성 전에 검증되는지 확인한다."""
+
+    def setUp(self):
+        super().setUp()
+        from config.apps.chat_app.models import ChatMessage, ChatRoom
+        from config.apps.tutoring.models import TutoringProposal
+        from rest_framework.authtoken.models import Token
+
+        self.chat_message_model = ChatMessage
+        self.chat_room_model = ChatRoom
+        self.proposal_model = TutoringProposal
+        self.post = TutoringPost.objects.create(student=self.student1, is_active=True)
+        token, _ = Token.objects.get_or_create(user=self.instructor_user1)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        self.notify_proposal = patch(
+            "config.apps.tutoring.services.notify_tutoring_proposal"
+        )
+        self.notify_proposal.start()
+        self.addCleanup(self.notify_proposal.stop)
+
+    def _post_proposal(self):
+        return self.client.post(
+            "/tutoring/propose-to-student/",
+            data={"post_id": self.post.id, "message": "학생 맞춤형 수업을 제안합니다."},
+            format="json",
+        )
+
+    def _assert_no_proposal_side_effects(self):
+        self.assertFalse(self.proposal_model.objects.filter(tutoring_post=self.post).exists())
+        self.assertFalse(self.chat_room_model.objects.filter(post=self.post).exists())
+        self.assertFalse(self.chat_message_model.objects.exists())
+
+    def test_rejects_proposal_without_tutoring_profile(self):
+        InstructorInfo.objects.filter(instructor=self.inst1).delete()
+
+        response = self._post_proposal()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "tutoring_profile_required")
+        self._assert_no_proposal_side_effects()
+
+    def test_rejects_proposal_when_academic_verification_is_not_submitted(self):
+        PendingInstructor.objects.filter(instructor_profile=self.inst1).delete()
+
+        response = self._post_proposal()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "academic_verification_required")
+        self.assertEqual(response.json()["verification_status"], "NOT_SUBMITTED")
+        self._assert_no_proposal_side_effects()
+
+    def test_rejects_proposal_for_each_non_verified_academic_status(self):
+        for status in (
+            PendingInstructor.Status.PENDING,
+            PendingInstructor.Status.SUSPENDED,
+            PendingInstructor.Status.RESUBMIT_REQUIRED,
+        ):
+            with self.subTest(status=status):
+                PendingInstructor.objects.filter(
+                    instructor_profile=self.inst1
+                ).update(status=status)
+
+                response = self._post_proposal()
+
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json()["code"], "academic_verification_required")
+                self.assertEqual(response.json()["verification_status"], status)
+                self._assert_no_proposal_side_effects()
+
+    def test_allows_proposal_for_verified_instructor_with_tutoring_profile(self):
+        response = self._post_proposal()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(self.proposal_model.objects.filter(tutoring_post=self.post).exists())
+        self.assertTrue(self.chat_room_model.objects.filter(post=self.post).exists())
+        self.assertTrue(self.chat_message_model.objects.exists())
 
 
 class SelfLookupPreventionTest(LikeSortingTestBase):

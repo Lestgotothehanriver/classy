@@ -4,7 +4,8 @@ from django.db import transaction
 
 from config.apps.accounts.models import Student, Instructor
 from config.apps.chat_app.models import ChatRoom, ChatMessage
-from .models import TutoringPost, TutoringProposal
+from .models import InstructorInfo, TutoringPost, TutoringProposal
+from config.apps.pending.models import PendingInstructor
 from config.apps.notification.helpers import notify_tutoring_request, notify_tutoring_proposal
 from config.apps.block.utils import users_have_block_relation
 
@@ -14,6 +15,18 @@ INSTRUCTOR_DUPLICATE_PROPOSAL_MESSAGE = "동일한 과외 공고에 대해서 �
 
 class DuplicateProposalError(Exception):
     """동일한 상대와 공고 조합으로 이미 요청 또는 제안이 존재한다."""
+
+
+class TutoringProfileRequiredError(PermissionDenied):
+    """과외 프로필 없이 제안을 시도했을 때 발생합니다."""
+
+
+class AcademicVerificationRequiredError(PermissionDenied):
+    """학력 인증이 완료되지 않은 강사의 제안을 차단합니다."""
+
+    def __init__(self, verification_status):
+        super().__init__("학력 인증이 완료된 선생님만 과외 제안을 보낼 수 있습니다.")
+        self.verification_status = verification_status
 
 
 @transaction.atomic
@@ -86,6 +99,20 @@ def create_instructor_proposal(user, post_id, message):
         instructor = Instructor.objects.get(user=user)
     except Instructor.DoesNotExist:
         raise PermissionDenied("선생님 계정만 사용할 수 있습니다.")
+
+    # 제안서와 채팅방이 생성되기 전에 과외 프로필 작성 여부를 확정합니다.
+    if not InstructorInfo.objects.filter(instructor=instructor).exists():
+        raise TutoringProfileRequiredError(
+            "과외 프로필을 작성한 뒤 과외 제안을 보낼 수 있습니다."
+        )
+
+    # pending_info가 없으면 NOT_SUBMITTED로 간주하며, VERIFIED만 제안을 허용합니다.
+    pending_info = getattr(instructor, "pending_info", None)
+    verification_status = (
+        pending_info.status if pending_info is not None else "NOT_SUBMITTED"
+    )
+    if verification_status != PendingInstructor.Status.VERIFIED:
+        raise AcademicVerificationRequiredError(verification_status)
 
     post = get_object_or_404(TutoringPost, id=post_id)
     if users_have_block_relation(user, post.student.user):

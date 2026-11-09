@@ -12,7 +12,9 @@ from config.apps.chat_app.models import ChatRoom
 from ..models import TutoringPost, TutoringProposal
 from ..serializers import TutoringProposalSerializer
 from ..services import (
+    AcademicVerificationRequiredError,
     DuplicateProposalError,
+    TutoringProfileRequiredError,
     create_student_proposal_room,
     delete_student_proposal_room,
     create_instructor_proposal,
@@ -143,6 +145,20 @@ class InstructorProposeToStudentAPIView(APIView):
             return Response(
                 {"detail": str(e), "code": "duplicate_proposal"},
                 status=status.HTTP_409_CONFLICT,
+            )
+        except TutoringProfileRequiredError as e:
+            return Response(
+                {"detail": str(e), "code": "tutoring_profile_required"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AcademicVerificationRequiredError as e:
+            return Response(
+                {
+                    "detail": str(e),
+                    "code": "academic_verification_required",
+                    "verification_status": e.verification_status,
+                },
+                status=status.HTTP_403_FORBIDDEN,
             )
         except PermissionDenied as e:
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
