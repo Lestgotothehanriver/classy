@@ -13,7 +13,12 @@ from config.apps.accounts.serializers import (
 from config.apps.cash.models import PurchaseHistory
 from config.apps.chat_app.models import ChatRoom
 from config.apps.notification.models import Notification
-from config.apps.tutoring.models import PaybackPayout, TutoringPost, TutoringRegistration
+from config.apps.tutoring.models import (
+    PaybackPayout,
+    TutoringPost,
+    TutoringRegistration,
+    TutoringResource,
+)
 
 from .models import SupportConversation, SupportConversationMessage, SupportMessage, SupportTicket
 from .services import (
@@ -101,6 +106,54 @@ class SupportTicketApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([row["id"] for row in response.data["purchases"]], [mine.pk])
+        self.assertEqual(response.data["purchases"][0]["purchased_cash"], 1000)
+        self.assertIsNotNone(response.data["purchases"][0]["created_at"])
+
+    def test_context_uses_the_same_registration_status_as_class_information(self):
+        """성사 등록 선택지는 수업 정보와 같은 완료 상태와 갱신 시각을 반환한다."""
+        student = Student.objects.create(user=self.user)
+        instructor_user = User.objects.create_user(
+            username="context-instructor",
+            user_name="컨텍스트강사",
+            password="pass1234",
+        )
+        instructor = Instructor.objects.create(user=instructor_user)
+        subject = Subject.objects.create(number=9002)
+        post = TutoringPost.objects.create(
+            student=student,
+            title="수학 과외",
+            sex="여성",
+            grade="고2",
+            field="문과",
+        )
+        post.subjects.add(subject)
+        room = ChatRoom.objects.create(
+            student=student,
+            instructor=instructor,
+            post=post,
+        )
+        registration = TutoringRegistration.objects.create(
+            student=self.user,
+            instructor=instructor_user,
+            chat_room=room,
+            subject=subject.name,
+            start_date=date(2026, 10, 1),
+            contract_status=TutoringRegistration.ContractStatus.ACTIVE,
+        )
+        TutoringResource.objects.create(
+            student=student,
+            instructor=instructor,
+            registration=registration,
+            fee_payment_status="PAID",
+        )
+
+        response = self.client.get("/support/ticket-context/")
+
+        self.assertEqual(response.status_code, 200)
+        row = response.data["tutoring_registrations"][0]
+        self.assertEqual(row["id"], registration.pk)
+        self.assertEqual(row["status"], "성사 등록 완료")
+        self.assertIsNotNone(row["updated_at"])
 
     def test_verification_ticket_requires_own_verification_target(self):
         """인증·프로필 유형은 검증된 인증 신청을 반드시 연결해야 합니다."""

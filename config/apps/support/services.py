@@ -221,7 +221,7 @@ def ticket_context(user) -> dict:
     registrations = (
         TutoringRegistration.objects.filter(student=user)
         | TutoringRegistration.objects.filter(instructor=user)
-    ).order_by("-updated_at", "-pk")[:100]
+    ).select_related("resource").order_by("-updated_at", "-pk")[:100]
     verifications = PendingInstructor.objects.filter(
         instructor_profile__user=user
     ).order_by("-applied_at", "-pk")[:20]
@@ -230,6 +230,7 @@ def ticket_context(user) -> dict:
             {
                 "id": purchase.pk,
                 "label": f"{purchase.purchased_cash:,} 캐시 충전",
+                "purchased_cash": purchase.purchased_cash,
                 "created_at": purchase.created_at,
             }
             for purchase in purchases
@@ -239,7 +240,7 @@ def ticket_context(user) -> dict:
                 "id": registration.pk,
                 "label": registration.subject,
                 "updated_at": registration.updated_at,
-                "status": registration.get_contract_status_display(),
+                "status": tutoring_registration_status_label(registration),
             }
             for registration in registrations
         ],
@@ -253,6 +254,28 @@ def ticket_context(user) -> dict:
             for verification in verifications
         ],
     }
+
+
+def tutoring_registration_status_label(registration) -> str:
+    """수업 정보와 같은 기준으로 [registration]의 고객센터 표시 상태를 반환합니다."""
+    if (
+        registration.attribute_validation_status
+        == TutoringRegistration.AttributeValidationStatus.MISMATCHED
+    ):
+        return "성사 등록 반려"
+    resource = getattr(registration, "resource", None)
+    if resource is not None and resource.fee_payment_status == "FAILED":
+        return "성사 등록 반려"
+    if registration.contract_status == TutoringRegistration.ContractStatus.CANCELLED:
+        return "수업 취소"
+    if resource is None:
+        return "성사 등록 진행 중"
+    if (
+        resource.fee_payment_status == "PAID"
+        and registration.contract_status == TutoringRegistration.ContractStatus.ACTIVE
+    ):
+        return "성사 등록 완료"
+    return "성사 등록 진행 중"
 
 
 def add_event(ticket, *, actor, event_type: str, payload: dict | None = None) -> None:
