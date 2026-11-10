@@ -105,6 +105,15 @@ export function LandingPage() {
                   <QrCode size={18} aria-hidden="true" />
                   QR로 다운로드
                 </button>
+                <a
+                  className="app-download-qr-button instagram-badge-link"
+                  href="https://www.instagram.com/classystudy_com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="CLASSY 인스타그램 열기"
+                >
+                  <img src="/app-icons/instagram-badge.png" alt="Instagram" />
+                </a>
               </div>
             </div>
             <div className="landing-hero-symbol" aria-hidden="true">

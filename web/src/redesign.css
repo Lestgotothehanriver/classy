@@ -378,6 +378,14 @@ textarea {
   border-color: var(--primary);
   color: var(--primary-dark);
 }
+.instagram-badge-link {
+  text-decoration: none;
+}
+.instagram-badge-link img {
+  display: block;
+  width: auto;
+  height: 20px;
+}
 .app-download-qr-dialog {
   display: grid;
   justify-items: center;
