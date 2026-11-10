@@ -30,6 +30,7 @@ from config.apps.common.utils import (
     parse_int_list,
 )
 from config.apps.chat_app.models import ChatRoom
+from config.apps.lecture.models import Lecture
 from ..models import (
     InstructorInfo,
     InstructorReview,
@@ -145,6 +146,28 @@ class InstructorListAPIView(generics.ListAPIView, InstructorAnnotateMixin):
                     q |= Q(user__birth_date__year=target_year)
             if q:
                 qs = qs.filter(q)
+
+        has_review = self.request.query_params.get("has_review")
+        if has_review is not None:
+            if has_review.lower() in ("true", "1"):
+                qs = qs.filter(review_count__gt=0)
+            else:
+                qs = qs.filter(review_count=0)
+
+        has_lecture = self.request.query_params.get("has_lecture")
+        if has_lecture is not None:
+            visible_lectures = Lecture.objects.filter(
+                instructor_id=OuterRef("pk"),
+                is_active=True,
+                is_delete=False,
+                admin_blocked_at__isnull=True,
+            )
+            from django.db.models import Exists
+            qs = qs.filter(
+                Exists(visible_lectures)
+                if has_lecture.lower() in ("true", "1")
+                else ~Exists(visible_lectures)
+            )
 
         university = self.request.query_params.get("university")
         if university:

@@ -485,6 +485,11 @@ class LectureListAPIView(generics.ListAPIView):
         max_price = self.request.query_params.get("max_price")
         if max_price and max_price.isdigit():
             qs = qs.filter(price__lte=int(max_price))
+
+        is_preview = self.request.query_params.get("is_preview")
+        if is_preview is not None:
+            qs = qs.filter(is_preview=is_preview.lower() in ("true", "1"))
+
         video_length = self.request.query_params.get("video_length")
         if video_length in VIDEO_LENGTH_RANGES:
             qs = qs.filter(**VIDEO_LENGTH_RANGES[video_length])

@@ -897,6 +897,181 @@ textarea {
   border-radius: 5px;
   max-width: 230px;
 }
+.filter-trigger {
+  min-height: 38px;
+  border: 0;
+  cursor: pointer;
+}
+.filter-trigger.active {
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.filter-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.filter-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  padding: 0 2px;
+}
+.filter-tabs button {
+  flex: 0 0 auto;
+  padding: 13px 12px 11px;
+  color: var(--muted);
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+.filter-tabs button.active {
+  color: var(--primary);
+  font-weight: 700;
+  border-color: var(--primary);
+}
+.filter-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 0;
+}
+.filter-catalog {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.filter-catalog nav {
+  background: var(--gray);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 0;
+}
+.filter-catalog nav button {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 20px;
+  border-radius: 0;
+  background: #fff;
+  color: var(--muted);
+  text-align: left;
+  font-size: 13px;
+}
+.filter-catalog nav button.active {
+  color: var(--primary);
+  background: #f1f0ff;
+  font-weight: 700;
+}
+.filter-option-grid {
+  display: block;
+  overflow-y: auto;
+  padding: 0;
+}
+.filter-option-grid button,
+.filter-option-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.filter-option-grid button svg { visibility: hidden; color: var(--primary); }
+.filter-option-grid button.selected,
+.filter-option-list button.selected {
+  background: #f1f0ff;
+  color: var(--primary);
+  font-weight: 700;
+}
+.filter-option-grid button.selected svg { visibility: visible; }
+.filter-option-list { display: block; width: 100%; overflow-y: auto; }
+.filter-body > .filter-option-list { height: 100%; }
+.filter-option-list.compact { max-height: 220px; }
+.filter-school {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) 1px minmax(0, 4fr);
+  height: 100%;
+  min-height: 0;
+}
+.filter-school-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.filter-school-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.filter-school-search > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.filter-school-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 12px 0;
+  font: inherit;
+}
+.filter-school-divider { background: var(--line); }
+.filter-department-column { display: block; }
+.filter-department-column .filter-school-list { height: 100%; }
+.filter-school-list { min-height: 0; overflow-y: auto; }
+.filter-school-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 0;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+}
+.filter-school-list button.selected {
+  background: #f1f0ff;
+  color: var(--primary);
+  font-weight: 700;
+}
+.filter-school-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.filter-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+dialog.wide:has(.filter-modal) {
+  display: flex;
+  flex-direction: column;
+  height: min(720px, 90dvh);
+  overflow: hidden;
+}
+dialog.wide:has(.filter-modal) .modal-head,
+dialog.wide:has(.filter-modal) .filter-tabs,
+dialog.wide:has(.filter-modal) .filter-actions {
+  flex-shrink: 0;
+}
 .filter-select > svg {
   color: var(--muted);
 }
@@ -2216,6 +2391,25 @@ dialog.wide {
     max-width: 175px;
     padding: 0 8px;
   }
+  .filter-tabs button {
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+  .filter-catalog {
+    grid-template-columns: 102px minmax(0, 1fr);
+  }
+  .filter-catalog nav button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .filter-option-grid {
+    padding-left: 0;
+  }
+  .filter-option-grid button,
+  .filter-option-list button {
+    min-height: 44px;
+    font-size: 12px;
+  }
   .filter-select select {
     font-size: 12px !important;
     max-width: 130px;
@@ -2373,6 +2567,9 @@ dialog.wide {
   }
   dialog.wide {
     width: calc(100vw - 24px);
+  }
+  dialog.wide:has(.filter-modal) {
+    height: 88dvh;
   }
   .modal-head {
     padding-bottom: 12px;

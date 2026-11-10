@@ -32,6 +32,7 @@ import {
   RegionFields,
 } from "./shared";
 import { api, list } from "./api";
+import regions from "./regions.json";
 import { appDownloadQrUrl, appStoreUrl, playStoreUrl } from "./app_download";
 
 export const endpoints = {
@@ -65,6 +66,170 @@ export const pageNames = {
   support: "고객지원",
   notices: "공지사항",
 };
+
+const subjectCategories = [
+  ["초등", 1, 8], ["중등", 9, 17], ["고등국어", 18, 31],
+  ["고등영어", 32, 34], ["고등수학", 35, 53], ["고등사회", 54, 80],
+  ["고등과학", 81, 107], ["제2외국어", 108, 116], ["직업탐구", 117, 122],
+  ["논술", 123, 130], ["기타 국내", 131, 146], ["유학", 147, 155],
+  ["영어", 156, 164], ["외국어", 165, 200], ["프로그래밍", 201, 218],
+  ["개발", 219, 224], ["미술", 225, 241], ["악기", 242, 269], ["음악", 270, 282],
+];
+
+const lecturePriceOptions = ["전체", "프리뷰 강의", "무료 강의", ...Array.from({ length: 10 }, (_, index) => `${(index + 1) * 100} 캐시 이하`)];
+const postPriceOptions = ["전체", "월 20만원 이하", "월 30만원 이하", "월 40만원 이하", "월 50만원 이하", "월 60만원 이하", "월 70만원 이하", "월 80만원 이하", "월 90만원 이하", "월 100만원 이하", "협의 후 결정"];
+const gradeOptions = ["전체", "유치원생", "초1", "초2", "초3", "초4", "초5", "초6", "중1", "중2", "중3", "고1", "고2", "고3", "N수생", "재수생", "대학생", "사회인"];
+const studentNumberOptions = () => {
+  const currentYear = new Date().getFullYear() % 100;
+  return [
+    ...Array.from({ length: 10 }, (_, index) => `${currentYear - index}학번`),
+    `${currentYear - 10}학번 이전`,
+  ];
+};
+
+function defaultFilters(kind) {
+  return {
+    subjects: [], subjectCategories: [], regions: [], regionStates: [], price: "전체", videoLength: "전체", isTutoring: "전체",
+    methods: ["전체"], sex: "전체", ages: ["전체"], review: "전체", videoLecture: "전체",
+    university: "", department: "", studentNumbers: [], grade: "전체",
+  };
+}
+
+function selectedCount(filters) {
+  return filters.subjects.length + filters.subjectCategories.length + filters.regions.length + filters.regionStates.length +
+    filters.methods.filter((item) => item !== "전체").length + filters.ages.filter((item) => item !== "전체").length + filters.studentNumbers.length +
+    [filters.price !== "전체", filters.videoLength !== "전체", filters.isTutoring !== "전체",
+      filters.sex !== "전체", filters.review !== "전체", filters.videoLecture !== "전체",
+      Boolean(filters.university), Boolean(filters.department), filters.grade !== "전체"].filter(Boolean).length;
+}
+
+function FilterModal({ kind, subjects, initialFilters, onApply, onClose }) {
+  const [filters, setFilters] = useState(initialFilters);
+  const [tab, setTab] = useState(0);
+  const [subjectCategory, setSubjectCategory] = useState("전체");
+  const [province, setProvince] = useState("전체");
+  const [schools, setSchools] = useState([]);
+  const [schoolQuery, setSchoolQuery] = useState("");
+  const tabs = kind === "lectures"
+    ? ["과목", "금액", "영상 길이", "과외 여부", "지역", "대학/학과", "학번"]
+    : kind === "teachers"
+      ? ["과목", "지역", "과외 방식", "성별", "나이", "리뷰", "영상 강의", "대학/학과", "학번"]
+      : ["과목", "지역", "금액", "과외 방식", "성별", "학년"];
+  const update = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
+  const toggle = (key, value) => {
+    const values = filters[key];
+    if (value === "전체") return update(key, ["전체"]);
+    const withoutAll = values.filter((item) => item !== "전체");
+    const next = withoutAll.includes(value)
+      ? withoutAll.filter((item) => item !== value)
+      : [...withoutAll, value];
+    update(key, next.length ? next : ["전체"]);
+  };
+  const selectedSchool = schools.find((school) => school.name === filters.university);
+  const subjectsForCategory = (category) => subjects.filter((subject) => {
+    const definition = subjectCategories.find(([name]) => name === category);
+    return definition && subject.number >= definition[1] && subject.number <= definition[2];
+  });
+  const categorySubjects = subjectCategory === "전체" ? [] : subjectsForCategory(subjectCategory);
+  const provinces = ["전체", ...new Set(regions.map(([, name]) => name.split(" ")[0]))];
+  const visibleRegions = province === "전체" ? [] : regions.filter(([, name]) => name.startsWith(`${province} `));
+
+  useEffect(() => {
+    if (tab !== tabs.indexOf("대학/학과") || schools.length) return;
+    fetch("/schools.json").then((response) => response.ok ? response.json() : []).then(setSchools).catch(() => {});
+  }, [tab, tabs, schools.length]);
+
+  const selectSubject = (subject) => {
+    if (subjectCategory === "전체") {
+      setFilters((current) => ({ ...current, subjects: [], subjectCategories: [] }));
+      return;
+    }
+    if (subject === null) {
+      setFilters((current) => ({
+        ...current,
+        subjects: current.subjects.filter((number) => !subjectsForCategory(subjectCategory).some((item) => item.number === number)),
+        subjectCategories: current.subjectCategories.includes(subjectCategory)
+          ? current.subjectCategories.filter((category) => category !== subjectCategory)
+          : [...current.subjectCategories, subjectCategory],
+      }));
+      return;
+    }
+    setFilters((current) => ({
+      ...current,
+      subjectCategories: current.subjectCategories.filter((category) => category !== subjectCategory),
+      subjects: current.subjects.includes(subject.number)
+        ? current.subjects.filter((number) => number !== subject.number)
+        : [...current.subjects, subject.number],
+    }));
+  };
+  const selectRegion = (region) => {
+    if (province === "전체") {
+      setFilters((current) => ({ ...current, regions: [], regionStates: [] }));
+      return;
+    }
+    if (region === null) {
+      setFilters((current) => ({
+        ...current,
+        regions: current.regions.filter((id) => !regions.some(([regionId, name]) => regionId === id && name.startsWith(`${province} `))),
+        regionStates: current.regionStates.includes(province)
+          ? current.regionStates.filter((state) => state !== province)
+          : [...current.regionStates, province],
+      }));
+      return;
+    }
+    setFilters((current) => ({
+      ...current,
+      regionStates: current.regionStates.filter((state) => state !== province),
+      regions: current.regions.includes(region[0])
+        ? current.regions.filter((id) => id !== region[0])
+        : [...current.regions, region[0]],
+    }));
+  };
+  const renderSubject = () => <div className="filter-catalog">
+    <nav aria-label="과목 카테고리">
+      {["전체", ...subjectCategories.map(([name]) => name)].map((category) => <button type="button" key={category} className={subjectCategory === category ? "active" : ""} onClick={() => setSubjectCategory(category)}>{category}</button>)}
+    </nav>
+    <div className="filter-option-grid">{subjectCategory === "전체" ? <button type="button" className={!filters.subjects.length && !filters.subjectCategories.length ? "selected" : ""} onClick={() => selectSubject(null)}>전체<Check size={16} /></button> : <><button type="button" className={filters.subjectCategories.includes(subjectCategory) ? "selected" : ""} onClick={() => selectSubject(null)}>전체<Check size={16} /></button>{categorySubjects.map((subject) => <button type="button" key={subject.number} className={filters.subjects.includes(subject.number) ? "selected" : ""} onClick={() => selectSubject(subject)}>{subject.name}<Check size={16} /></button>)}</>}</div>
+  </div>;
+  const renderRegion = () => <div className="filter-catalog">
+    <nav aria-label="지역 시도">{provinces.map((item) => <button type="button" key={item} className={province === item ? "active" : ""} onClick={() => setProvince(item)}>{item}</button>)}</nav>
+    <div className="filter-option-grid">{province === "전체" ? <button type="button" className={!filters.regions.length && !filters.regionStates.length ? "selected" : ""} onClick={() => selectRegion(null)}>전체<Check size={16} /></button> : <><button type="button" className={filters.regionStates.includes(province) ? "selected" : ""} onClick={() => selectRegion(null)}>전체<Check size={16} /></button>{visibleRegions.map((region) => <button type="button" key={region[0]} className={filters.regions.includes(region[0]) ? "selected" : ""} onClick={() => selectRegion(region)}>{region[1].replace(`${province} `, "")}<Check size={16} /></button>)}</>}</div>
+  </div>;
+  const renderOptions = (key, options, multi = false) => <div className="filter-option-list">{options.map((option) => {
+    const selected = multi ? filters[key].includes(option) : filters[key] === option;
+    return <button type="button" key={option} className={selected ? "selected" : ""} onClick={() => multi ? toggle(key, option) : update(key, option)}><span>{option}</span>{selected && <Check size={19} />}</button>;
+  })}</div>;
+  const renderSchool = () => {
+    const filteredSchools = schools.filter((school) => school.name.includes(schoolQuery.trim()));
+    return <div className="filter-school">
+      <section className="filter-school-column">
+        <label className="filter-school-search"><span><input aria-label="대학교 검색" type="search" value={schoolQuery} placeholder="대학교 이름 검색" onChange={(event) => setSchoolQuery(event.target.value)} /><Search size={20} aria-hidden="true" /></span></label>
+        <div className="filter-school-list">{filteredSchools.map((school) => <button type="button" key={school.name} className={filters.university === school.name ? "selected" : ""} onClick={() => { update("university", school.name); update("department", ""); }}><span>{school.name}</span>{filters.university === school.name && <Check size={19} />}</button>)}</div>
+      </section>
+      <div className="filter-school-divider" aria-hidden="true" />
+      <section className="filter-school-column filter-department-column">
+        {selectedSchool ? <div className="filter-school-list"><button type="button" className={!filters.department ? "selected" : ""} onClick={() => update("department", "")}><span>학과 전체</span>{!filters.department && <Check size={19} />}</button>{(selectedSchool.departments || []).map((department) => <button type="button" key={department} className={filters.department === department ? "selected" : ""} onClick={() => update("department", department)}><span>{department}</span>{filters.department === department && <Check size={19} />}</button>)}</div> : <p className="filter-school-placeholder">대학교를 먼저 선택해주세요.</p>}
+      </section>
+    </div>;
+  };
+  const content = () => {
+    const label = tabs[tab];
+    if (label === "과목") return renderSubject();
+    if (label === "지역") return renderRegion();
+    if (label === "대학/학과") return renderSchool();
+    if (label === "학번") return renderOptions("studentNumbers", studentNumberOptions(), true);
+    if (label === "금액") return renderOptions("price", kind === "lectures" ? lecturePriceOptions : postPriceOptions);
+    if (label === "영상 길이") return renderOptions("videoLength", ["전체", "5분 이하", "10~30분", "30분 ~ 1시간", "1시간 ~ 1시간 30분", "1시간 30분 이상"]);
+    if (label === "과외 여부") return renderOptions("isTutoring", ["전체", "과외 구함", "과외 구하지 않음"]);
+    if (label === "과외 방식") return renderOptions("methods", ["전체", "대면", "비대면"], true);
+    if (label === "성별") return renderOptions("sex", ["전체", "남자", "여자"]);
+    if (label === "나이") return renderOptions("ages", ["전체", "10대", "20~25세", "25~30세", "30~35세", "35~40세", "40~45세", "45~50세", "50세 이상"], true);
+    if (label === "리뷰") return renderOptions("review", ["전체", "리뷰 있음", "리뷰 없음"]);
+    if (label === "영상 강의") return renderOptions("videoLecture", ["전체", "영상 강의 있음", "영상 강의 없음"]);
+    return renderOptions("grade", gradeOptions);
+  };
+  return <Modal title="필터" onClose={onClose} wide><div className="filter-modal"><div className="filter-tabs" role="tablist">{tabs.map((name, index) => <button type="button" role="tab" aria-selected={tab === index} className={tab === index ? "active" : ""} key={name} onClick={() => setTab(index)}>{name}</button>)}</div><section className="filter-body">{content()}</section><footer className="filter-actions"><Btn type="button" onClick={() => setFilters(defaultFilters(kind))}>초기화</Btn><Btn type="button" className="primary" onClick={() => onApply(filters)}>필터 적용</Btn></footer></div></Modal>;
+}
 export function AppIcon({ name, selected = false }) {
   return (
     <span
@@ -893,9 +1058,10 @@ export function Catalog({ kind, mode }) {
   const { user, subjects, detail, go, login } = useContext(Ctx);
   const [search, setSearch] = useState(""),
     [query, setQuery] = useState(""),
-    [subject, setSubject] = useState(""),
     [order, setOrder] = useState("latest"),
     [page, setPage] = useState(1);
+  const [filters, setFilters] = useState(() => defaultFilters(kind));
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [category, setCategory] = useState(() => {
     const value =
       mode === "lectures"
@@ -920,7 +1086,15 @@ export function Catalog({ kind, mode }) {
   if (mode === "expired") params.set("status", "expired");
   if (mode === "saved-teachers") params.set("liked", "true");
   if (query) params.set(kind === "lectures" ? "q" : "search", query);
-  if (subject) params.set("subject", subject);
+  const categorySubjectIds = filters.subjectCategories.flatMap((category) => {
+    const definition = subjectCategories.find(([name]) => name === category);
+    return definition ? subjects.filter((subject) => subject.number >= definition[1] && subject.number <= definition[2]).map((subject) => subject.number) : [];
+  });
+  const subjectIds = [...new Set([...filters.subjects, ...categorySubjectIds])];
+  if (subjectIds.length) params.set("subject", subjectIds.join(","));
+  if (kind === "lectures" && filters.subjectCategories.length) {
+    params.set("filter_type", filters.subjectCategories.join(","));
+  }
   else if (category) {
     const matchers = {
       코딩: (s) => s.number >= 196 && s.number <= 219,
@@ -931,6 +1105,54 @@ export function Catalog({ kind, mode }) {
       .filter(matchers[category] || ((s) => s.name.includes(category)))
       .map((s) => s.number);
     if (ids.length) params.set("subject", ids.join(","));
+  }
+  const stateRegionIds = filters.regionStates.flatMap((state) => regions.filter(([, name]) => name.startsWith(`${state} `)).map(([id]) => id));
+  const regionIds = [...new Set([...filters.regions, ...stateRegionIds])];
+  if (kind === "lectures") {
+    const lectureRegions = [
+      ...filters.regionStates,
+      ...filters.regions.map((id) => regions.find(([regionId]) => regionId === id)?.[1]).filter(Boolean),
+    ];
+    if (lectureRegions.length) params.set("region", [...new Set(lectureRegions)].join(","));
+  } else if (regionIds.length) {
+    params.set("region", regionIds.join(","));
+  }
+  if (filters.university) params.set("university", filters.university);
+  if (filters.department) params.set("department", filters.department);
+  if (filters.studentNumbers.length) {
+    const studentNumbers = filters.studentNumbers
+      .map((value) => value.match(/\d{2}/)?.[0])
+      .filter(Boolean)
+      .map((year) => String(2000 + Number(year)));
+    params.set(kind === "teachers" ? "student_id" : "student_number", studentNumbers.join(","));
+  }
+  if (kind === "lectures") {
+    if (filters.price === "무료 강의") params.set("max_price", "0");
+    else if (filters.price !== "전체" && filters.price !== "프리뷰 강의") params.set("max_price", filters.price.match(/\d+/)?.[0] || "");
+    if (filters.price === "프리뷰 강의") params.set("is_preview", "true");
+    const videoLengths = { "5분 이하": "under_5", "10~30분": "10_30", "30분 ~ 1시간": "30_60", "1시간 ~ 1시간 30분": "60_90", "1시간 30분 이상": "over_90" };
+    if (videoLengths[filters.videoLength]) params.set("video_length", videoLengths[filters.videoLength]);
+    if (filters.isTutoring !== "전체") params.set("is_tutoring", String(filters.isTutoring === "과외 구함"));
+  }
+  if (kind === "teachers") {
+    if (filters.methods.some((method) => method !== "전체")) params.set("method", filters.methods.filter((method) => method !== "전체").join(","));
+    if (filters.sex !== "전체") params.set("sex", filters.sex === "남자" ? "남성" : "여성");
+    if (filters.ages.some((age) => age !== "전체")) {
+      const ages = filters.ages.map((age) => ({
+        "10대": "10-19", "20~25세": "20-25", "25~30세": "25-30",
+        "30~35세": "30-35", "35~40세": "35-40", "40~45세": "40-45",
+        "45~50세": "45-50", "50세 이상": "50-99",
+      })[age]);
+      params.set("age", ages.filter(Boolean).join(","));
+    }
+    if (filters.review !== "전체") params.set("has_review", String(filters.review === "리뷰 있음"));
+    if (filters.videoLecture !== "전체") params.set("has_lecture", String(filters.videoLecture === "영상 강의 있음"));
+  }
+  if (kind === "posts") {
+    if (filters.price !== "전체" && filters.price !== "협의 후 결정") params.set("cost", String(Number(filters.price.match(/\d+/)?.[0]) * 10000));
+    if (filters.methods.some((method) => method !== "전체")) params.set("method", filters.methods.filter((method) => method !== "전체").join(","));
+    if (filters.sex !== "전체") params.set("sex", filters.sex === "남자" ? "남성" : "여성");
+    if (filters.grade !== "전체") params.set("grade", filters.grade);
   }
   // 비로그인 방문자에게는 목록과 검색만 열고 상세·찜·상담은 로그인 뒤에 진행한다.
   const publicBrowse = ["lectures", "teachers", "posts"].includes(mode);
@@ -972,12 +1194,12 @@ export function Catalog({ kind, mode }) {
                 <button
                   key={c}
                   className={
-                    (category || "전체") === c && !subject ? "active" : ""
+                    (category || "전체") === c && !filters.subjects.length && !filters.subjectCategories.length ? "active" : ""
                   }
                   onClick={() =>
                     reset(() => {
                       setCategory(c === "전체" ? "" : c);
-                      setSubject("");
+                      setFilters(defaultFilters(kind));
                     })
                   }
                 >
@@ -1036,26 +1258,16 @@ export function Catalog({ kind, mode }) {
         <div className="catalog-toolbar">
           {!isMine ? (
             <>
-              <label className="filter-select">
+              <button
+                type="button"
+                className={"filter-select filter-trigger" + (selectedCount(filters) ? " active" : "")}
+                aria-haspopup="dialog"
+                aria-expanded={isFilterOpen}
+                onClick={() => setIsFilterOpen(true)}
+              >
                 <SlidersHorizontal size={16} />
-                <select
-                  aria-label="과목"
-                  value={subject}
-                  onChange={(e) =>
-                    reset(() => {
-                      setSubject(e.target.value);
-                      setCategory("");
-                    })
-                  }
-                >
-                  <option value="">과목 필터</option>
-                  {subjects.map((s) => (
-                    <option value={s.number} key={s.number}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <span>{selectedCount(filters) ? `필터 ${selectedCount(filters)}` : "필터"}</span>
+              </button>
               {category && (
                 <button
                   className="filter-chip"
@@ -1163,12 +1375,12 @@ export function Catalog({ kind, mode }) {
             ) : (
               <Empty
                 title={
-                  query || subject || category
+                  query || filters.subjects.length || filters.subjectCategories.length || category || selectedCount(filters)
                     ? "검색 결과가 없습니다."
                     : "등록된 내용이 없습니다."
                 }
                 text={
-                  query || subject || category
+                  query || filters.subjects.length || filters.subjectCategories.length || category || selectedCount(filters)
                     ? "검색어 또는 필터를 변경해 보세요."
                     : "새로운 강의와 과외가 등록되면 이곳에서 확인할 수 있습니다."
                 }
@@ -1177,6 +1389,7 @@ export function Catalog({ kind, mode }) {
           </State>
         </Access>
       </div>
+      {isFilterOpen && <FilterModal kind={kind} subjects={subjects} initialFilters={filters} onClose={() => setIsFilterOpen(false)} onApply={(nextFilters) => reset(() => { setFilters(nextFilters); setCategory(""); setIsFilterOpen(false); })} />}
     </div>
   );
 }
