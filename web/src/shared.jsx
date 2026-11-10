@@ -11,6 +11,8 @@ import {
   LockKeyhole,
   LoaderCircle,
   ArrowRight,
+  Check,
+  Search,
   X,
 } from "lucide-react";
 import { api } from "./api";
@@ -18,6 +20,20 @@ import regions from "./regions.json";
 export const Ctx = createContext();
 export const money = (n) => Number(n || 0).toLocaleString("ko-KR");
 export const date = (d) => (d ? new Date(d).toLocaleDateString("ko-KR") : "");
+
+/** 입력 필드 제목과 필수 여부를 함께 표시한다. */
+export function FieldLabel({ children, required = false }) {
+  return (
+    <span className="form-field-label">
+      {children}
+      {required && (
+        <span className="required-label" aria-hidden="true">
+          필수
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** 앱의 정산 계좌 등록 화면과 공유하는 은행 선택 목록이다. */
 export const BANKS = [
@@ -62,16 +78,83 @@ function loadSchools() {
   return schoolsRequest;
 }
 
+/** 학교명을 검색하고 확인할 때만 선택을 반영하는 회원가입용 모달이다. */
+function SchoolSearchModal({ schools, initialSchool, onConfirm, onClose }) {
+  const [query, setQuery] = useState("");
+  const [selectedSchoolName, setSelectedSchoolName] = useState(initialSchool);
+  const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
+  const filteredSchools = schools.filter((school) =>
+    school.name.toLocaleLowerCase("ko-KR").includes(normalizedQuery),
+  );
+
+  return (
+    <Modal title="학교 선택" onClose={onClose}>
+      <div className="school-picker-search">
+        <Search size={20} aria-hidden="true" />
+        <input
+          autoFocus
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="학교 이름을 검색해주세요."
+          aria-label="학교 이름 검색"
+        />
+      </div>
+      <div className="school-picker-results" role="listbox" aria-label="학교 검색 결과">
+        {filteredSchools.length ? (
+          filteredSchools.map((school) => {
+            const selected = school.name === selectedSchoolName;
+            return (
+              <button
+                type="button"
+                key={school.name}
+                className={selected ? "selected" : ""}
+                role="option"
+                aria-selected={selected}
+                onClick={() => setSelectedSchoolName(school.name)}
+              >
+                <span>{school.name}</span>
+                {selected && <Check size={20} aria-hidden="true" />}
+              </button>
+            );
+          })
+        ) : (
+          <p className="school-picker-empty">
+            검색 결과가 없습니다.\n찾으시는 학교가 없으면 문의해주세요.
+          </p>
+        )}
+      </div>
+      <div className="school-picker-actions">
+        <Btn type="button" onClick={() => setSelectedSchoolName("")}>
+          초기화
+        </Btn>
+        <Btn
+          type="button"
+          className="primary"
+          disabled={!selectedSchoolName}
+          onClick={() => onConfirm(selectedSchoolName)}
+        >
+          선택 완료
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 /** 학교 선택 뒤 해당 학교의 학과와 입학연도를 선택하도록 묶은 입력 필드다. */
 export function AcademicFields({
   university = "",
   department = "",
   studentNumber = "",
+  showRequiredLabel = false,
+  schoolSearch = false,
 }) {
   const [schools, setSchools] = useState([]);
   const [loadError, setLoadError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState(department);
+  const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -89,9 +172,12 @@ export function AcademicFields({
                 }
               : null),
         );
+        setIsLoading(false);
       })
       .catch((error) => {
-        if (alive) setLoadError(error.message);
+        if (!alive) return;
+        setLoadError(error.message);
+        setIsLoading(false);
       });
     return () => {
       alive = false;
@@ -112,34 +198,58 @@ export function AcademicFields({
   const yearOptions = years.includes(selectedYear)
     ? years
     : [selectedYear, ...years].filter(Boolean);
+  function selectSchool(schoolName) {
+    const school = availableSchools.find((item) => item.name === schoolName);
+    setSelectedSchool(school || null);
+    setSelectedDepartment("");
+    setIsSchoolSearchOpen(false);
+  }
 
   return (
     <>
       <label>
-        학교
-        <select
-          name="university"
-          value={selectedSchool?.name || ""}
-          onChange={(event) => {
-            const school = schools.find((item) => item.name === event.target.value);
-            setSelectedSchool(school || null);
-            setSelectedDepartment("");
-          }}
-          required
-        >
-          <option value="" disabled>
-            학교를 선택해주세요
-          </option>
-          {availableSchools.map((school) => (
-            <option key={school.name} value={school.name}>
-              {school.name}
+        <FieldLabel required={showRequiredLabel}>학교</FieldLabel>
+        {schoolSearch ? (
+          <>
+            <button
+              type="button"
+              className={`school-picker-trigger${selectedSchool ? " selected" : ""}`}
+              aria-label="학교"
+              aria-haspopup="dialog"
+              aria-expanded={isSchoolSearchOpen}
+              disabled={isLoading || Boolean(loadError)}
+              onClick={() => setIsSchoolSearchOpen(true)}
+            >
+              <span>
+                {isLoading
+                  ? "학교 목록을 불러오는 중입니다."
+                  : selectedSchool?.name || "학교를 검색해주세요."}
+              </span>
+              <Search size={24} aria-hidden="true" />
+            </button>
+            <input type="hidden" name="university" value={selectedSchool?.name || ""} />
+          </>
+        ) : (
+          <select
+            name="university"
+            value={selectedSchool?.name || ""}
+            onChange={(event) => selectSchool(event.target.value)}
+            required
+          >
+            <option value="" disabled>
+              학교를 선택해주세요
             </option>
-          ))}
-        </select>
+            {availableSchools.map((school) => (
+              <option key={school.name} value={school.name}>
+                {school.name}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
       {loadError && <p className="error">{loadError}</p>}
       <label>
-        학과/전공
+        <FieldLabel required={showRequiredLabel}>학과/전공</FieldLabel>
         <select
           name="department"
           value={selectedDepartment}
@@ -158,7 +268,7 @@ export function AcademicFields({
         </select>
       </label>
       <label>
-        입학연도 (학번)
+        <FieldLabel required={showRequiredLabel}>입학연도 (학번)</FieldLabel>
         <select name="student_number" defaultValue={selectedYear} required>
           <option value="" disabled>
             입학연도를 선택해주세요
@@ -170,12 +280,26 @@ export function AcademicFields({
           ))}
         </select>
       </label>
+      {schoolSearch && isSchoolSearchOpen && (
+        <SchoolSearchModal
+          schools={availableSchools}
+          initialSchool={selectedSchool?.name || ""}
+          onConfirm={selectSchool}
+          onClose={() => setIsSchoolSearchOpen(false)}
+        />
+      )}
     </>
   );
 }
 
 /** 시/도와 시·군·구 목록에서만 지역을 선택하게 하는 공통 입력 필드다. */
-export function RegionFields({ label = "활동 지역", name = "region", value = "", required = false }) {
+export function RegionFields({
+  label = "활동 지역",
+  name = "region",
+  value = "",
+  required = false,
+  showRequiredLabel = false,
+}) {
   const initial = regions.find(([, region]) => region === value)?.[1] || value;
   const [province, ...districtParts] = String(initial || "").split(" ");
   const initialDistrict = districtParts.join(" ");
@@ -192,7 +316,7 @@ export function RegionFields({ label = "활동 지역", name = "region", value =
 
   return (
     <label>
-      {label}
+      <FieldLabel required={showRequiredLabel}>{label}</FieldLabel>
       <div className="selection-grid">
         <select
           aria-label={`${label} 시/도`}

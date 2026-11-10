@@ -1,8 +1,36 @@
 import React, { useContext, useState } from "react";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { api } from "./api";
-import { AcademicFields, Ctx, Btn, Modal, RegionFields } from "./shared";
+import {
+  AcademicFields,
+  Btn,
+  Ctx,
+  FieldLabel,
+  Modal,
+  RegionFields,
+} from "./shared";
 import { SubjectPicker } from "./studio";
+
+const appPasswordPattern =
+  /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])(?!.*\s).{8,16}$/;
+
+function signupBirthDateMax() {
+  const today = new Date();
+  today.setFullYear(today.getFullYear() - 14);
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
+function splitRealName(value) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2)
+    return { lastName: parts[0], firstName: parts.slice(1).join(" ") };
+  const [name = ""] = parts;
+  return name.length >= 2
+    ? { lastName: name.slice(0, 1), firstName: name.slice(1) }
+    : { lastName: "", firstName: name };
+}
 
 // Mirrors SignupAccountView, SignupVerifyPhoneView and the role-specific surveys.
 export function Auth({ onClose, initial = "login" }) {
@@ -121,6 +149,17 @@ export function Auth({ onClose, initial = "login" }) {
         setNotice("비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.");
         return;
       }
+      if (!appPasswordPattern.test(values.password))
+        throw new Error(
+          "비밀번호는 영문, 숫자, 특수문자를 포함해 8자 이상 16자 이하로 입력해주세요.",
+        );
+      const subjectLimit = role === "instructor" ? 3 : 9;
+      if (!selectedSubjectIds.length)
+        throw new Error("관심 과목을 설정해주세요.");
+      if (selectedSubjectIds.length > subjectLimit)
+        throw new Error(`과목은 최대 ${subjectLimit}개까지 선택할 수 있습니다.`);
+      if (role === "instructor" && !values.university)
+        throw new Error("학교를 선택해주세요.");
       const email = values.email.trim().toLowerCase();
       const emailCheck = await api(
         "/accounts/check-email/?email=" + encodeURIComponent(email),
@@ -135,14 +174,18 @@ export function Auth({ onClose, initial = "login" }) {
       );
       if (!nameCheck.available) throw new Error("이미 사용 중인 닉네임입니다.");
       const selected = selectedSubjectIds;
+      const name = splitRealName(values.real_name);
       const body = {
         email,
         password: values.password,
         user_name: values.user_name.trim(),
+        first_name: name.firstName,
+        last_name: name.lastName,
         phone,
         region: values.region,
         sex: values.sex,
         birth_date: values.birth_date,
+        agreed_age: values.agreed_age === "true",
         agreed_terms: values.agreed_terms === "true",
         agreed_privacy: values.agreed_privacy === "true",
         agreed_marketing: values.marketing === "on",
@@ -204,7 +247,7 @@ export function Auth({ onClose, initial = "login" }) {
         <fieldset disabled={busy} className="form-fields">
           {mode !== "reset" && (
             <label>
-              이메일
+              <FieldLabel required>이메일</FieldLabel>
               <input
                 name="email"
                 type="email"
@@ -215,8 +258,19 @@ export function Auth({ onClose, initial = "login" }) {
           )}
           {mode !== "login" && (
             <>
+              {mode === "signup" && (
+                <label>
+                  <FieldLabel required>이름</FieldLabel>
+                  <input
+                    name="real_name"
+                    required
+                    autoComplete="name"
+                    placeholder="실명을 입력해주세요."
+                  />
+                </label>
+              )}
               <label>
-                휴대전화 번호
+                <FieldLabel required>휴대전화 번호</FieldLabel>
                 <input
                   type="tel"
                   value={phone}
@@ -254,13 +308,16 @@ export function Auth({ onClose, initial = "login" }) {
             </>
           )}
           <label>
-            {mode === "reset" ? "새 비밀번호" : "비밀번호"}
+            <FieldLabel required>
+              {mode === "reset" ? "새 비밀번호" : "비밀번호"}
+            </FieldLabel>
             <span className="password-field">
               <input
                 name="password"
                 type={isPasswordVisible ? "text" : "password"}
                 required
                 minLength={mode === "login" ? 1 : 8}
+                maxLength={mode === "login" ? undefined : 16}
                 autoComplete={
                   mode === "login" ? "current-password" : "new-password"
                 }
@@ -277,16 +334,20 @@ export function Auth({ onClose, initial = "login" }) {
                 {isPasswordVisible ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </span>
+            {mode !== "login" && (
+              <small>영문, 숫자, 특수문자를 포함해 8~16자로 입력해주세요.</small>
+            )}
           </label>
           {mode !== "login" && (
             <label>
-              비밀번호 확인
+              <FieldLabel required>비밀번호 확인</FieldLabel>
               <span className="password-field">
                 <input
                   name="confirm"
                   type={isConfirmPasswordVisible ? "text" : "password"}
                   required
                   minLength={8}
+                  maxLength={16}
                   autoComplete="new-password"
                 />
                 <button
@@ -314,31 +375,43 @@ export function Auth({ onClose, initial = "login" }) {
           {mode === "signup" && (
             <>
               <label>
-                닉네임
-                <input name="user_name" required maxLength={30} />
+                <FieldLabel required>닉네임</FieldLabel>
+                <input
+                  name="user_name"
+                  required
+                  minLength={2}
+                  maxLength={13}
+                  pattern="[A-Za-z0-9가-힣]+"
+                  title="닉네임은 공백이나 특수문자 없이 2자 이상 13자 이하로 입력해주세요."
+                />
+                <small>공백·특수문자 없이 2~13자로 입력해주세요.</small>
               </label>
               <div className="form-columns">
                 <label>
-                  생년월일
+                  <FieldLabel required>생년월일</FieldLabel>
                   <input
                     name="birth_date"
                     type="date"
                     required
-                    max={new Date().toISOString().slice(0, 10)}
+                    max={signupBirthDateMax()}
                   />
                 </label>
                 <label>
-                  성별
-                  <select name="sex">
-                    <option value="">선택 안 함</option>
+                  <FieldLabel required>성별</FieldLabel>
+                  <select name="sex" required defaultValue="">
+                    <option value="" disabled>
+                      성별 선택
+                    </option>
                     <option>남성</option>
                     <option>여성</option>
                   </select>
                 </label>
               </div>
-              <RegionFields required />
+              <RegionFields required showRequiredLabel />
               <div className="subject-field">
-                <span>관심 과목</span>
+                <FieldLabel required>
+                  {role === "instructor" ? "전문 수업 과목" : "관심 과목"}
+                </FieldLabel>
                 <button
                   type="button"
                   className="subject-picker-trigger"
@@ -347,8 +420,8 @@ export function Auth({ onClose, initial = "login" }) {
                 >
                   <span>
                     {selectedSubjectIds.length
-                      ? `${selectedSubjectIds.length}/9개 과목 선택됨`
-                      : "관심 과목을 선택해주세요. (최대 9개)"}
+                      ? `${selectedSubjectIds.length}/${role === "instructor" ? 3 : 9}개 과목 선택됨`
+                      : `${role === "instructor" ? "전문 수업 과목" : "관심 과목"}을 선택해주세요. (최대 ${role === "instructor" ? 3 : 9}개)`}
                   </span>
                   <Search size={24} aria-hidden="true" />
                 </button>
@@ -379,16 +452,25 @@ export function Auth({ onClose, initial = "login" }) {
               )}
               {role === "instructor" && (
                 <>
-                  <AcademicFields />
+                  <AcademicFields showRequiredLabel schoolSearch />
                   <label>
-                    선생님 소개
-                    <textarea name="instruction" rows={3} />
+                    <FieldLabel required>한 줄 소개</FieldLabel>
+                    <textarea name="instruction" rows={3} required maxLength={300} />
                   </label>
                   <p className="form-note">
                     가입 후 마이페이지에서 학력 인증 서류를 제출할 수 있습니다.
                   </p>
                 </>
               )}
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  name="agreed_age"
+                  value="true"
+                  required
+                />
+                <span>[필수] 만 14세 이상입니다.</span>
+              </label>
               <label className="check-label">
                 <input
                   type="checkbox"
@@ -456,7 +538,7 @@ export function Auth({ onClose, initial = "login" }) {
           selectedIds={selectedSubjectIds}
           onChange={setSelectedSubjectIds}
           onClose={() => setIsSubjectPickerOpen(false)}
-          maxSelections={9}
+          maxSelections={role === "instructor" ? 3 : 9}
         />
       )}
       <div className="auth-links">

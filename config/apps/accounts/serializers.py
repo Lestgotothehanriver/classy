@@ -1,9 +1,11 @@
 # config/apps/accounts/serializers.py
 
 import json
+import re
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Student, Instructor, Subject
@@ -17,20 +19,75 @@ User = get_user_model()
 
 
 class RequiredSignupConsentSerializer(serializers.Serializer):
-    """회원가입에 필요한 필수 정책 동의를 공통으로 검증한다."""
+    """앱과 동일한 회원가입 공통 입력값·필수 동의를 검증한다."""
 
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8, max_length=16)
+    user_name = serializers.CharField(min_length=2, max_length=13)
+    first_name = serializers.CharField()
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField()
+    sex = serializers.ChoiceField(choices=("남성", "여성"))
+    birth_date = serializers.DateField()
+    region = serializers.CharField()
+    agreed_age = serializers.BooleanField(write_only=True)
     agreed_terms = serializers.BooleanField(write_only=True)
     agreed_privacy = serializers.BooleanField(write_only=True)
 
     def validate(self, attrs):
-        """필수 약관과 개인정보처리방침에 대한 명시적 동의를 검증한다."""
+        """필수 동의, 비밀번호 조합, 만 14세 이상 여부를 검증한다."""
+        if not attrs["agreed_age"]:
+            raise serializers.ValidationError({"agreed_age": "만 14세 이상 동의가 필요합니다."})
         if not attrs["agreed_terms"]:
             raise serializers.ValidationError({"agreed_terms": "이용약관 동의가 필요합니다."})
         if not attrs["agreed_privacy"]:
             raise serializers.ValidationError(
                 {"agreed_privacy": "개인정보처리방침 동의가 필요합니다."},
             )
+        password_pattern = r"(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])(?!.*\s).{8,16}"
+        if not re.fullmatch(password_pattern, attrs["password"]):
+            raise serializers.ValidationError(
+                {
+                    "password": (
+                        "비밀번호는 영문, 숫자, 특수문자를 포함해 "
+                        "8자 이상 16자 이하로 입력해주세요."
+                    ),
+                },
+            )
+        today = timezone.localdate()
+        birth_date = attrs["birth_date"]
+        age = today.year - birth_date.year - (
+            (today.month, today.day) < (birth_date.month, birth_date.day)
+        )
+        if age < 14:
+            raise serializers.ValidationError(
+                {"birth_date": "만 14세 이상만 가입할 수 있습니다."},
+            )
         return attrs
+
+    def validate_user_name(self, value):
+        """닉네임을 앱과 같은 한글·영문·숫자 조합으로 제한한다."""
+        if not re.fullmatch(r"[a-zA-Z0-9가-힣]{2,13}", value):
+            raise serializers.ValidationError(
+                "닉네임에는 공백이나 특수문자를 사용할 수 없습니다.",
+            )
+        if User.objects.filter(user_name__iexact=value).exists():
+            raise serializers.ValidationError("이미 사용 중인 닉네임입니다.")
+        return value
+
+    def validate_email(self, value):
+        """중복 확인 API를 우회한 이메일 가입을 차단한다."""
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError(
+                "이미 사용 중인 이메일입니다. 로그인 또는 비밀번호 찾기를 이용해 주세요.",
+            )
+        return value
+
+    def validate_phone(self, value):
+        """앱과 동일하게 11자리 국내 휴대전화 번호만 허용한다."""
+        if not re.fullmatch(r"01\d{9}", value):
+            raise serializers.ValidationError("휴대전화 번호를 확인해주세요.")
+        return value
 
 
 class SubjectSerializer(serializers.ModelSerializer):
@@ -59,15 +116,6 @@ class StudentSignupSerializer(RequiredSignupConsentSerializer):
     "studentsubject": [1, 3, 5]
     }
     """
-    sex = serializers.CharField(required=False, allow_blank=True)
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=8)
-
-    user_name = serializers.CharField(required=False, allow_blank=True)
-    phone = serializers.CharField(required=False, allow_blank=True)
-
-    region = serializers.CharField(required=False, allow_blank=True)
-
     # (기존 호환) 관심사 문자열 리스트. 사용 안 해도 됨.
     interests = serializers.ListField(
         child=serializers.CharField(),
@@ -79,15 +127,11 @@ class StudentSignupSerializer(RequiredSignupConsentSerializer):
     # Subject id 리스트 (ex: [1,2,3])
     studentsubject = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
-        required=False,
-        default=list,
+        required=True,
+        allow_empty=False,
         max_length=9,
         write_only=True,
     )
-
-    birth_date = serializers.DateField(required=False, allow_null=True)
-    first_name = serializers.CharField(required=False, allow_blank=True)
-    last_name = serializers.CharField(required=False, allow_blank=True)
 
     # 동의 기록용 (write_only). 버전 미지정 시 서버 POLICY_VERSIONS를 권위값으로 사용.
     terms_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
@@ -98,6 +142,7 @@ class StudentSignupSerializer(RequiredSignupConsentSerializer):
     def create(self, validated_data):
         studentsubject_ids = validated_data.pop("studentsubject", []) or []
         validated_data.pop("interests", None)
+        validated_data.pop("agreed_age")
         validated_data.pop("agreed_terms")
         validated_data.pop("agreed_privacy")
         terms_version = validated_data.pop("terms_version", "") or ""
@@ -183,33 +228,18 @@ class InstructorSignupSerializer(RequiredSignupConsentSerializer):
       instructorsubject: "[2,4]"
       -> 프론트에서 가능하면 배열로 보내고, 불가하면 문자열로 보내도 아래에서 파싱 처리함
     """
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=8)
-
-    user_name = serializers.CharField(required=False, allow_blank=True)
-    phone = serializers.CharField(required=False, allow_blank=True)
-    sex = serializers.CharField(required=False, allow_blank=True)
-    birth_date = serializers.DateField(required=False, allow_null=True)
-    region = serializers.CharField(required=False, allow_blank=True)
-
     # InstructorProfile 필드
     university = serializers.CharField()
-    department = serializers.CharField(required=False, allow_blank=True)
-    instruction = serializers.CharField(required=False, allow_blank=True, max_length=300)
-    student_number = serializers.CharField(required=False, allow_blank=True)
+    department = serializers.CharField()
+    instruction = serializers.CharField(max_length=300)
+    student_number = serializers.CharField()
 
     # Subject id 리스트
     # multipart/form-data에서 JSON 문자열로 수신: "[196, 197]"
     instructorsubject = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        default='[]',
+        required=True,
         write_only=True,
     )
-
-    # pending_file은 마이페이지로 이전됨
-    first_name = serializers.CharField(required=False, allow_blank=True)
-    last_name = serializers.CharField(required=False, allow_blank=True)
 
     # FCM 디바이스 토큰 (회원가입 직후 DeviceToken 등록용)
     fcm_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
@@ -221,17 +251,20 @@ class InstructorSignupSerializer(RequiredSignupConsentSerializer):
     agreed_marketing = serializers.BooleanField(required=False, default=False, write_only=True)
 
     def validate_instructorsubject(self, value):
-        """강사가 선택한 과목이 최대 9개인지 검증한다."""
+        """강사가 선택한 전문 수업 과목이 1~3개인지 검증한다."""
         try:
             subject_ids = json.loads(value or "[]")
         except json.JSONDecodeError as error:
             raise serializers.ValidationError("과목 목록 형식이 올바르지 않습니다.") from error
-        if not isinstance(subject_ids, list) or len(subject_ids) > 9:
-            raise serializers.ValidationError("관심 과목은 최대 9개까지 선택할 수 있습니다.")
+        if not isinstance(subject_ids, list) or not 1 <= len(subject_ids) <= 3:
+            raise serializers.ValidationError("전문 수업 과목은 1개 이상 3개 이하로 선택할 수 있습니다.")
+        if not all(isinstance(subject_id, int) and subject_id > 0 for subject_id in subject_ids):
+            raise serializers.ValidationError("과목 목록 형식이 올바르지 않습니다.")
         return value
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data.pop("agreed_age")
         validated_data.pop("agreed_terms")
         validated_data.pop("agreed_privacy")
         terms_version = validated_data.pop("terms_version", "") or ""

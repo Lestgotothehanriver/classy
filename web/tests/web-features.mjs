@@ -19,6 +19,13 @@ const subjects = [
   { number: 36, name: "미적분 I" },
   { number: 196, name: "Python" },
 ];
+const schools = [
+  {
+    name: "테스트 대학교",
+    type: "대학교",
+    departments: ["컴퓨터공학과"],
+  },
+];
 const lecture = {
   id: 7,
   title: "실제 형식의 강의",
@@ -84,6 +91,12 @@ await page.route("**/api/**", async (route) => {
     body: status === 204 ? "" : JSON.stringify(d),
   });
 });
+await page.route("**/schools.json", (route) =>
+  route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(schools),
+  }),
+);
 try {
   await page.goto(origin+"/#lectures");
   await page.getByRole("heading", { name: "실제 형식의 강의" }).waitFor();
@@ -93,17 +106,20 @@ try {
     .getByRole("button", { name: "회원가입", exact: true })
     .click();
   await page.getByLabel("이메일", { exact: true }).fill("test@example.invalid");
+  await page.getByLabel("이름", { exact: true }).fill("웹 회원");
   await page.getByLabel("휴대전화 번호", { exact: true }).fill("01012345678");
   await page
     .getByRole("button", { name: "인증번호 받기", exact: true })
     .click();
   await page.getByLabel("인증번호", { exact: true }).fill("123456");
   await page.getByRole("button", { name: "인증 확인", exact: true }).click();
-  await page.getByLabel("비밀번호", { exact: true }).fill("test-password");
-  await page.getByLabel("비밀번호 확인", { exact: true }).fill("test-password");
+  await page.getByLabel("비밀번호", { exact: true }).fill("TestPassword1!");
+  await page.getByLabel("비밀번호 확인", { exact: true }).fill("TestPassword1!");
   await page.getByLabel("닉네임", { exact: true }).fill("웹 회원");
   await page.getByLabel("생년월일", { exact: true }).fill("2000-01-01");
-  await page.getByLabel("활동 지역", { exact: true }).fill("서울 강남구");
+  await page.getByLabel("성별", { exact: true }).selectOption("남성");
+  await page.getByLabel("활동 지역 시/도").selectOption("서울");
+  await page.getByLabel("활동 지역 시·군·구").selectOption("강남구");
   await page.getByRole("button", { name: "관심 과목 선택" }).click();
   await page.getByRole("button", { name: "고등수학" }).click();
   await page.getByRole("button", { name: "미적분 I" }).click();
@@ -111,6 +127,7 @@ try {
   const requiredChecks = page.getByRole("checkbox").filter({ visible: true });
   await requiredChecks.nth(0).check();
   await requiredChecks.nth(1).check();
+  await requiredChecks.nth(2).check();
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
   await page.getByRole("heading", { name: "웹 회원님, 반가워요." }).waitFor();
   await page.goto(origin + "/#lectures");
@@ -129,6 +146,7 @@ try {
   const signup = writes.find((x) => x.path === "/accounts/signup/student/");
   assert.equal(signup.body.phone, "01012345678");
   assert.deepEqual(signup.body.studentsubject, [36]);
+  assert.equal(signup.body.agreed_age, true);
   assert.equal(signup.body.agreed_terms, true);
   assert.equal(signup.body.agreed_privacy, true);
   assert.equal(signup.body.agreed_marketing, false);
@@ -312,31 +330,42 @@ try {
   await page
     .getByLabel("이메일", { exact: true })
     .fill("teacher@example.invalid");
+  await page.getByLabel("이름", { exact: true }).fill("웹 선생님");
   await page
     .getByRole("button", { name: "인증번호 받기", exact: true })
     .click();
   await page.getByLabel("인증번호", { exact: true }).fill("123456");
   await page.getByRole("button", { name: "인증 확인", exact: true }).click();
-  await page.getByLabel("비밀번호", { exact: true }).fill("test-password");
-  await page.getByLabel("비밀번호 확인", { exact: true }).fill("test-password");
+  await page.getByLabel("비밀번호", { exact: true }).fill("TestPassword1!");
+  await page.getByLabel("비밀번호 확인", { exact: true }).fill("TestPassword1!");
   await page.getByLabel("닉네임", { exact: true }).fill("웹 선생님");
   await page.getByLabel("생년월일", { exact: true }).fill("2000-01-01");
-  await page.getByLabel("활동 지역", { exact: true }).fill("서울 강남구");
+  await page.getByLabel("성별", { exact: true }).selectOption("여성");
+  await page.getByLabel("활동 지역 시/도").selectOption("서울");
+  await page.getByLabel("활동 지역 시·군·구").selectOption("강남구");
   await page.getByRole("button", { name: "관심 과목 선택" }).click();
   await page.getByRole("button", { name: "외국어" }).click();
   await page.getByRole("button", { name: "Python" }).click();
   await page.getByRole("button", { name: "선택 완료" }).click();
-  await page.getByLabel("학교", { exact: true }).fill("테스트 대학");
-  await page.getByLabel("학과", { exact: true }).fill("컴퓨터공학");
-  await page.getByLabel("입학 연도", { exact: true }).fill("2020");
+  await page.getByRole("button", { name: "학교", exact: true }).click();
+  await page.getByLabel("학교 이름 검색").fill("테스트 대학교");
+  await page.getByRole("option", { name: "테스트 대학교" }).click();
+  await page.getByRole("button", { name: "선택 완료", exact: true }).click();
+  await page.getByLabel("학과/전공", { exact: true }).selectOption("컴퓨터공학과");
+  await page
+    .getByLabel("입학연도 (학번)", { exact: true })
+    .selectOption("2020");
+  await page.getByLabel("한 줄 소개", { exact: true }).fill("성실하게 수업합니다.");
   await page.getByRole("checkbox").nth(0).check();
   await page.getByRole("checkbox").nth(1).check();
+  await page.getByRole("checkbox").nth(2).check();
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
   await page.getByRole("heading", { name: "웹 회원님, 반가워요." }).waitFor();
   const instructorSignup = writes.find(
     (x) => x.path === "/accounts/signup/instructor/",
   ).body;
   assert.equal(instructorSignup.instructorsubject, "[196]");
+  assert.equal(instructorSignup.agreed_age, true);
   assert.equal(instructorSignup.agreed_terms, true);
   assert.equal(instructorSignup.agreed_privacy, true);
   assert.deepEqual(errors, []);

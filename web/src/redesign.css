@@ -1242,6 +1242,16 @@ dialog.wide {
   font-size: 13px;
   color: #5f646d;
 }
+.form-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.required-label {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
 .form input,
 .form textarea,
 .form select {
@@ -2871,7 +2881,8 @@ dialog.wide {
   font-size: 12px;
   line-height: 1.5;
 }
-.subject-picker-trigger {
+.subject-picker-trigger,
+.school-picker-trigger {
   width: 100%;
   min-height: 46px;
   padding: 12px 14px;
@@ -2887,8 +2898,13 @@ dialog.wide {
   line-height: 1.5;
   text-align: left;
 }
-.subject-picker-trigger:focus {
+.subject-picker-trigger:focus,
+.school-picker-trigger:focus {
   border-color: var(--primary);
+}
+.school-picker-trigger.selected {
+  color: var(--text);
+  font-weight: 400;
 }
 .subject-field {
   display: grid;
@@ -2896,7 +2912,8 @@ dialog.wide {
   color: #5f646d;
   font-size: 13px;
 }
-.subject-picker-trigger svg {
+.subject-picker-trigger svg,
+.school-picker-trigger svg {
   flex: 0 0 auto;
   color: #111111;
 }
@@ -2999,6 +3016,66 @@ dialog.wide {
   margin-top: 20px;
 }
 .subject-picker-actions .btn {
+  min-height: 52px;
+}
+.school-picker-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.school-picker-search svg {
+  position: absolute;
+  left: 14px;
+  color: #5f646d;
+  pointer-events: none;
+}
+.school-picker-search input {
+  width: 100%;
+  min-height: 48px;
+  padding-left: 46px;
+}
+.school-picker-results {
+  height: clamp(300px, 52dvh, 460px);
+  margin-top: 16px;
+  overflow-y: auto;
+  border-top: 1px solid #c8cbd0;
+  border-bottom: 1px solid #c8cbd0;
+}
+.school-picker-results button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  color: #727883;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+.school-picker-results button.selected {
+  background: #efeffb;
+  color: var(--primary-dark);
+}
+.school-picker-results button svg {
+  flex: 0 0 auto;
+}
+.school-picker-empty {
+  padding: 36px 20px;
+  color: var(--muted);
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-line;
+}
+.school-picker-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+  margin-top: 20px;
+}
+.school-picker-actions .btn {
   min-height: 52px;
 }
 .price-slider-field input[type="range"] {

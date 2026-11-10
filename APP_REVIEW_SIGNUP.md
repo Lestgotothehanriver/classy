@@ -4,6 +4,11 @@ App Review can sign into the existing student/instructor demo accounts without S
 or test registration using the synthetic numbers configured on the production server.
 `APP_REVIEW_SIGNUP_PHONES` is a comma-separated explicit allowlist and
 `APP_REVIEW_SIGNUP_CODE` is a six-digit fixed code. Both are disabled by default.
+
+For local or staging signup tests, the repository's ignored `.env` uses the
+synthetic pair `01000000930` / `930614`. The same pair is listed in
+`.env.example` only as a setup example; configure production values in its
+secret environment instead of committing them.
 Provide the configured numbers and code privately in App Store Connect Review Notes.
 
 The reviewer taps the usual send-code button and enters the provided code within
