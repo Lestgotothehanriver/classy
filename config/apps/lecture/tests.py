@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from config.apps.accounts.models import Instructor, Student
 from config.apps.cash.models import LectureRentalHistory
 from config.apps.lecture.models import Comment, Lecture
-from config.apps.lecture.serializers import LectureListSerializer
+from config.apps.lecture.serializers import LectureListSerializer, LectureWriteSerializer
 from config.apps.notification.models import Notification
 from config.apps.lecture.direct_uploads import (
     DirectUploadError,
@@ -76,6 +76,32 @@ class OfficialCreatorLectureSerializerTests(TestCase):
         self.assertEqual(instructor["department"], "")
         self.assertEqual(instructor["student_number"], "")
         self.assertEqual(instructor["instruction"], "")
+
+
+class LecturePriceValidationTests(SimpleTestCase):
+    """강의 가격의 상한과 캐시 단위를 검증한다."""
+
+    def test_price_over_maximum_is_rejected(self):
+        """1,000 캐시를 초과한 가격은 쓰기 serializer에서 거부한다."""
+        serializer = LectureWriteSerializer(data={"price": 1100})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("price", serializer.errors)
+        self.assertEqual(
+            str(serializer.errors["price"][0]),
+            "강의 가격은 최대 1,000 캐시까지 설정할 수 있습니다.",
+        )
+
+    def test_price_not_in_cash_increment_is_rejected(self):
+        """가격은 100 캐시 단위로만 쓸 수 있다."""
+        serializer = LectureWriteSerializer(data={"price": 150})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("price", serializer.errors)
+        self.assertEqual(
+            str(serializer.errors["price"][0]),
+            "강의 가격은 100 캐시 단위로 설정해주세요.",
+        )
 
 
 class LectureDurationExtractionTests(TestCase):

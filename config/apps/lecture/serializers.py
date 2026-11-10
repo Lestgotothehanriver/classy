@@ -3,6 +3,10 @@ from django.db.models import Count
 from django.core.files.storage import default_storage
 
 from config.apps.accounts.models import Subject, Instructor, Student
+from config.apps.lecture.constants import (
+    LECTURE_PRICE_INCREMENT_CASH,
+    MAX_LECTURE_PRICE_CASH,
+)
 from .models import Lecture, Comment, SearchHistory
 from .utils import (
     calculate_sample_preview_duration_seconds,
@@ -180,6 +184,14 @@ class LectureWriteSerializer(serializers.ModelSerializer):
     def validate_price(self, value):
         if value < 0:
             raise serializers.ValidationError("가격은 0 캐시 이상이어야 합니다.")
+        if value > MAX_LECTURE_PRICE_CASH:
+            raise serializers.ValidationError(
+                f"강의 가격은 최대 {MAX_LECTURE_PRICE_CASH:,} 캐시까지 설정할 수 있습니다."
+            )
+        if value % LECTURE_PRICE_INCREMENT_CASH != 0:
+            raise serializers.ValidationError(
+                f"강의 가격은 {LECTURE_PRICE_INCREMENT_CASH} 캐시 단위로 설정해주세요."
+            )
         return value
 
     def validate_rental_period(self, value):
