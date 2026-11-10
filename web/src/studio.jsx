@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
+import { Check, Search } from "lucide-react";
 import { api, list } from "./api";
 import { Ctx, Btn, State, Empty, useLoad, money, Modal } from "./shared";
 import { PageHeading } from "./design";
@@ -66,11 +67,122 @@ function useFileUrl(file) {
 }
 const initial = {
   title: "",
-  content: "",
-  price: "0",
+  price: 0,
   subjects: [],
   is_preview: false,
 };
+
+/** 앱의 SignupData.allSubjects와 같은 과목 카테고리별 번호 범위다. */
+const subjectCategoryRanges = [
+  ["초등", 1, 8],
+  ["중등", 9, 17],
+  ["고등국어", 18, 31],
+  ["고등영어", 32, 34],
+  ["고등수학", 35, 53],
+  ["고등사회", 54, 80],
+  ["고등과학", 81, 107],
+  ["제2외국어", 108, 116],
+  ["직업탐구", 117, 122],
+  ["논술", 123, 130],
+  ["기타 국내", 131, 146],
+  ["유학", 147, 155],
+  ["영어", 156, 164],
+  ["외국어", 165, 200],
+  ["프로그래밍", 201, 218],
+  ["개발", 219, 224],
+  ["미술", 225, 241],
+  ["악기", 242, 266],
+  ["음악", 267, 279],
+];
+
+/** 자동 썸네일에 사용할 영상 프레임 시점(초)이다. */
+const thumbnailFrameSecond = 1;
+
+/** 웹·앱 공통 강의 가격 정책에 맞춰 캐시 가격을 보정한다. */
+function normalizeLecturePrice(value) {
+  const price = Number(value);
+  if (!Number.isFinite(price)) return 0;
+  return Math.min(1000, Math.max(0, Math.round(price / 100) * 100));
+}
+
+/** 선택한 과목을 여러 개 유지하는 강의 과목 선택 다이얼로그다. */
+function SubjectPicker({ subjects, selectedIds, onChange, onClose }) {
+  const categoryGroups = subjectCategoryRanges
+    .map(([name, start, end]) => ({
+      name,
+      subjects: subjects.filter(
+        (subject) => subject.number >= start && subject.number <= end,
+      ),
+    }))
+    .filter((category) => category.subjects.length > 0);
+  const categorizedSubjectIds = new Set(
+    categoryGroups.flatMap((category) =>
+      category.subjects.map((subject) => subject.number),
+    ),
+  );
+  const uncategorizedSubjects = subjects.filter(
+    (subject) => !categorizedSubjectIds.has(subject.number),
+  );
+  if (uncategorizedSubjects.length > 0)
+    categoryGroups.push({ name: "기타", subjects: uncategorizedSubjects });
+  const [selectedCategoryName, setSelectedCategoryName] = useState(
+    categoryGroups[0]?.name || "",
+  );
+  const selectedCategory =
+    categoryGroups.find((category) => category.name === selectedCategoryName) ||
+    categoryGroups[0];
+  const selectedIdSet = new Set(selectedIds);
+  function toggleSubject(subjectId) {
+    onChange(
+      selectedIdSet.has(subjectId)
+        ? selectedIds.filter((id) => id !== subjectId)
+        : [...selectedIds, subjectId],
+    );
+  }
+  return (
+    <Modal title={`과목 선택 ${selectedIds.length}개`} onClose={onClose} wide>
+      <div className="subject-picker-layout">
+        <nav className="subject-category-list" aria-label="과목 카테고리">
+          {categoryGroups.map((category) => (
+            <button
+              type="button"
+              key={category.name}
+              className={
+                selectedCategory?.name === category.name ? "selected" : ""
+              }
+              aria-pressed={selectedCategory?.name === category.name}
+              onClick={() => setSelectedCategoryName(category.name)}
+            >
+              {category.name}
+            </button>
+          ))}
+        </nav>
+        <div className="subject-picker-list">
+          {selectedCategory?.subjects.map((subject) => {
+            const isSelected = selectedIdSet.has(subject.number);
+            return (
+              <button
+                type="button"
+                key={subject.number}
+                className={isSelected ? "selected" : ""}
+                aria-pressed={isSelected}
+                onClick={() => toggleSubject(subject.number)}
+              >
+                <span>{subject.name}</span>
+                {isSelected && <Check size={20} aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="subject-picker-actions">
+        <Btn type="button" className="primary full" onClick={onClose}>
+          선택 완료
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
 export function Studio({ upload = false }) {
   const { user, subjects, notify, go } = useContext(Ctx),
     [tab, setTab] = useState(upload ? "upload" : "content");
@@ -94,7 +206,7 @@ export function Studio({ upload = false }) {
   return (
     <>
       <PageHeading
-        title="강사 스튜디오"
+        title="강의 스튜디오"
         description="좋은 강의를 만들고, 학생과 만나는 과정을 한곳에서."
       >
         <Btn
@@ -208,7 +320,12 @@ function UploadForm({ onComplete, onBusy }) {
     key = "classy_draft_" + user.id;
   const [draft, setDraft] = useState(() => {
     try {
-      return { ...initial, ...JSON.parse(localStorage.getItem(key) || "{}") };
+      const savedDraft = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        ...initial,
+        ...savedDraft,
+        price: normalizeLecturePrice(savedDraft.price),
+      };
     } catch {
       return initial;
     }
@@ -221,9 +338,12 @@ function UploadForm({ onComplete, onBusy }) {
     [progress, setProgress] = useState(0),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false);
+  const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
   const videoUrl = useFileUrl(video),
-    thumbUrl = useFileUrl(thumbnail),
-    player = useRef();
+    thumbUrl = useFileUrl(thumbnail);
+  const thumbnailInputRef = useRef(null);
+  const thumbnailGenerationRef = useRef(0);
+  const hasManualThumbnailRef = useRef(false);
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(draft));
@@ -251,31 +371,81 @@ function UploadForm({ onComplete, onBusy }) {
     };
   }, [busy, onBusy]);
   const field = (name, value) => setDraft((d) => ({ ...d, [name]: value }));
+  const togglePreview = (isPreview) =>
+    setDraft((current) => ({
+      ...current,
+      is_preview: isPreview,
+      price: isPreview ? 0 : current.price,
+    }));
+  function setThumbnailFile(file, { manuallySelected = false } = {}) {
+    if (!file) return;
+    if (manuallySelected) hasManualThumbnailRef.current = true;
+    setThumbnail(file);
+
+    // 브라우저 기본 파일 입력에도 자동 생성 JPEG를 넣어 선택 상태를 표시한다.
+    const input = thumbnailInputRef.current;
+    if (!input) return;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    input.files = dataTransfer.files;
+  }
   function chooseVideo(file) {
     if (!file) return;
     if (!file.type.startsWith("video/") || file.size > 950 * 1024 * 1024) {
       setError("950MB 이하의 영상 파일을 선택해 주세요.");
       return;
     }
+    thumbnailGenerationRef.current += 1;
+    hasManualThumbnailRef.current = false;
     setVideo(file);
+    setThumbnail(null);
+    if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
     setDuration(0);
     setVideoReady(false);
     setError("");
   }
-  async function capture() {
-    try {
-      const v = player.current;
-      if (!v?.videoWidth) throw new Error("영상을 먼저 불러와 주세요.");
-      const c = document.createElement("canvas");
-      c.width = v.videoWidth;
-      c.height = v.videoHeight;
-      c.getContext("2d").drawImage(v, 0, 0);
-      const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9));
-      if (!blob) throw new Error("썸네일을 만들지 못했습니다.");
-      setThumbnail(new File([blob], "thumbnail.jpg", { type: "image/jpeg" }));
-    } catch (e) {
-      setError(e.message);
+  function generateThumbnailFromVideoFrame(videoElement) {
+    const generation = thumbnailGenerationRef.current;
+    if (
+      hasManualThumbnailRef.current ||
+      !videoElement.videoWidth ||
+      !videoElement.videoHeight
+    )
+      return;
+
+    const captureFrame = () => {
+      const width = Math.min(720, videoElement.videoWidth);
+      const height = Math.round(
+        (videoElement.videoHeight * width) / videoElement.videoWidth,
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")?.drawImage(videoElement, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (
+          !blob ||
+          generation !== thumbnailGenerationRef.current ||
+          hasManualThumbnailRef.current
+        )
+          return;
+        setThumbnailFile(
+          new File([blob], "video-thumbnail.jpg", { type: "image/jpeg" }),
+        );
+      }, "image/jpeg", 0.85);
+    };
+
+    const targetTime =
+      Number.isFinite(videoElement.duration) &&
+      videoElement.duration <= thumbnailFrameSecond
+        ? 0
+        : thumbnailFrameSecond;
+    if (Math.abs(videoElement.currentTime - targetTime) < 0.01) {
+      captureFrame();
+      return;
     }
+    videoElement.addEventListener("seeked", captureFrame, { once: true });
+    videoElement.currentTime = targetTime;
   }
   async function submit(e) {
     e.preventDefault();
@@ -295,7 +465,7 @@ function UploadForm({ onComplete, onBusy }) {
     setBusy(true);
     setProgress(0);
     const body = new FormData();
-    for (const name of ["title", "content", "price", "is_preview"])
+    for (const name of ["title", "price", "is_preview"])
       body.append(name, String(draft[name]));
     draft.subjects.forEach((x) => body.append("subjects", x));
     body.append("video", video);
@@ -313,7 +483,8 @@ function UploadForm({ onComplete, onBusy }) {
     }
   }
   return (
-    <form onSubmit={submit} className="upload-layout">
+    <>
+      <form onSubmit={submit} className="upload-layout">
       <fieldset disabled={busy} className="form-fields form">
         <div className="section-title">
           <h2>강의 업로드</h2>
@@ -322,7 +493,7 @@ function UploadForm({ onComplete, onBusy }) {
           </small>
         </div>
         <p className="form-note">
-          제목과 소개는 이 브라우저에 임시 저장됩니다. 영상·이미지 파일은 다시
+          제목과 설정은 이 브라우저에 임시 저장됩니다. 영상·이미지 파일은 다시
           선택해야 합니다.
         </p>
         <label
@@ -342,9 +513,12 @@ function UploadForm({ onComplete, onBusy }) {
           <small>
             {video
               ? `${video.name} · ${(video.size / 1024 / 1024).toFixed(1)} MB`
-              : "최대 950MB · MP4(H.264/AVC + AAC)만 가능"}
+              : "영상을 선택해주세요."}
           </small>
         </label>
+        <p className="upload-spec">
+          권장 규격: 16:9 · MP4(H.264/AVC 비디오 + AAC 오디오) · 1920×1080px 이하
+        </p>
         <details className="codec-guide">
           <summary>아이폰·갤럭시 HEVC(H.265) 영상 변환 안내</summary>
           <p>
@@ -354,24 +528,23 @@ function UploadForm({ onComplete, onBusy }) {
           </p>
           <ul>
             <li>
-              <strong>iPhone 앞으로 촬영:</strong> 설정 → 카메라 → 포맷 → “높은 호환성”을
-              선택하세요.
+              <strong>iPhone로 촬영 시:</strong> 설정 → 카메라 → 포맷 → “높은 호환성”을
+              선택해 주세요.
             </li>
             <li>
-              <strong>Galaxy 앞으로 촬영:</strong> 카메라 → 설정 → 고급 동영상 옵션 →
-              “고효율 동영상(HEVC)”을 끄세요.
+              <strong>Galaxy로 촬영 시:</strong> 카메라 → 설정 → 고급 동영상 옵션 →
+              “고효율 동영상(HEVC)”을 꺼주세요.
             </li>
             <li>
               <strong>이미 촬영한 영상:</strong> 사진/갤러리의 공유·내보내기에서 호환 형식
-              또는 H.264 옵션을 선택하세요. 옵션이 없으면 Mac 사진 앱의 내보내기나 Windows
-              HandBrake로 H.264 MP4로 변환한 뒤 업로드하세요.
+              또는 H.264 옵션을 선택해 주세요. 옵션이 없으면 Mac 사진 앱의 내보내기나 Windows
+              HandBrake로 H.264 MP4로 변환한 뒤 업로드해 주세요.
             </li>
           </ul>
         </details>
         {videoUrl && (
           <>
             <video
-              ref={player}
               src={videoUrl}
               controls
               className="video"
@@ -381,6 +554,7 @@ function UploadForm({ onComplete, onBusy }) {
                   Number.isFinite(e.target.duration) ? e.target.duration : 0,
                 );
               }}
+              onLoadedData={(e) => generateThumbnailFromVideoFrame(e.currentTarget)}
               onError={() => {
                 setDuration(0);
                 setVideoReady(false);
@@ -389,11 +563,28 @@ function UploadForm({ onComplete, onBusy }) {
                 );
               }}
             />
-            <Btn type="button" onClick={capture}>
-              현재 장면을 썸네일로 사용
-            </Btn>
           </>
         )}
+        <label>
+          썸네일 이미지
+          <input
+            ref={thumbnailInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (file && file.size > 10 * 1024 * 1024) {
+                setError("썸네일은 10MB 이하로 선택해 주세요.");
+                return;
+              }
+              setThumbnailFile(file, { manuallySelected: true });
+            }}
+          />
+          <small>
+            권장 규격: 16:9 · JPG/JPEG · 1280×720px 이상. 영상 선택 시 첫 화면이
+            자동으로 설정되며, 원하는 이미지로 변경할 수 있습니다.
+          </small>
+        </label>
         <label>
           강의 제목
           <input
@@ -404,75 +595,81 @@ function UploadForm({ onComplete, onBusy }) {
           />
           <small>{draft.title.length}/200</small>
         </label>
-        <label>
-          강의 소개
-          <textarea
-            value={draft.content}
-            onChange={(e) => field("content", e.target.value)}
-            rows={7}
-            required
-            placeholder="누구를 위한 강의인가요? 학습 목표, 준비물, 수업 순서를 알려주세요."
-          />
-        </label>
-        <label>
-          과목 (최대 3개)
-          <select
-            multiple
-            size={6}
-            value={draft.subjects.map(String)}
-            onChange={(e) => {
-              const values = [...e.target.selectedOptions].map((x) =>
-                Number(x.value),
-              );
-              if (values.length > 3) {
-                setError("과목은 최대 3개입니다.");
-                return;
-              }
-              field("subjects", values);
-            }}
+        <div className="subject-field">
+          <span>관련 과목</span>
+          <button
+            type="button"
+            className="subject-picker-trigger"
+            aria-label="관련 과목 선택"
+            onClick={() => setSubjectPickerOpen(true)}
           >
-            {subjects.map((s) => (
-              <option key={s.number} value={s.number}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          수강료 (캐시)
+            <span>관련된 과목을 선택해주세요.</span>
+            <Search size={24} aria-hidden="true" />
+          </button>
+        </div>
+        {draft.subjects.length > 0 && (
+          <div className="subject-chips" aria-label="선택된 과목">
+            {draft.subjects.map((subjectId) => {
+              const subject = subjects.find((item) => item.number === subjectId);
+              if (!subject) return null;
+              return (
+                <button
+                  type="button"
+                  key={subject.number}
+                  onClick={() =>
+                    field(
+                      "subjects",
+                      draft.subjects.filter((id) => id !== subject.number),
+                    )
+                  }
+                  aria-label={`${subject.name} 선택 취소`}
+                >
+                  {subject.name} <span aria-hidden="true">×</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <label className="price-slider-field">
+          가격
           <input
-            type="number"
+            type="range"
             min="0"
-            max="2147483647"
-            step="1"
-            required
+            max="1000"
+            step="100"
+            disabled={draft.is_preview}
             value={draft.price}
-            onChange={(e) => field("price", e.target.value)}
+            onChange={(e) => field("price", Number(e.target.value))}
           />
+          <strong>{money(draft.price)} 캐시</strong>
+          <small>선생님의 강의 가격을 최대 1000캐시까지 설정할 수 있어요.</small>
         </label>
-        <label className="check-label">
+        <label className="check-label preview-check">
           <input
             type="checkbox"
             checked={draft.is_preview}
-            onChange={(e) => field("is_preview", e.target.checked)}
+            onChange={(e) => togglePreview(e.target.checked)}
           />
-          무료 프리뷰 강의로 등록
+          <span>
+            <strong>프리뷰 영상이에요.</strong>
+            <small>
+              프리뷰 영상은 선생님 프로필의 메인에 표시되는 무료 강의입니다.
+              <br />
+              프리뷰 영상은 계정 당 하나만 등록할 수 있으며, 프리뷰 영상 등록 시 이미
+              등록된 프리뷰 영상이 있다면 해당 영상은 삭제되고 신규 영상이 게시됩니다.
+            </small>
+          </span>
         </label>
-        <label>
-          썸네일 이미지
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(e) => {
-              const f = e.target.files[0];
-              if (f && f.size > 10 * 1024 * 1024) {
-                setError("썸네일은 10MB 이하로 선택해 주세요.");
-                return;
-              }
-              setThumbnail(f);
-            }}
-          />
-        </label>
+        <div className="upload-notices" aria-label="강의 등록 안내">
+          <p>
+            타인의 권리를 침해하는 내용이나 불법촬영을 게재시 삭제 조치되고 관련 법에 따라
+            처벌 받을 수 있습니다.
+          </p>
+          <p>
+            영상 게시 후 최초 구매자 발생 시 기존 이용자의 권리 보호를 위해 영상 수정 및
+            삭제가 제한될 수 있습니다.
+          </p>
+        </div>
       </fieldset>
       <aside className="upload-preview">
         <h2>게시 전 확인</h2>
@@ -487,10 +684,7 @@ function UploadForm({ onComplete, onBusy }) {
           {[
             [!!video && videoReady, "영상 확인"],
             [!!thumbnail, "썸네일 준비"],
-            [
-              !!draft.title.trim() && !!draft.content.trim(),
-              "제목과 소개 작성",
-            ],
+            [!!draft.title.trim(), "제목 작성"],
             [draft.subjects.length > 0, "과목 선택"],
           ].map(([ok, label]) => (
             <li key={label}>
@@ -521,7 +715,16 @@ function UploadForm({ onComplete, onBusy }) {
           {busy ? "등록 중…" : "강의 게시"}
         </Btn>
       </aside>
-    </form>
+      </form>
+      {subjectPickerOpen && (
+        <SubjectPicker
+          subjects={subjects}
+          selectedIds={draft.subjects}
+          onChange={(selectedSubjects) => field("subjects", selectedSubjects)}
+          onClose={() => setSubjectPickerOpen(false)}
+        />
+      )}
+    </>
   );
 }
 function ManageLecture({ item, onClose, onSaved }) {
@@ -562,16 +765,13 @@ function ManageLecture({ item, onClose, onSaved }) {
           />
         </label>
         <label>
-          소개
-          <textarea name="content" defaultValue={item.content} rows={5} />
-        </label>
-        <label>
           수강료
           <input
             name="price"
             type="number"
             min="0"
-            step="1"
+            max="1000"
+            step="100"
             defaultValue={item.price}
             required
           />

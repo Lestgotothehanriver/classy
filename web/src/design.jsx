@@ -56,7 +56,7 @@ export const pageNames = {
   profile: "마이페이지",
   notifications: "알림",
   upload: "강의 등록",
-  studio: "강사 스튜디오",
+  studio: "강의 스튜디오",
   cash: "캐시 관리",
   settlement: "수익 및 정산",
   verification: "강사 인증",
@@ -275,6 +275,8 @@ export function HomePage() {
     ? list(nearby.data?.recommended_posts)
     : list(nearby.data);
   const promotion = teacher ? nearby.data?.promotion : null;
+  const thisMonthRevenue = nearby.data?.this_month_total_cash;
+  const myRank = nearby.data?.lifetime_rank_info?.rank;
   return (
     <>
       <PageHeading
@@ -494,15 +496,42 @@ export function HomePage() {
                   <Avatar src={user.profile_image} />
                   <strong>{user.nickname}님</strong>
                   <button className="text-button" onClick={() => go("profile")}>
-                    정보 수정
+                    프로필 수정
                   </button>
                 </div>
-                <div className="cash-line">
-                  <span>보유 캐시</span>
-                  <strong>
-                    {money(user.cash)} <small>캐시</small>
-                  </strong>
-                </div>
+                {teacher ? (
+                  <div className="teacher-summary">
+                    <div className="cash-line">
+                      <span>이번 달 수익</span>
+                      <strong>
+                        {thisMonthRevenue == null ? (
+                          "—"
+                        ) : (
+                          <>
+                            {money(thisMonthRevenue)} <small>캐시</small>
+                          </>
+                        )}
+                      </strong>
+                    </div>
+                    <div className="cash-line">
+                      <span>내 순위</span>
+                      <strong>
+                        {myRank == null
+                          ? nearby.data
+                            ? "순위 없음"
+                            : "—"
+                          : `${money(myRank)}위`}
+                      </strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="cash-line">
+                    <span>보유 캐시</span>
+                    <strong>
+                      {money(user.cash)} <small>캐시</small>
+                    </strong>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -1332,7 +1361,7 @@ export function Profile({ onLogout }) {
           <nav className="profile-menu" aria-label="나의 메뉴">
             {(user.role === "instructor"
               ? [
-                  ["studio", "강사 스튜디오"],
+                  ["studio", "강의 스튜디오"],
                   ["settlement", "수익 및 정산"],
                   ["verification", "강사 인증"],
                 ]

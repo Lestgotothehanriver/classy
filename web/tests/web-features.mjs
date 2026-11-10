@@ -191,10 +191,22 @@ try {
   await page.waitForFunction(
     () => document.querySelector("video")?.videoWidth > 0,
   );
-  await page.getByRole("button", { name: "현재 장면을 썸네일로 사용" }).click();
   await page.getByAltText("선택한 썸네일").waitFor();
-  await page.getByLabel("강의 소개").fill("기초 개념을 익히는 강의입니다.");
-  await page.getByLabel("과목 (최대 3개)").selectOption("36");
+  assert.equal(
+    await page
+      .locator('input[type=file][accept="image/jpeg,image/png,image/webp"]')
+      .evaluate((input) => input.files[0]?.name),
+    "video-thumbnail.jpg",
+  );
+  assert.equal(await page.getByLabel("강의 소개").count(), 0);
+  await page.getByRole("button", { name: "관련 과목 선택" }).click();
+  const subjectPicker = page.getByRole("dialog", { name: "관련 과목 선택" });
+  await subjectPicker.getByRole("button", { name: "미적분 I" }).click();
+  await subjectPicker.getByRole("button", { name: "선택 완료" }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "미적분 I 선택 취소" }).count(),
+    1,
+  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: "test-results/studio-desktop.png",
@@ -205,6 +217,7 @@ try {
   const upload = writes.find((x) => x.path === "/lectures/write/");
   assert.match(upload.body, /name="subjects"\r\n\r\n36/);
   assert.match(upload.body, /name="thumbnail"/);
+  assert.doesNotMatch(upload.body, /name="content"/);
   assert.equal(
     await page.evaluate(() => localStorage.getItem("classy_draft_1")),
     null,
@@ -307,7 +320,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS guest lectures, SMS signup payload, draft restore, video thumbnail and multipart upload, service routes, desktop/mobile layout",
+    "PASS guest lectures, SMS signup payload, draft restore, generated thumbnail and multipart upload, service routes, desktop/mobile layout",
   );
 } finally {
   await browser.close();

@@ -391,6 +391,7 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
     [liked, setLiked] = useState(null),
     [rented, setRented] = useState(false),
     [rentConfirm, setRentConfirm] = useState(false),
+    [instructorPurchaseNotice, setInstructorPurchaseNotice] = useState(false),
     [postTab, setPostTab] = useState("info");
   const d = resource.data?.lecture_info || resource.data || {};
   const isPost = kind === "posts";
@@ -507,12 +508,6 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                <p className="detail-text">
-                  {d.content ||
-                    d.instruction ||
-                    d.situation ||
-                    "등록된 상세 소개가 없습니다."}
-                </p>
               </>
             )}
           </>
@@ -568,7 +563,14 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
               {Number(d.price) > 0 &&
                 !rented &&
                 !["active", "valid"].includes(resource.data?.rental_status) && (
-                  <Btn disabled={busy} onClick={() => setRentConfirm(true)}>
+                  <Btn
+                    disabled={busy}
+                    onClick={() =>
+                      user?.role === "instructor"
+                        ? setInstructorPurchaseNotice(true)
+                        : setRentConfirm(true)
+                    }
+                  >
                     캐시로 대여
                   </Btn>
                 )}
@@ -605,6 +607,11 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
                     className="primary"
                     onClick={() =>
                       action(async () => {
+                        if (user?.role === "instructor") {
+                          setRentConfirm(false);
+                          setInstructorPurchaseNotice(true);
+                          return;
+                        }
                         await api("/cash/rentals/", {
                           method: "POST",
                           body: { lecture_id: id },
@@ -617,6 +624,16 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
                     }
                   >
                     대여 확정
+                  </Btn>
+                </div>
+              </div>
+            )}
+            {instructorPurchaseNotice && (
+              <div className="confirm-box" role="alert">
+                <b>학생 계정으로 전환 후 강의를 구매해주세요.</b>
+                <div className="actions">
+                  <Btn onClick={() => setInstructorPurchaseNotice(false)}>
+                    확인
                   </Btn>
                 </div>
               </div>
