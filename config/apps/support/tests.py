@@ -311,6 +311,8 @@ class SupportConversationOnboardingTests(APITestCase):
                 "email": "student-onboarding@example.com",
                 "password": "pass12345",
                 "user_name": "가입학생",
+                "agreed_terms": True,
+                "agreed_privacy": True,
             },
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
@@ -351,6 +353,8 @@ class SupportConversationOnboardingTests(APITestCase):
                 "password": "pass12345",
                 "user_name": "가입선생님",
                 "university": "테스트대학교",
+                "agreed_terms": True,
+                "agreed_privacy": True,
             },
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)

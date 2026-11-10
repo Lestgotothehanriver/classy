@@ -104,7 +104,10 @@ try {
   await page.getByLabel("닉네임", { exact: true }).fill("웹 회원");
   await page.getByLabel("생년월일", { exact: true }).fill("2000-01-01");
   await page.getByLabel("활동 지역", { exact: true }).fill("서울 강남구");
-  await page.getByLabel("관심 과목").selectOption("36");
+  await page.getByRole("button", { name: "관심 과목 선택" }).click();
+  await page.getByRole("button", { name: "고등수학" }).click();
+  await page.getByRole("button", { name: "미적분 I" }).click();
+  await page.getByRole("button", { name: "선택 완료" }).click();
   const requiredChecks = page.getByRole("checkbox").filter({ visible: true });
   await requiredChecks.nth(0).check();
   await requiredChecks.nth(1).check();
@@ -126,6 +129,8 @@ try {
   const signup = writes.find((x) => x.path === "/accounts/signup/student/");
   assert.equal(signup.body.phone, "01012345678");
   assert.deepEqual(signup.body.studentsubject, [36]);
+  assert.equal(signup.body.agreed_terms, true);
+  assert.equal(signup.body.agreed_privacy, true);
   assert.equal(signup.body.agreed_marketing, false);
   // Use mocked identity, never create or mutate production accounts.
   role = "instructor";
@@ -317,7 +322,10 @@ try {
   await page.getByLabel("닉네임", { exact: true }).fill("웹 선생님");
   await page.getByLabel("생년월일", { exact: true }).fill("2000-01-01");
   await page.getByLabel("활동 지역", { exact: true }).fill("서울 강남구");
-  await page.getByLabel("관심 과목").selectOption("196");
+  await page.getByRole("button", { name: "관심 과목 선택" }).click();
+  await page.getByRole("button", { name: "외국어" }).click();
+  await page.getByRole("button", { name: "Python" }).click();
+  await page.getByRole("button", { name: "선택 완료" }).click();
   await page.getByLabel("학교", { exact: true }).fill("테스트 대학");
   await page.getByLabel("학과", { exact: true }).fill("컴퓨터공학");
   await page.getByLabel("입학 연도", { exact: true }).fill("2020");
@@ -325,11 +333,12 @@ try {
   await page.getByRole("checkbox").nth(1).check();
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
   await page.getByRole("heading", { name: "웹 회원님, 반가워요." }).waitFor();
-  assert.equal(
-    writes.find((x) => x.path === "/accounts/signup/instructor/").body
-      .instructorsubject,
-    "[196]",
-  );
+  const instructorSignup = writes.find(
+    (x) => x.path === "/accounts/signup/instructor/",
+  ).body;
+  assert.equal(instructorSignup.instructorsubject, "[196]");
+  assert.equal(instructorSignup.agreed_terms, true);
+  assert.equal(instructorSignup.agreed_privacy, true);
   assert.deepEqual(errors, []);
   console.log(
     "PASS guest lectures, SMS signup payload, draft restore, generated thumbnail and multipart upload, service routes, desktop/mobile layout",

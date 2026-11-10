@@ -1,5 +1,7 @@
 # config/apps/accounts/serializers.py
 
+import json
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
@@ -14,13 +16,30 @@ from config.apps.notification.models import DeviceToken
 User = get_user_model()
 
 
+class RequiredSignupConsentSerializer(serializers.Serializer):
+    """회원가입에 필요한 필수 정책 동의를 공통으로 검증한다."""
+
+    agreed_terms = serializers.BooleanField(write_only=True)
+    agreed_privacy = serializers.BooleanField(write_only=True)
+
+    def validate(self, attrs):
+        """필수 약관과 개인정보처리방침에 대한 명시적 동의를 검증한다."""
+        if not attrs["agreed_terms"]:
+            raise serializers.ValidationError({"agreed_terms": "이용약관 동의가 필요합니다."})
+        if not attrs["agreed_privacy"]:
+            raise serializers.ValidationError(
+                {"agreed_privacy": "개인정보처리방침 동의가 필요합니다."},
+            )
+        return attrs
+
+
 class SubjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subject
         fields = ['id', 'number', 'name']
 
 
-class StudentSignupSerializer(serializers.Serializer):
+class StudentSignupSerializer(RequiredSignupConsentSerializer):
     """
     학생 회원가입:
     - User 생성 + StudentProfile 생성
@@ -62,6 +81,7 @@ class StudentSignupSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1),
         required=False,
         default=list,
+        max_length=9,
         write_only=True,
     )
 
@@ -78,6 +98,8 @@ class StudentSignupSerializer(serializers.Serializer):
     def create(self, validated_data):
         studentsubject_ids = validated_data.pop("studentsubject", []) or []
         validated_data.pop("interests", None)
+        validated_data.pop("agreed_terms")
+        validated_data.pop("agreed_privacy")
         terms_version = validated_data.pop("terms_version", "") or ""
         privacy_version = validated_data.pop("privacy_version", "") or ""
         agreed_marketing = validated_data.pop("agreed_marketing", False)
@@ -133,7 +155,7 @@ class StudentSignupSerializer(serializers.Serializer):
         return not User.objects.filter(user_name__iexact=user_name).exists() # 대소문자 구분 없이 체크
 
 
-class InstructorSignupSerializer(serializers.Serializer):
+class InstructorSignupSerializer(RequiredSignupConsentSerializer):
     """
     강사 회원가입:
     - User 생성 + InstructorProfile 생성
@@ -198,9 +220,20 @@ class InstructorSignupSerializer(serializers.Serializer):
     privacy_version = serializers.CharField(required=False, allow_blank=True, write_only=True)
     agreed_marketing = serializers.BooleanField(required=False, default=False, write_only=True)
 
+    def validate_instructorsubject(self, value):
+        """강사가 선택한 과목이 최대 9개인지 검증한다."""
+        try:
+            subject_ids = json.loads(value or "[]")
+        except json.JSONDecodeError as error:
+            raise serializers.ValidationError("과목 목록 형식이 올바르지 않습니다.") from error
+        if not isinstance(subject_ids, list) or len(subject_ids) > 9:
+            raise serializers.ValidationError("관심 과목은 최대 9개까지 선택할 수 있습니다.")
+        return value
+
     @transaction.atomic
     def create(self, validated_data):
-        import json
+        validated_data.pop("agreed_terms")
+        validated_data.pop("agreed_privacy")
         terms_version = validated_data.pop("terms_version", "") or ""
         privacy_version = validated_data.pop("privacy_version", "") or ""
         agreed_marketing = validated_data.pop("agreed_marketing", False)

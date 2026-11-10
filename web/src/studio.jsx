@@ -105,8 +105,14 @@ function normalizeLecturePrice(value) {
   return Math.min(1000, Math.max(0, Math.round(price / 100) * 100));
 }
 
-/** 선택한 과목을 여러 개 유지하는 강의 과목 선택 다이얼로그다. */
-function SubjectPicker({ subjects, selectedIds, onChange, onClose }) {
+/** 선택한 과목을 여러 개 유지하는 강의·회원가입 공용 과목 선택 다이얼로그다. */
+export function SubjectPicker({
+  subjects,
+  selectedIds,
+  onChange,
+  onClose,
+  maxSelections,
+}) {
   const categoryGroups = subjectCategoryRanges
     .map(([name, start, end]) => ({
       name,
@@ -133,6 +139,12 @@ function SubjectPicker({ subjects, selectedIds, onChange, onClose }) {
     categoryGroups[0];
   const selectedIdSet = new Set(selectedIds);
   function toggleSubject(subjectId) {
+    if (
+      !selectedIdSet.has(subjectId) &&
+      maxSelections &&
+      selectedIds.length >= maxSelections
+    )
+      return;
     onChange(
       selectedIdSet.has(subjectId)
         ? selectedIds.filter((id) => id !== subjectId)
@@ -140,7 +152,11 @@ function SubjectPicker({ subjects, selectedIds, onChange, onClose }) {
     );
   }
   return (
-    <Modal title={`과목 선택 ${selectedIds.length}개`} onClose={onClose} wide>
+    <Modal
+      title={`과목 선택 ${selectedIds.length}${maxSelections ? `/${maxSelections}` : ""}개`}
+      onClose={onClose}
+      wide
+    >
       <div className="subject-picker-layout">
         <nav className="subject-category-list" aria-label="과목 카테고리">
           {categoryGroups.map((category) => (
@@ -166,6 +182,11 @@ function SubjectPicker({ subjects, selectedIds, onChange, onClose }) {
                 key={subject.number}
                 className={isSelected ? "selected" : ""}
                 aria-pressed={isSelected}
+                disabled={
+                  !isSelected &&
+                  Boolean(maxSelections) &&
+                  selectedIds.length >= maxSelections
+                }
                 onClick={() => toggleSubject(subject.number)}
               >
                 <span>{subject.name}</span>
@@ -591,6 +612,7 @@ function UploadForm({ onComplete, onBusy }) {
             value={draft.title}
             onChange={(e) => field("title", e.target.value)}
             maxLength={200}
+            placeholder="강의 제목을 입력해 주세요."
             required
           />
           <small>{draft.title.length}/200</small>

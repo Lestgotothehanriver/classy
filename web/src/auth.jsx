@@ -1,7 +1,8 @@
 import React, { useContext, useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Search } from "lucide-react";
 import { api } from "./api";
 import { AcademicFields, Ctx, Btn, Modal, RegionFields } from "./shared";
+import { SubjectPicker } from "./studio";
 
 // Mirrors SignupAccountView, SignupVerifyPhoneView and the role-specific surveys.
 export function Auth({ onClose, initial = "login" }) {
@@ -19,6 +20,8 @@ export function Auth({ onClose, initial = "login" }) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
     useState(false);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
+  const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
   async function run(fn) {
     setBusy(true);
     setError("");
@@ -39,6 +42,9 @@ export function Auth({ onClose, initial = "login" }) {
     setResetToken("");
     setIsPasswordVisible(false);
     setIsConfirmPasswordVisible(false);
+  }
+  function openPolicy(path) {
+    window.open(path, "_blank", "noopener,noreferrer");
   }
   async function authenticate(data, preferred) {
     if (!data.token)
@@ -128,7 +134,7 @@ export function Auth({ onClose, initial = "login" }) {
           encodeURIComponent(values.user_name.trim()),
       );
       if (!nameCheck.available) throw new Error("이미 사용 중인 닉네임입니다.");
-      const selected = f.getAll("subjects").map(Number);
+      const selected = selectedSubjectIds;
       const body = {
         email,
         password: values.password,
@@ -137,6 +143,8 @@ export function Auth({ onClose, initial = "login" }) {
         region: values.region,
         sex: values.sex,
         birth_date: values.birth_date,
+        agreed_terms: values.agreed_terms === "true",
+        agreed_privacy: values.agreed_privacy === "true",
         agreed_marketing: values.marketing === "on",
       };
       if (role === "student") body.studentsubject = selected;
@@ -164,6 +172,7 @@ export function Auth({ onClose, initial = "login" }) {
             : "CLASSY 회원가입"
       }
       onClose={onClose}
+      wide={mode === "signup" || mode === "reset"}
     >
       <div className="login-intro">
         <img src="/app-icons/logo.svg" alt="" />
@@ -171,8 +180,8 @@ export function Auth({ onClose, initial = "login" }) {
           {mode === "login"
             ? "다시 만나서 반가워요!"
             : mode === "signup"
-              ? "배움의 시작을 함께해요"
-              : "계정을 안전하게 되찾으세요"}
+              ? "안녕하세요!"
+              : "가입할 때 등록하신 휴대전화 번호를 입력해주세요."}
         </h3>
       </div>
       {mode === "signup" && (
@@ -328,17 +337,46 @@ export function Auth({ onClose, initial = "login" }) {
                 </label>
               </div>
               <RegionFields required />
-              <label>
-                관심 과목
-                <select name="subjects" multiple size={5}>
-                  {subjects.map((s) => (
-                    <option key={s.number} value={s.number}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <small>여러 과목은 Ctrl 또는 ⌘ 키로 선택하세요.</small>
-              </label>
+              <div className="subject-field">
+                <span>관심 과목</span>
+                <button
+                  type="button"
+                  className="subject-picker-trigger"
+                  aria-label="관심 과목 선택"
+                  onClick={() => setIsSubjectPickerOpen(true)}
+                >
+                  <span>
+                    {selectedSubjectIds.length
+                      ? `${selectedSubjectIds.length}/9개 과목 선택됨`
+                      : "관심 과목을 선택해주세요. (최대 9개)"}
+                  </span>
+                  <Search size={24} aria-hidden="true" />
+                </button>
+              </div>
+              {selectedSubjectIds.length > 0 && (
+                <div className="subject-chips" aria-label="선택된 관심 과목">
+                  {selectedSubjectIds.map((subjectId) => {
+                    const subject = subjects.find(
+                      (item) => item.number === subjectId,
+                    );
+                    if (!subject) return null;
+                    return (
+                      <button
+                        type="button"
+                        key={subject.number}
+                        onClick={() =>
+                          setSelectedSubjectIds((ids) =>
+                            ids.filter((id) => id !== subject.number),
+                          )
+                        }
+                        aria-label={`${subject.name} 선택 취소`}
+                      >
+                        {subject.name} <span aria-hidden="true">×</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {role === "instructor" && (
                 <>
                   <AcademicFields />
@@ -352,20 +390,38 @@ export function Auth({ onClose, initial = "login" }) {
                 </>
               )}
               <label className="check-label">
-                <input type="checkbox" required />
-                [필수]{" "}
-                <a href="/service-terms" target="_blank" rel="noreferrer">
-                  이용약관
-                </a>{" "}
-                동의
+                <input
+                  type="checkbox"
+                  name="agreed_terms"
+                  value="true"
+                  required
+                />
+                <span>[필수] 서비스 이용약관 동의</span>
+                <button
+                  type="button"
+                  className="terms-view-button"
+                  onClick={() => openPolicy("/service-terms")}
+                  aria-label="서비스 이용약관 보기"
+                >
+                  보기
+                </button>
               </label>
               <label className="check-label">
-                <input type="checkbox" required />
-                [필수]{" "}
-                <a href="/privacy" target="_blank" rel="noreferrer">
-                  개인정보처리방침
-                </a>{" "}
-                동의
+                <input
+                  type="checkbox"
+                  name="agreed_privacy"
+                  value="true"
+                  required
+                />
+                <span>[필수] 개인정보 수집 및 이용 동의</span>
+                <button
+                  type="button"
+                  className="terms-view-button"
+                  onClick={() => openPolicy("/privacy")}
+                  aria-label="개인정보 수집 및 이용 보기"
+                >
+                  보기
+                </button>
               </label>
               <label className="check-label">
                 <input type="checkbox" name="marketing" />
@@ -394,6 +450,15 @@ export function Auth({ onClose, initial = "login" }) {
           </Btn>
         </fieldset>
       </form>
+      {isSubjectPickerOpen && (
+        <SubjectPicker
+          subjects={subjects}
+          selectedIds={selectedSubjectIds}
+          onChange={setSelectedSubjectIds}
+          onClose={() => setIsSubjectPickerOpen(false)}
+          maxSelections={9}
+        />
+      )}
       <div className="auth-links">
         {mode !== "login" && (
           <button onClick={() => switchMode("login")}>

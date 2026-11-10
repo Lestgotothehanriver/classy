@@ -8,9 +8,9 @@
 
 | 기능 | Method | URL | Param | 설명 |
 | :--- | :---: | :--- | :--- | :--- |
-| 학생 회원가입 | `POST` | `/accounts/signup/student/` | **[Body (JSON)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수)<br>- `user_name` (str, 필수)<br>- `phone` (str, 필수)<br>- `studentsubject` (list[int], 선택) | 학생용 회원가입을 처리하고 자동 로그인 토큰을 발급합니다. |
+| 학생 회원가입 | `POST` | `/accounts/signup/student/` | **[Body (JSON)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수)<br>- `user_name` (str, 필수)<br>- `phone` (str, 필수)<br>- `agreed_terms` (bool, `true` 필수)<br>- `agreed_privacy` (bool, `true` 필수)<br>- `studentsubject` (list[int], 최대 9개, 선택) | 학생용 회원가입을 처리하고 자동 로그인 토큰을 발급합니다. |
 | 학생 프로필 수정 | `PUT`<br>`PATCH` | `/accounts/signup/student/` | **[Body (JSON)]**<br>- `user_name` (str, 선택) 등 수정 대상 정보 | 로그인한 학생의 프로필 정보를 수정합니다. |
-| 강사 회원가입 | `POST` | `/accounts/signup/instructor/` | **[Body (Multipart)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수)<br>- `user_name` (str, 필수)<br>- `phone` (str, 필수)<br>- `university` (str, 필수)<br>- `department` (str, 선택)<br>- `pending_file` (file, 필수) 등 | 강사 회원가입을 처리합니다. 학력/경력 인증을 위한 서류 제출이 필수입니다. |
+| 강사 회원가입 | `POST` | `/accounts/signup/instructor/` | **[Body (Multipart)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수)<br>- `user_name` (str, 필수)<br>- `phone` (str, 필수)<br>- `agreed_terms` (bool, `true` 필수)<br>- `agreed_privacy` (bool, `true` 필수)<br>- `instructorsubject` (JSON list[int], 최대 9개, 선택)<br>- `university` (str, 필수)<br>- `department` (str, 선택)<br>- `pending_file` (file, 필수) 등 | 강사 회원가입을 처리합니다. 학력/경력 인증을 위한 서류 제출이 필수입니다. |
 | 강사 프로필 수정 | `PUT`<br>`PATCH` | `/accounts/signup/instructor/` | **[Body (Multipart)]**<br>- `university` (str, 선택)<br>- `department` (str, 선택) 등 수정 대상 정보 | 로그인한 강사의 프로필 정보를 수정합니다. |
 | 강사 재심사 요청 | `POST` | `/accounts/signup/instructor/retry/` | **[Body (Multipart)]**<br>- `email` (str, 필수)<br>- `pending_file` (file, 필수)<br>- `university`, `department` 등 (선택)<br>- `fcm_token`, `platform` (선택) | 강사 승인이 거절(`SUSPENDED`)된 상태에서 인증 서류를 보강하여 재인증을 요청합니다. |
 | 로그인 | `POST` | `/accounts/login/` | **[Body (JSON)]**<br>- `email` (str, 필수)<br>- `password` (str, 필수) | 이메일과 비밀번호로 로그인하여 인증용 토큰과 사용 가능한 역할군 목록을 획득합니다. |

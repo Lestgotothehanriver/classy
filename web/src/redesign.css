@@ -1186,6 +1186,7 @@ dialog {
   padding: 30px;
   width: min(440px, calc(100vw - 32px));
   max-height: 90dvh;
+  overflow-y: auto;
   box-shadow: 0 12px 60px #11111120;
   color: var(--text);
 }
@@ -2448,6 +2449,22 @@ dialog.wide {
   margin: 0;
   accent-color: #5f65d7;
 }
+.terms-view-button {
+  min-height: 32px;
+  margin-left: auto;
+  padding: 6px 10px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #dfe0e2;
+  border-radius: 5px;
+}
+.terms-view-button:hover,
+.terms-view-button:focus-visible {
+  color: var(--primary-dark);
+  border-color: var(--primary);
+}
 .auth-links {
   display: flex;
   gap: 20px;
@@ -2856,16 +2873,22 @@ dialog.wide {
 }
 .subject-picker-trigger {
   width: 100%;
-  min-height: 48px;
-  padding: 12px;
+  min-height: 46px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #f4f5f6;
-  border-radius: 5px;
-  color: var(--muted);
+  background: #fff;
+  border: 1px solid #dfe0e2;
+  border-radius: 6px;
+  color: #969ba4;
+  font-size: 15px;
+  line-height: 1.5;
   text-align: left;
+}
+.subject-picker-trigger:focus {
+  border-color: var(--primary);
 }
 .subject-field {
   display: grid;
@@ -2964,6 +2987,10 @@ dialog.wide {
   background: #efeffb;
   color: var(--primary-dark);
   font-weight: 700;
+}
+.subject-picker-list button:disabled {
+  color: #a2a6ad;
+  cursor: not-allowed;
 }
 .subject-picker-list button svg {
   color: var(--primary-dark);
