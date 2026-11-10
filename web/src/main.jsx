@@ -890,7 +890,7 @@ function Proposal({ kind, id, onClose }) {
 }
 function TeacherProfile({ id, teacher, item }) {
   const { user, notify, detail } = useContext(Ctx);
-  const [tab, setTab] = useState("lectures");
+  const [tab, setTab] = useState("info");
   const info = useLoad(`/tutoring/instructors/${id}/info/`);
   const reviews = useLoad(`/tutoring/instructors/${id}/reviews/`);
   const lectures = useLoad(`/lectures/?instructor=${id}`);

@@ -13,7 +13,8 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }),
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console",m=>{if(m.type()==="error")errors.push(m.text());});
 let role = "student",
-  created = false;
+  created = false,
+  settleableRevenue = 1000;
 const subjects = [
   { number: 36, name: "미적분 I" },
   { number: 196, name: "Python" },
@@ -71,7 +72,7 @@ await page.route("**/api/**", async (route) => {
     created = true;
     d = lecture;
   } else if (path === "/mypage/instructor/settlement-info/")
-    d = { total_revenue: 1000, settleable_revenue: 1000 };
+    d = { total_revenue: 1000, settleable_revenue: settleableRevenue };
   else if (path === "/pending/") d = { exists: false };
   else if (path === "/tutoring/instructor-info/mine/") {
     d = null;
@@ -241,6 +242,17 @@ try {
       view + " desktop overflow",
     );
   }
+  settleableRevenue = 0;
+  await page.goto(origin + "/#settlement");
+  await page
+    .getByRole("button", { name: "정산 신청", exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "정산 신청", exact: true })
+      .isDisabled(),
+    true,
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   for (const view of ["upload", "account", "tutoring-manage"]) {
     await page.goto(origin+"/#" + view);

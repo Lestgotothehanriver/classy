@@ -211,7 +211,7 @@ class InstructorSettlementRequestView(APIView):
             total_cash = sum(cash for _, cash in locked_rentals)
 
             if total_cash == 0:
-                return Response({"detail": "No settleable revenue found."}, status=400)
+                return Response({"detail": "정산 가능한 캐시가 없습니다."}, status=400)
 
             promotion_benefit = active_benefit_for(instructor)
             fee_rate_bps = (

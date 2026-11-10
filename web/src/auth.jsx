@@ -1,4 +1,5 @@
 import React, { useContext, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { api } from "./api";
 import { AcademicFields, Ctx, Btn, Modal, RegionFields } from "./shared";
 
@@ -15,6 +16,9 @@ export function Auth({ onClose, initial = "login" }) {
     [verified, setVerified] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [notice, setNotice] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
+    useState(false);
   async function run(fn) {
     setBusy(true);
     setError("");
@@ -33,6 +37,8 @@ export function Auth({ onClose, initial = "login" }) {
     setSent(false);
     setVerified(false);
     setResetToken("");
+    setIsPasswordVisible(false);
+    setIsConfirmPasswordVisible(false);
   }
   async function authenticate(data, preferred) {
     if (!data.token)
@@ -240,26 +246,60 @@ export function Auth({ onClose, initial = "login" }) {
           )}
           <label>
             {mode === "reset" ? "새 비밀번호" : "비밀번호"}
-            <input
-              name="password"
-              type="password"
-              required
-              minLength={mode === "login" ? 1 : 8}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-            />
+            <span className="password-field">
+              <input
+                name="password"
+                type={isPasswordVisible ? "text" : "password"}
+                required
+                minLength={mode === "login" ? 1 : 8}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+              />
+              <button
+                type="button"
+                className="password-visibility-toggle"
+                onClick={() => setIsPasswordVisible((visible) => !visible)}
+                aria-label={
+                  isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"
+                }
+                aria-pressed={isPasswordVisible}
+              >
+                {isPasswordVisible ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </span>
           </label>
           {mode !== "login" && (
             <label>
               비밀번호 확인
-              <input
-                name="confirm"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-              />
+              <span className="password-field">
+                <input
+                  name="confirm"
+                  type={isConfirmPasswordVisible ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-visibility-toggle"
+                  onClick={() =>
+                    setIsConfirmPasswordVisible((visible) => !visible)
+                  }
+                  aria-label={
+                    isConfirmPasswordVisible
+                      ? "비밀번호 확인 숨기기"
+                      : "비밀번호 확인 보기"
+                  }
+                  aria-pressed={isConfirmPasswordVisible}
+                >
+                  {isConfirmPasswordVisible ? (
+                    <EyeOff size={20} />
+                  ) : (
+                    <Eye size={20} />
+                  )}
+                </button>
+              </span>
             </label>
           )}
           {mode === "signup" && (

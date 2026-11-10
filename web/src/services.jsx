@@ -26,6 +26,7 @@ export function ActionForm({
   onDone,
   confirm,
   submit = "저장",
+  submitDisabled = false,
   multipart = false,
 }) {
   const { notify } = useContext(Ctx),
@@ -38,6 +39,7 @@ export function ActionForm({
         className="form"
         onSubmit={async (e) => {
           e.preventDefault();
+          if (submitDisabled) return;
           if (confirm && !window.confirm(confirm)) return;
           const form = e.currentTarget,
             body = new FormData(form);
@@ -65,7 +67,7 @@ export function ActionForm({
               {error}
             </p>
           )}
-          <Btn className="primary" disabled={busy}>
+          <Btn className="primary" disabled={busy || submitDisabled}>
             {busy ? "처리 중…" : submit}
           </Btn>
         </fieldset>
@@ -208,6 +210,7 @@ function Cash() {
 function Settlement() {
   const resource = useLoad("/mypage/instructor/settlement-info/"),
     d = resource.data || {};
+  const isSettlementUnavailable = Number(d.settleable_revenue ?? 0) <= 0;
   const currentBank = d.account_info?.bank || "";
   const bankOptions =
     currentBank && !BANKS.includes(currentBank)
@@ -219,7 +222,7 @@ function Settlement() {
         <h2>강의 수익</h2>
         <div className="studio-summary">
           {[
-            ["누적 수익", "total_revenue"],
+            ["누적 캐시 수익", "total_revenue"],
             ["정산 가능", "settleable_revenue"],
             ["정산 진행 중", "pending_revenue"],
             ["정산 완료", "completed_revenue"],
@@ -269,9 +272,13 @@ function Settlement() {
         path="/mypage/instructor/request-settlement/"
         confirm="정산 가능한 수익의 지급을 신청할까요?"
         submit="정산 신청"
+        submitDisabled={isSettlementUnavailable}
         onDone={resource.reload}
       >
-        <p>정산 가능한 금액: {money(d.settleable_revenue)}</p>
+        <p>정산 가능한 캐시: {money(d.settleable_revenue)}</p>
+        {isSettlementUnavailable && (
+          <p className="form-note">정산 가능한 수익이 생기면 신청할 수 있어요.</p>
+        )}
         <p className="form-note">위 계좌 정보를 확인한 후 신청해 주세요.</p>
       </ActionForm>
     </State>

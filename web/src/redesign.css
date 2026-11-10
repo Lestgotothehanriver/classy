@@ -1252,6 +1252,37 @@ dialog.wide {
 .form textarea::placeholder {
   color: #969ba4;
 }
+.password-field {
+  position: relative;
+  display: block;
+}
+.password-field input {
+  width: 100%;
+  padding-right: 52px;
+}
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  color: #5f646d;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  place-items: center;
+  transform: translateY(-50%);
+}
+.password-visibility-toggle:hover {
+  color: var(--primary);
+}
+.password-visibility-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -4px;
+}
 .form-note {
   font-size: 12px;
   line-height: 1.7;
