@@ -1111,7 +1111,7 @@ function TeacherProfile({ id, teacher, item }) {
               </div>
               <div>
                 <dt>수업료</dt>
-                <dd>{infoData.cost != null ? `월 ${money(infoData.cost)}원 이하` : "협의 후 결정"}</dd>
+                <dd>{infoData.cost_display || infoData.cost || "협의 후 결정"}</dd>
               </div>
               <div>
                 <dt>수업 방식</dt>

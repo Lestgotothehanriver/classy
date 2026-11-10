@@ -34,7 +34,7 @@ await page.route('**/api/**',async route=>{
  else if(p==='/chatrooms/4/message/')data={id:5,sender:1,sender_nickname:'테스트 학생',text:'모의 전송'};
  else if(p==='/tutoring/instructors/')data=[{id:9,user_name:'테스트 선생님',university:'테스트 대학',subjects:[36],is_certified:true}];
  else if(p==='/tutoring/instructors/9/')data={id:9,user_name:'테스트 선생님',subjects:[36]};
- else if(p==='/tutoring/instructors/9/info/')data={instruction:'수업 소개',cost_display:'협의 후 결정'};
+ else if(p==='/tutoring/instructors/9/info/')data={instruction:'수업 소개',cost:'월 30만원 (주 2회)',cost_display:'월 30만원 (주 2회)'};
  else if(p==='/tutoring/my-posts/')data=[{id:11,title:'테스트 공고',is_active:true}];
  else if(p==='/tutoring/propose-to-instructor/')data={room_id:4};
  await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -83,6 +83,8 @@ await page.getByText('모의 전송',{exact:true}).waitFor({timeout:7000}).catch
 assert.deepEqual(writes.find(w=>w.path==='/chatrooms/4/message/').body,{text:'모의 전송'});
 await page.getByRole('navigation',{name:'주요 메뉴',exact:true}).getByRole('link',{name:'과외',exact:true}).click();
 await page.getByRole('button',{name:'테스트 선생님 선생님 프로필',exact:true}).click();
+await page.getByText('월 30만원 (주 2회)',{exact:true}).waitFor();
+assert.equal(await page.getByText('NaN',{exact:true}).count(),0);
 await page.getByRole('button',{name:'과외 상담 제안하기'}).click();
 await page.getByLabel('상담할 내 과외 공고').selectOption('11');
 await page.getByRole('button',{name:'제안 보내기',exact:true}).click();
