@@ -438,11 +438,11 @@ export function Gate({ children }) {
   ) : (
     <Empty
       icon={LockKeyhole}
-      title="나의 배움을 이어가세요"
+      title="로그인/회원가입이 필요한 기능이에요"
       text="Classy 앱에서 사용하던 계정으로 로그인하면 선생님, 강의와 대화를 그대로 만날 수 있어요."
     >
       <Btn className="primary" onClick={login}>
-        기존 계정으로 로그인 <ArrowRight size={16} />
+        로그인/회원가입 하러가기 <ArrowRight size={16} />
       </Btn>
     </Empty>
   );
