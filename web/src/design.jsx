@@ -1277,32 +1277,18 @@ export function Catalog({ kind, mode }) {
                   <X size={13} />
                 </button>
               )}
-              {kind === "teachers" && (
-                <button
-                  type="button"
-                  className={
-                    "filter-chip ranking-filter-chip" +
-                    (order === "rank" ? " active" : "")
-                  }
-                  aria-pressed={order === "rank"}
-                  onClick={() =>
-                    reset(() =>
-                      setOrder(order === "rank" ? "latest" : "rank"),
-                    )
-                  }
-                >
-                  랭킹 순
-                </button>
-              )}
               <span className="toolbar-spacer" />
               {kind !== "lectures" && (
                 <select
                   aria-label="정렬"
-                  value={order === "rank" ? "latest" : order}
+                  value={order}
                   onChange={(e) => reset(() => setOrder(e.target.value))}
                 >
                   <option value="latest">최신순</option>
                   <option value="likes">인기순</option>
+                  {kind === "teachers" && (
+                    <option value="rank">랭킹순</option>
+                  )}
                 </select>
               )}
             </>
