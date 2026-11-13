@@ -107,8 +107,11 @@ function App() {
   const pageRef = useRef(page);
   pageRef.current = page;
   const subjects = useLoad("/accounts/subjects/");
+  const hasAuthenticatedSession = Boolean(
+    user && sessionStorage.getItem("classy_token"),
+  );
   const unreadNotifications = useLoad(
-    user ? "/notification/unread-count/" : null,
+    hasAuthenticatedSession ? "/notification/unread-count/" : null,
     [user?.id],
   );
   const notify = (msg) => setToast(msg);
@@ -176,16 +179,18 @@ function App() {
     }
   }, [toast]);
   useEffect(() => {
-    if (!user) return undefined;
+    if (!hasAuthenticatedSession) return undefined;
 
-    const refresh = () => unreadNotifications.reload();
+    const refresh = () => {
+      if (sessionStorage.getItem("classy_token")) unreadNotifications.reload();
+    };
     const timer = window.setInterval(refresh, 30000);
     window.addEventListener("focus", refresh);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [user?.id]);
+  }, [hasAuthenticatedSession, user?.id]);
   const go = (p) => {
     location.hash = p;
   };
@@ -282,7 +287,9 @@ function App() {
     },
     refreshUser: () => api("/accounts/me/").then(setUser),
     unreadNotificationCount,
-    refreshNotificationUnreadCount: unreadNotifications.reload,
+    refreshNotificationUnreadCount: () => {
+      if (sessionStorage.getItem("classy_token")) unreadNotifications.reload();
+    },
     setRole: (role) => changeRole(role),
     openNotificationTarget,
     signup: () => location.assign("/signup"),
