@@ -17,7 +17,8 @@ await page.getByRole('heading',{name:'나에게 필요한 배움, CLASSY'}).wait
 await page.evaluate(()=>document.fonts.ready);
 await page.screenshot({path:'test-results/redesign-home-desktop.png',fullPage:true});
 await page.getByRole('navigation',{name:'주요 메뉴',exact:true}).getByRole('link',{name:'강의',exact:true}).click();
-await page.getByRole('button',{name:'로그인',exact:true}).first().click();
+await page.getByRole('heading',{name:'로그인/회원가입이 필요한 기능이에요',exact:true}).waitFor();
+await page.getByRole('button',{name:'로그인/회원가입 하러가기',exact:true}).click();
 await page.waitForURL('**/login');
 await page.getByLabel('이메일',{exact:true}).fill('web-test@example.invalid');
 await page.getByLabel('비밀번호',{exact:true}).fill('mock-password');

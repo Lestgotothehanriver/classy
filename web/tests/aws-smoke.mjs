@@ -27,8 +27,9 @@ try{
   assert.ok(catalog.results.every(x=>!Object.hasOwn(x,'video')));
   await page.goto(origin+'/#lectures');
   await page.getByRole('heading',{name:'강의 찾기',exact:true}).waitFor();
-  if(catalog.count)await page.getByRole('heading',{name:catalog.results[0].title,exact:true}).waitFor();
-  await page.getByRole('button',{name:'로그인',exact:true}).first().click();
+  await page.getByRole('heading',{name:'로그인/회원가입이 필요한 기능이에요',exact:true}).waitFor();
+  if(catalog.count)assert.equal(await page.getByRole('heading',{name:catalog.results[0].title,exact:true}).count(),0);
+  await page.getByRole('button',{name:'로그인/회원가입 하러가기',exact:true}).click();
   await page.waitForURL('**/login');
   await page.getByRole('button',{name:'회원가입',exact:true}).click();
   await page.waitForURL('**/signup');

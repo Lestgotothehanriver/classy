@@ -355,17 +355,27 @@ function App() {
         ) : (
           <>
             <PageHeading title={pageNames[page]} />
-            <Catalog
-              key={page + effectiveUser?.role}
-              kind={
-                page === "saved-teachers"
-                  ? "teachers"
-                  : ["teachers", "posts"].includes(page)
-                    ? page
-                    : "lectures"
-              }
-              mode={page}
-            />
+            {page === "lectures" ? (
+              <Gate>
+                <Catalog
+                  key={page + effectiveUser?.role}
+                  kind="lectures"
+                  mode={page}
+                />
+              </Gate>
+            ) : (
+              <Catalog
+                key={page + effectiveUser?.role}
+                kind={
+                  page === "saved-teachers"
+                    ? "teachers"
+                    : ["teachers", "posts"].includes(page)
+                      ? page
+                      : "lectures"
+                }
+                mode={page}
+              />
+            )}
           </>
         )}
       </Shell>
