@@ -14,7 +14,11 @@ from .utils import (
     extract_video_duration_seconds,
     is_supported_lecture_video,
 )
-from config.apps.common.serializers import AbsoluteFileField, AbsoluteImageField
+from config.apps.common.serializers import (
+    AbsoluteFileField,
+    AbsoluteImageField,
+    AuthenticatedProfileImageField,
+)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -28,7 +32,10 @@ class LectureInstructorSerializer(serializers.ModelSerializer):
     표시하기 위해 사용합니다.
     """
     user_name = serializers.SerializerMethodField()
-    profile_image = AbsoluteImageField(source="user.profile_image", read_only=True)
+    profile_image = AuthenticatedProfileImageField(
+        source="user.profile_image",
+        read_only=True,
+    )
     is_official_creator = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -330,7 +337,10 @@ class _CommentAuthorMixin(serializers.Serializer):
     사용합니다.
     """
     author_name = serializers.CharField(source="author.user_name", read_only=True)
-    author_profile_image = AbsoluteImageField(source="author.profile_image", read_only=True)
+    author_profile_image = AuthenticatedProfileImageField(
+        source="author.profile_image",
+        read_only=True,
+    )
     is_mine = serializers.SerializerMethodField()
     # 관리자 차단(신고 조치) 댓글은 하드 삭제하지 않고 원문을 안내 문구로 마스킹한다.
     # 대댓글 스레드 구조는 그대로 유지된다.

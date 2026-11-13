@@ -387,12 +387,13 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
         self.assertEqual(likes_map[self.inst3.id], False)
 
     def test_unauthenticated_list_includes_card_profile_fields(self):
-        """비로그인 목록은 카드용 학번·성별을 반환하고 생년월일은 숨긴다."""
+        """비로그인 목록은 카드 정보는 반환하고 프로필 이미지는 숨긴다."""
         self.inst3.is_tutoring = True
         self.inst3.student_number = "2024"
         self.inst3.save(update_fields=["is_tutoring", "student_number"])
         self.instructor_user3.sex = "여성"
-        self.instructor_user3.save(update_fields=["sex"])
+        self.instructor_user3.profile_image = "profile_images/instructor.jpg"
+        self.instructor_user3.save(update_fields=["sex", "profile_image"])
 
         client = APIClient()
         resp = client.get("/tutoring/instructors/")
@@ -403,6 +404,19 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
         self.assertFalse(item["is_liked"])
         self.assertEqual(item["student_number"], "2024")
         self.assertEqual(item["sex"], "여성")
+        self.assertIsNone(item["profile_image"])
+
+        authenticated_response = self.client.get("/tutoring/instructors/")
+        authenticated_item = next(
+            item
+            for item in authenticated_response.json()["results"]
+            if item["id"] == self.inst3.id
+        )
+        self.assertTrue(
+            authenticated_item["profile_image"].endswith(
+                self.instructor_user3.profile_image.url
+            )
+        )
         self.assertNotIn("birth_date", item)
 
 
@@ -446,7 +460,9 @@ class TutoringPostLikeSortingTest(LikeSortingTestBase):
         self.assertEqual(ids, sorted(ids, reverse=True))
 
     def test_unauthenticated_list_is_public(self):
-        """비로그인 방문자는 활성 학생 공고 목록을 조회할 수 있다."""
+        """비로그인 방문자는 공고를 조회하지만 작성자 이미지는 볼 수 없다."""
+        self.student_user1.profile_image = "profile_images/student.jpg"
+        self.student_user1.save(update_fields=["profile_image"])
         response = APIClient().get("/tutoring/posts/")
 
         self.assertEqual(response.status_code, 200)
@@ -454,6 +470,11 @@ class TutoringPostLikeSortingTest(LikeSortingTestBase):
             {item["id"] for item in response.json()["results"]},
             {self.post1.id, self.post2.id, self.post3.id},
         )
+        post = next(
+            item for item in response.json()["results"]
+            if item["id"] == self.post1.id
+        )
+        self.assertIsNone(post["student_profile_image"])
 
     def test_unique_together_prevents_duplicate_like(self):
         """같은 강사가 같은 공고에 두 번 좋아요하면 IntegrityError"""

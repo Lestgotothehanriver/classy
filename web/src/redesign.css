@@ -821,23 +821,32 @@ textarea {
   margin-top: 20px;
   padding-top: 24px;
 }
-.side-subjects {
+.side-filters {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.side-filters button {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  margin-top: 10px;
-  gap: 3px;
-}
-.side-subjects button {
-  padding: 10px 0;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: #f7f7f8;
+  color: #5f646d;
+  font-size: 14px;
   text-align: left;
-  font-size: 13px;
-  color: var(--muted);
 }
-.side-subjects button.active,
-.side-subjects button:hover {
+.side-filters button:hover,
+.side-filters button.active {
+  background: #f1f0ff;
   color: var(--primary);
+  font-weight: 600;
 }
+.side-filters button svg { color: var(--muted); }
+.side-filters button.active svg,
+.side-filters button:hover svg { color: var(--primary); }
 .catalog-help {
   border-top: 1px solid var(--line);
   padding-top: 23px;
@@ -879,8 +888,9 @@ textarea {
 }
 .catalog-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
   margin: 16px 0 18px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 18px;
@@ -893,19 +903,37 @@ textarea {
   align-items: center;
   gap: 7px;
   background: var(--gray);
-  padding: 0 10px;
+  padding: 8px;
   border-radius: 5px;
   max-width: 230px;
 }
 .filter-trigger {
-  min-height: 38px;
+  min-height: 32px;
   border: 0;
   cursor: pointer;
 }
 .filter-trigger.active {
   color: var(--primary);
+  font-weight: 500;
   box-shadow: inset 0 0 0 1px var(--primary);
 }
+.filter-trigger.active > svg { color: var(--primary); }
+.catalog-filter-controls {
+  display: grid;
+  flex: 1 1 0;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+.catalog-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+.catalog-filter-controls + .toolbar-spacer { display: none; }
+.catalog-toolbar > select,
+.catalog-toolbar > .icon-button { flex: 0 0 auto; }
 .filter-modal {
   display: flex;
   flex-direction: column;
@@ -1089,21 +1117,6 @@ dialog.wide:has(.filter-modal) .filter-actions {
 }
 .toolbar-spacer {
   flex: 1;
-}
-.filter-chip {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--primary);
-  background: var(--tint);
-  border-radius: 4px;
-  padding: 7px 10px;
-}
-.filter-chip.active {
-  color: var(--primary);
-  background: #dedffb;
-  box-shadow: inset 0 0 0 1px var(--primary);
 }
 .results-caption {
   font-size: 13px;
@@ -2242,7 +2255,7 @@ dialog.wide {
   }
   .catalog-aside h2,
   .catalog-aside h3,
-  .catalog-aside .side-subjects,
+  .catalog-aside .side-filters,
   .catalog-help {
     display: none;
   }
@@ -2612,10 +2625,6 @@ dialog.wide {
   .filter-select select {
     font-size: 12px !important;
     max-width: 130px;
-  }
-  .filter-chip {
-    font-size: 11px;
-    padding: 7px 8px;
   }
   .catalog-toolbar > select {
     font-size: 12px !important;
@@ -3331,7 +3340,11 @@ dialog.wide {
   gap: 8px;
   margin-top: -8px;
 }
-.subject-chips button {
+.subject-chips button,
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-height: 48px;
   padding: 8px 20px;
   border: 1px solid #adb0eb;
@@ -3345,6 +3358,15 @@ dialog.wide {
   font-size: 20px;
   line-height: 0;
   vertical-align: -2px;
+}
+.filter-chip svg {
+  flex: 0 0 auto;
+}
+.catalog-filter-chips .filter-chip {
+  gap: 3px;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 .subject-picker-layout {
   display: grid;

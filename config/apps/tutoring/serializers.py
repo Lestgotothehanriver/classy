@@ -15,7 +15,12 @@ from .models import (
     Region,
     requires_student_field,
 )
-from config.apps.common.serializers import M2MSyncMixin, AbsoluteFileField, AbsoluteImageField
+from config.apps.common.serializers import (
+    M2MSyncMixin,
+    AbsoluteFileField,
+    AbsoluteImageField,
+    AuthenticatedProfileImageField,
+)
 from config.apps.common.utils import get_absolute_media_url
 from config.apps.common.validators import validate_cost_unit
 
@@ -110,7 +115,10 @@ class InstructorListSerializer(SafeModelSerializer):
     user_name = serializers.SerializerMethodField()
     is_official_creator = serializers.BooleanField(read_only=True)
     birth_date = serializers.DateField(source='user.birth_date', read_only=True)
-    profile_image = AbsoluteImageField(source='user.profile_image', read_only=True)
+    profile_image = AuthenticatedProfileImageField(
+        source='user.profile_image',
+        read_only=True,
+    )
     verification_status = serializers.SerializerMethodField()
     is_certified = serializers.SerializerMethodField()
     is_unverified = serializers.SerializerMethodField()
@@ -303,7 +311,10 @@ class StudentPublicSerializer(SafeModelSerializer):
 class TutoringPostListSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.user.user_name', read_only=True)
     student_id = serializers.IntegerField(source='student.id', read_only=True)
-    student_profile_image = AbsoluteImageField(source='student.user.profile_image', read_only=True)
+    student_profile_image = AuthenticatedProfileImageField(
+        source='student.user.profile_image',
+        read_only=True,
+    )
     student_age = serializers.SerializerMethodField()
     student_sex = serializers.CharField(source='student.user.sex', read_only=True)
     student_field = serializers.CharField(source='field', read_only=True)

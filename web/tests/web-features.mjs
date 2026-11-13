@@ -146,6 +146,51 @@ try {
     await studentBrowseMenu.getByRole("link", { name: "선생님 찾기" }).count(),
     1,
   );
+  await page
+    .locator(".side-filters")
+    .getByRole("button", { name: "과목", exact: true })
+    .click();
+  const subjectFilterDialog = page.getByRole("dialog", { name: "과목" });
+  await subjectFilterDialog
+    .getByRole("button", { name: "고등수학", exact: true })
+    .click();
+  await subjectFilterDialog
+    .getByRole("button", { name: "미적분 I", exact: true })
+    .click();
+  await subjectFilterDialog.getByRole("button", { name: "적용", exact: true }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "미적분 I 필터 삭제" }).count(),
+    1,
+  );
+  assert.equal(
+    await page.locator(".filter-trigger.active").count(),
+    1,
+  );
+  await page.getByRole("button", { name: "미적분 I 필터 삭제" }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "미적분 I 필터 삭제" }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "필터", exact: true }).click();
+  const filterDialog = page.getByRole("dialog");
+  await filterDialog.getByRole("tab", { name: "금액", exact: true }).click();
+  await filterDialog.getByRole("button", { name: "무료 강의", exact: true }).click();
+  await filterDialog
+    .getByRole("button", { name: "필터 적용", exact: true })
+    .click();
+  assert.equal(
+    await page.getByRole("button", { name: "무료 강의 필터 삭제" }).count(),
+    1,
+  );
+  assert.equal(
+    await page.locator(".filter-trigger.active").count(),
+    1,
+  );
+  await page.getByRole("button", { name: "무료 강의 필터 삭제" }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "무료 강의 필터 삭제" }).count(),
+    0,
+  );
   const signup = writes.find((x) => x.path === "/accounts/signup/student/");
   assert.equal(signup.body.phone, "01012345678");
   assert.deepEqual(signup.body.studentsubject, [36]);

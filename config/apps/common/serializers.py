@@ -61,3 +61,14 @@ class AbsoluteImageField(serializers.ImageField):
         request = self.context.get('request')
         return get_absolute_media_url(value, request)
 
+
+class AuthenticatedProfileImageField(AbsoluteImageField):
+    """로그인한 요청에만 프로필 이미지 URL을 반환하는 ImageField입니다."""
+
+    def to_representation(self, value):
+        """비로그인 요청이면 이미지 URL을 숨기고, 그 외에는 절대 URL을 반환합니다."""
+        request = self.context.get('request')
+        if request is not None and not request.user.is_authenticated:
+            return None
+        return super().to_representation(value)
+

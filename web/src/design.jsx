@@ -93,9 +93,9 @@ function formatStudentNumber(value) {
   return studentNumber.length >= 4 ? `${studentNumber.slice(2, 4)}학번` : "";
 }
 
-function formatTeacherSex(value) {
-  if (["M", "남", "남성"].includes(value)) return "남성";
-  if (["F", "여", "여성"].includes(value)) return "여성";
+function formatSex(value) {
+  if (["M", "남", "남성"].includes(value)) return "남자";
+  if (["F", "여", "여성"].includes(value)) return "여자";
   return "";
 }
 
@@ -132,18 +132,20 @@ function selectedCount(filters) {
       Boolean(filters.university), Boolean(filters.department), filters.grade !== "전체"].filter(Boolean).length;
 }
 
-function FilterModal({ kind, subjects, initialFilters, onApply, onClose }) {
+function filterTabs(kind) {
+  if (kind === "lectures") return ["과목", "금액", "영상 길이", "과외 여부", "지역", "대학/학과", "학번"];
+  if (kind === "teachers") return ["과목", "지역", "과외 방식", "성별", "나이", "리뷰", "영상 강의", "대학/학과", "학번"];
+  return ["과목", "지역", "금액", "과외 방식", "성별", "학년"];
+}
+
+function FilterModal({ kind, subjects, initialFilters, initialTab, singleTab = false, onApply, onClose }) {
+  const tabs = filterTabs(kind);
   const [filters, setFilters] = useState(initialFilters);
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(() => Math.max(tabs.indexOf(initialTab), 0));
   const [subjectCategory, setSubjectCategory] = useState("전체");
   const [province, setProvince] = useState("전체");
   const [schools, setSchools] = useState([]);
   const [schoolQuery, setSchoolQuery] = useState("");
-  const tabs = kind === "lectures"
-    ? ["과목", "금액", "영상 길이", "과외 여부", "지역", "대학/학과", "학번"]
-    : kind === "teachers"
-      ? ["과목", "지역", "과외 방식", "성별", "나이", "리뷰", "영상 강의", "대학/학과", "학번"]
-      : ["과목", "지역", "금액", "과외 방식", "성별", "학년"];
   const update = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
   const toggle = (key, value) => {
     const values = filters[key];
@@ -257,7 +259,7 @@ function FilterModal({ kind, subjects, initialFilters, onApply, onClose }) {
     if (label === "영상 강의") return renderOptions("videoLecture", ["전체", "영상 강의 있음", "영상 강의 없음"]);
     return renderOptions("grade", gradeOptions);
   };
-  return <Modal title="필터" onClose={onClose} wide><div className="filter-modal"><div className="filter-tabs" role="tablist">{tabs.map((name, index) => <button type="button" role="tab" aria-selected={tab === index} className={tab === index ? "active" : ""} key={name} onClick={() => setTab(index)}>{name}</button>)}</div><section className="filter-body">{content()}</section><footer className="filter-actions"><Btn type="button" onClick={() => setFilters(defaultFilters(kind))}>초기화</Btn><Btn type="button" className="primary" onClick={() => onApply(filters)}>필터 적용</Btn></footer></div></Modal>;
+  return <Modal title={singleTab ? initialTab : "필터"} onClose={onClose} wide><div className="filter-modal">{!singleTab && <div className="filter-tabs" role="tablist">{tabs.map((name, index) => <button type="button" role="tab" aria-selected={tab === index} className={tab === index ? "active" : ""} key={name} onClick={() => setTab(index)}>{name}</button>)}</div>}<section className="filter-body">{content()}</section><footer className="filter-actions"><Btn type="button" onClick={() => setFilters(defaultFilters(kind))}>초기화</Btn><Btn type="button" className="primary" onClick={() => onApply(filters)}>{singleTab ? "적용" : "필터 적용"}</Btn></footer></div></Modal>;
 }
 export function AppIcon({ name, selected = false }) {
   return (
@@ -1090,7 +1092,7 @@ export function Catalog({ kind, mode }) {
     [order, setOrder] = useState("latest"),
     [page, setPage] = useState(1);
   const [filters, setFilters] = useState(() => defaultFilters(kind));
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterModalTab, setFilterModalTab] = useState(null);
   const [category, setCategory] = useState(() => {
     const value =
       mode === "lectures"
@@ -1102,6 +1104,8 @@ export function Catalog({ kind, mode }) {
   const isMine = ["learning", "saved", "expired", "saved-teachers"].includes(
     mode,
   );
+  const isFilterOpen = filterModalTab !== null;
+  const sidebarFilterTabs = filterTabs(kind);
   const browseMenu = [
     ["lectures", "강의 찾기"],
     ...(user?.role === "instructor" ? [] : [["teachers", "선생님 찾기"]]),
@@ -1195,6 +1199,116 @@ export function Catalog({ kind, mode }) {
     fn();
     setPage(1);
   };
+  const removeFilterChip = (updater) =>
+    reset(() => setFilters((current) => updater(current)));
+  const removeMultiValue = (key, value) =>
+    removeFilterChip((current) => {
+      const values = current[key].filter((item) => item !== value);
+      return { ...current, [key]: values.length ? values : ["전체"] };
+    });
+  const selectedFilterChips = [
+    ...(category
+      ? [{ key: `category-${category}`, label: category, onRemove: () => reset(() => setCategory("")) }]
+      : []),
+    ...filters.subjectCategories.map((value) => ({
+      key: `subject-category-${value}`,
+      label: value,
+      onRemove: () => removeFilterChip((current) => ({
+        ...current,
+        subjectCategories: current.subjectCategories.filter((item) => item !== value),
+      })),
+    })),
+    ...filters.subjects.map((value) => {
+      const subject = subjects.find((item) => item.number === value);
+      return {
+        key: `subject-${value}`,
+        label: subject?.name || "과목",
+        onRemove: () => removeFilterChip((current) => ({
+          ...current,
+          subjects: current.subjects.filter((item) => item !== value),
+        })),
+      };
+    }),
+    ...(kind === "lectures" && filters.price !== "전체"
+      ? [{ key: "price", label: filters.price, onRemove: () => removeFilterChip((current) => ({ ...current, price: "전체" })) }]
+      : []),
+    ...(kind === "lectures" && filters.videoLength !== "전체"
+      ? [{ key: "video-length", label: filters.videoLength, onRemove: () => removeFilterChip((current) => ({ ...current, videoLength: "전체" })) }]
+      : []),
+    ...(kind === "lectures" && filters.isTutoring !== "전체"
+      ? [{ key: "is-tutoring", label: filters.isTutoring, onRemove: () => removeFilterChip((current) => ({ ...current, isTutoring: "전체" })) }]
+      : []),
+    ...filters.regionStates.map((value) => ({
+      key: `region-state-${value}`,
+      label: value,
+      onRemove: () => removeFilterChip((current) => ({
+        ...current,
+        regionStates: current.regionStates.filter((item) => item !== value),
+      })),
+    })),
+    ...filters.regions.map((value) => ({
+      key: `region-${value}`,
+      label: regions.find(([id]) => id === value)?.[1] || "지역",
+      onRemove: () => removeFilterChip((current) => ({
+        ...current,
+        regions: current.regions.filter((item) => item !== value),
+      })),
+    })),
+    ...(kind === "posts" && filters.price !== "전체"
+      ? [{ key: "price", label: filters.price, onRemove: () => removeFilterChip((current) => ({ ...current, price: "전체" })) }]
+      : []),
+    ...filters.methods.filter((value) => value !== "전체").map((value) => ({
+      key: `method-${value}`,
+      label: value,
+      onRemove: () => removeMultiValue("methods", value),
+    })),
+    ...(filters.sex !== "전체"
+      ? [{ key: "sex", label: filters.sex, onRemove: () => removeFilterChip((current) => ({ ...current, sex: "전체" })) }]
+      : []),
+    ...filters.ages.filter((value) => value !== "전체").map((value) => ({
+      key: `age-${value}`,
+      label: value,
+      onRemove: () => removeMultiValue("ages", value),
+    })),
+    ...(kind === "teachers" && filters.review !== "전체"
+      ? [{ key: "review", label: filters.review, onRemove: () => removeFilterChip((current) => ({ ...current, review: "전체" })) }]
+      : []),
+    ...(kind === "teachers" && filters.videoLecture !== "전체"
+      ? [{ key: "video-lecture", label: filters.videoLecture, onRemove: () => removeFilterChip((current) => ({ ...current, videoLecture: "전체" })) }]
+      : []),
+    ...(filters.university
+      ? [{ key: "university", label: filters.university, onRemove: () => removeFilterChip((current) => ({ ...current, university: "", department: "" })) }]
+      : []),
+    ...(filters.department
+      ? [{ key: "department", label: filters.department, onRemove: () => removeFilterChip((current) => ({ ...current, department: "" })) }]
+      : []),
+    ...filters.studentNumbers.map((value) => ({
+      key: `student-number-${value}`,
+      label: value,
+      onRemove: () => removeFilterChip((current) => ({
+        ...current,
+        studentNumbers: current.studentNumbers.filter((item) => item !== value),
+      })),
+    })),
+    ...(kind === "posts" && filters.grade !== "전체"
+      ? [{ key: "grade", label: filters.grade, onRemove: () => removeFilterChip((current) => ({ ...current, grade: "전체" })) }]
+      : []),
+  ];
+  const isSidebarFilterActive = (label) => {
+    if (label === "과목") return Boolean(category || filters.subjects.length || filters.subjectCategories.length);
+    if (label === "지역") return Boolean(filters.regions.length || filters.regionStates.length);
+    if (label === "금액") return filters.price !== "전체";
+    if (label === "영상 길이") return filters.videoLength !== "전체";
+    if (label === "과외 여부") return filters.isTutoring !== "전체";
+    if (label === "과외 방식") return filters.methods.some((value) => value !== "전체");
+    if (label === "성별") return filters.sex !== "전체";
+    if (label === "나이") return filters.ages.some((value) => value !== "전체");
+    if (label === "리뷰") return filters.review !== "전체";
+    if (label === "영상 강의") return filters.videoLecture !== "전체";
+    if (label === "대학/학과") return Boolean(filters.university || filters.department);
+    if (label === "학번") return Boolean(filters.studentNumbers.length);
+    return filters.grade !== "전체";
+  };
   return (
     <div className="catalog-layout">
       <aside className="catalog-aside">
@@ -1217,22 +1331,19 @@ export function Catalog({ kind, mode }) {
         </nav>
         {!isMine && (
           <>
-            <h3>관심 과목</h3>
-            <div className="side-subjects">
-              {["전체", "국어", "영어", "수학", "과학", "코딩"].map((c) => (
+            <h3>필터</h3>
+            <div className="side-filters" aria-label="필터 항목">
+              {sidebarFilterTabs.map((label) => (
                 <button
-                  key={c}
-                  className={
-                    (category || "전체") === c && !filters.subjects.length && !filters.subjectCategories.length ? "active" : ""
-                  }
-                  onClick={() =>
-                    reset(() => {
-                      setCategory(c === "전체" ? "" : c);
-                      setFilters(defaultFilters(kind));
-                    })
-                  }
+                  type="button"
+                  key={label}
+                  className={isSidebarFilterActive(label) ? "active" : ""}
+                  aria-haspopup="dialog"
+                  aria-expanded={filterModalTab === label}
+                  onClick={() => setFilterModalTab(label)}
                 >
-                  {c}
+                  <span>{label}</span>
+                  <ChevronRight size={18} aria-hidden="true" />
                 </button>
               ))}
             </div>
@@ -1282,25 +1393,34 @@ export function Catalog({ kind, mode }) {
         <div className="catalog-toolbar">
           {!isMine ? (
             <>
-              <button
-                type="button"
-                className={"filter-select filter-trigger" + (selectedCount(filters) ? " active" : "")}
-                aria-haspopup="dialog"
-                aria-expanded={isFilterOpen}
-                onClick={() => setIsFilterOpen(true)}
-              >
-                <SlidersHorizontal size={16} />
-                <span>{selectedCount(filters) ? `필터 ${selectedCount(filters)}` : "필터"}</span>
-              </button>
-              {category && (
+              <div className="catalog-filter-controls">
                 <button
-                  className="filter-chip"
-                  onClick={() => reset(() => setCategory(""))}
+                  type="button"
+                  className={"filter-select filter-trigger" + (selectedFilterChips.length ? " active" : "")}
+                  aria-haspopup="dialog"
+                  aria-expanded={filterModalTab === ""}
+                  onClick={() => setFilterModalTab("")}
                 >
-                  {category}
-                  <X size={13} />
+                  <SlidersHorizontal size={16} />
+                  <span>필터</span>
                 </button>
+              {selectedFilterChips.length > 0 && (
+                <div className="catalog-filter-chips" aria-label="적용된 필터">
+                  {selectedFilterChips.map(({ key, label, onRemove }) => (
+                    <button
+                      type="button"
+                      className="filter-chip"
+                      key={key}
+                      onClick={onRemove}
+                      aria-label={`${label} 필터 삭제`}
+                    >
+                      {label}
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
               )}
+              </div>
               <span className="toolbar-spacer" />
               {kind !== "lectures" && (
                 <select
@@ -1399,7 +1519,7 @@ export function Catalog({ kind, mode }) {
           </State>
         </Access>
       </div>
-      {isFilterOpen && <FilterModal kind={kind} subjects={subjects} initialFilters={filters} onClose={() => setIsFilterOpen(false)} onApply={(nextFilters) => reset(() => { setFilters(nextFilters); setCategory(""); setIsFilterOpen(false); })} />}
+      {isFilterOpen && <FilterModal kind={kind} subjects={subjects} initialFilters={filters} initialTab={filterModalTab || undefined} singleTab={Boolean(filterModalTab)} onClose={() => setFilterModalTab(null)} onApply={(nextFilters) => reset(() => { setFilters(nextFilters); setCategory(""); setFilterModalTab(null); })} />}
     </div>
   );
 }
@@ -1416,7 +1536,7 @@ export function Card({ item, kind, onClick }) {
     : item.region;
   const studentNumberLabel = formatStudentNumber(item.student_number);
   const teacherPersonalInfo = [
-    formatTeacherSex(item.sex),
+    formatSex(item.sex),
     formatTeacherAge(item.birth_date),
   ]
     .filter(Boolean)
@@ -1507,13 +1627,9 @@ export function Card({ item, kind, onClick }) {
               {kind === "teachers"
                 ? item.department || "과외 선생님"
                 : [
-                    item.student_sex === "F"
-                      ? "여"
-                      : item.student_sex === "M"
-                        ? "남"
-                        : "",
                     item.grade,
                     item.student_field,
+                    formatSex(item.student_sex),
                   ]
                     .filter(Boolean)
                     .join(" · ") || "과외 모집"}

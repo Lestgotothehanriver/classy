@@ -77,6 +77,14 @@ class OfficialCreatorLectureSerializerTests(TestCase):
         self.assertEqual(instructor["student_number"], "")
         self.assertEqual(instructor["instruction"], "")
 
+    def test_unauthenticated_lecture_list_hides_instructor_profile_image(self):
+        """비로그인 강의 목록에는 강사 프로필 이미지 URL을 포함하지 않는다."""
+        response = APIClient().get("/lectures/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        instructor = response.json()["results"][0]["instructor"]
+        self.assertIsNone(instructor["profile_image"])
+
 
 class LecturePriceValidationTests(SimpleTestCase):
     """강의 가격의 상한과 캐시 단위를 검증한다."""
