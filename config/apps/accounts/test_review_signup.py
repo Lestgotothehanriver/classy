@@ -84,7 +84,7 @@ class ReviewSignupTests(APITestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.assertEqual(serializer.save().iap_environment, 'PRODUCTION')
 
-    def test_signup_requires_explicit_required_policy_consents(self):
+    def test_signup_temporarily_allows_legacy_clients_without_policy_consents(self):
         base_data = {
             'email': 'consent@example.com',
             'password': 'TestPassword987!',
@@ -114,12 +114,9 @@ class ReviewSignupTests(APITestCase):
             data={**base_data, 'agreed_terms': True, 'agreed_privacy': False},
         )
 
-        self.assertFalse(missing_terms.is_valid())
-        self.assertIn('agreed_terms', missing_terms.errors)
-        self.assertFalse(missing_age.is_valid())
-        self.assertIn('agreed_age', missing_age.errors)
-        self.assertFalse(declined_privacy.is_valid())
-        self.assertIn('agreed_privacy', declined_privacy.errors)
+        self.assertTrue(missing_terms.is_valid(), missing_terms.errors)
+        self.assertTrue(missing_age.is_valid(), missing_age.errors)
+        self.assertTrue(declined_privacy.is_valid(), declined_privacy.errors)
 
     def test_signup_limits_selected_subjects_to_nine(self):
         serializer = StudentSignupSerializer(

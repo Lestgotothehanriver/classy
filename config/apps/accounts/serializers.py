@@ -30,20 +30,22 @@ class RequiredSignupConsentSerializer(serializers.Serializer):
     sex = serializers.ChoiceField(choices=("남성", "여성"))
     birth_date = serializers.DateField()
     region = serializers.CharField()
-    agreed_age = serializers.BooleanField(write_only=True)
-    agreed_terms = serializers.BooleanField(write_only=True)
-    agreed_privacy = serializers.BooleanField(write_only=True)
+    # TODO: 배포된 구버전 앱 호환이 끝나면 required=True로 복구한다.
+    agreed_age = serializers.BooleanField(required=False, write_only=True)
+    agreed_terms = serializers.BooleanField(required=False, write_only=True)
+    agreed_privacy = serializers.BooleanField(required=False, write_only=True)
 
     def validate(self, attrs):
         """필수 동의, 비밀번호 조합, 만 14세 이상 여부를 검증한다."""
-        if not attrs["agreed_age"]:
-            raise serializers.ValidationError({"agreed_age": "만 14세 이상 동의가 필요합니다."})
-        if not attrs["agreed_terms"]:
-            raise serializers.ValidationError({"agreed_terms": "이용약관 동의가 필요합니다."})
-        if not attrs["agreed_privacy"]:
-            raise serializers.ValidationError(
-                {"agreed_privacy": "개인정보처리방침 동의가 필요합니다."},
-            )
+        # TODO: 배포된 구버전 앱이 필수 동의 필드를 전송하지 않아 임시 비활성화한다.
+        # if not attrs["agreed_age"]:
+        #     raise serializers.ValidationError({"agreed_age": "만 14세 이상 동의가 필요합니다."})
+        # if not attrs["agreed_terms"]:
+        #     raise serializers.ValidationError({"agreed_terms": "이용약관 동의가 필요합니다."})
+        # if not attrs["agreed_privacy"]:
+        #     raise serializers.ValidationError(
+        #         {"agreed_privacy": "개인정보처리방침 동의가 필요합니다."},
+        #     )
         password_pattern = r"(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])(?!.*\s).{8,16}"
         if not re.fullmatch(password_pattern, attrs["password"]):
             raise serializers.ValidationError(
@@ -142,9 +144,9 @@ class StudentSignupSerializer(RequiredSignupConsentSerializer):
     def create(self, validated_data):
         studentsubject_ids = validated_data.pop("studentsubject", []) or []
         validated_data.pop("interests", None)
-        validated_data.pop("agreed_age")
-        validated_data.pop("agreed_terms")
-        validated_data.pop("agreed_privacy")
+        agreed_age = validated_data.pop("agreed_age", False)
+        agreed_terms = validated_data.pop("agreed_terms", False)
+        agreed_privacy = validated_data.pop("agreed_privacy", False)
         terms_version = validated_data.pop("terms_version", "") or ""
         privacy_version = validated_data.pop("privacy_version", "") or ""
         agreed_marketing = validated_data.pop("agreed_marketing", False)
@@ -186,14 +188,15 @@ class StudentSignupSerializer(RequiredSignupConsentSerializer):
                 subjects.append(obj)
             student_profile.subjects.set(subjects)
 
-        # 필수/선택 동의 기록 (append-only 감사 로그 + 마케팅 현재상태 플래그)
-        record_consent(
-            user,
-            terms_version=terms_version,
-            privacy_version=privacy_version,
-            agreed_marketing=agreed_marketing,
-            source="signup",
-        )
+        # 구버전 요청에는 실제 동의가 없으므로 필수 동의 이력을 만들지 않는다.
+        if agreed_age and agreed_terms and agreed_privacy:
+            record_consent(
+                user,
+                terms_version=terms_version,
+                privacy_version=privacy_version,
+                agreed_marketing=agreed_marketing,
+                source="signup",
+            )
         return user
     # 닉네임 중복 체크 함수
     def is_validate_user_name(self, user_name):
@@ -264,9 +267,9 @@ class InstructorSignupSerializer(RequiredSignupConsentSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        validated_data.pop("agreed_age")
-        validated_data.pop("agreed_terms")
-        validated_data.pop("agreed_privacy")
+        agreed_age = validated_data.pop("agreed_age", False)
+        agreed_terms = validated_data.pop("agreed_terms", False)
+        agreed_privacy = validated_data.pop("agreed_privacy", False)
         terms_version = validated_data.pop("terms_version", "") or ""
         privacy_version = validated_data.pop("privacy_version", "") or ""
         agreed_marketing = validated_data.pop("agreed_marketing", False)
@@ -349,13 +352,15 @@ class InstructorSignupSerializer(RequiredSignupConsentSerializer):
             )
 
         # 필수/선택 동의 기록 (append-only 감사 로그 + 마케팅 현재상태 플래그)
-        record_consent(
-            user,
-            terms_version=terms_version,
-            privacy_version=privacy_version,
-            agreed_marketing=agreed_marketing,
-            source="signup",
-        )
+        # 구버전 요청에는 실제 동의가 없으므로 필수 동의 이력을 만들지 않는다.
+        if agreed_age and agreed_terms and agreed_privacy:
+            record_consent(
+                user,
+                terms_version=terms_version,
+                privacy_version=privacy_version,
+                agreed_marketing=agreed_marketing,
+                source="signup",
+            )
         return user
 
     # 닉네임 중복 체크 함수

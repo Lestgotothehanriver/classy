@@ -1209,11 +1209,6 @@ export function Catalog({ kind, mode }) {
             </div>
           </>
         )}
-        <p className="catalog-help">
-          앱과 같은 계정으로
-          <br />
-          강의와 과외를 이용하세요.
-        </p>
       </aside>
       <div className="catalog-content">
         {!isMine && (
