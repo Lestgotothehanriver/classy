@@ -6,13 +6,27 @@ import {
   Btn,
   Ctx,
   FieldLabel,
-  Modal,
   RegionFields,
 } from "./shared";
 import { SubjectPicker } from "./studio";
 
 const appPasswordPattern =
   /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])(?!.*\s).{8,16}$/;
+
+const authPaths = {
+  login: "/login",
+  signup: "/signup",
+  reset: "/password-reset",
+};
+const authNoticeStorageKey = "classy_auth_notice";
+
+function formatPhoneNumber(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  const middleEnd = digits.length === 10 ? 6 : 7;
+  return `${digits.slice(0, 3)}-${digits.slice(3, middleEnd)}-${digits.slice(middleEnd)}`;
+}
 
 function signupBirthDateMax() {
   const today = new Date();
@@ -33,10 +47,10 @@ function splitRealName(value) {
 }
 
 // Mirrors SignupAccountView, SignupVerifyPhoneView and the role-specific surveys.
-export function Auth({ onClose, initial = "login" }) {
-  const { setUser, setRole, subjects, notify } = useContext(Ctx);
-  const [mode, setMode] = useState(initial),
-    [role, roleSet] = useState("student");
+export function Auth({ initial = "login" }) {
+  const { setUser, setRole, subjects } = useContext(Ctx);
+  const mode = initial;
+  const [role, roleSet] = useState("student");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [phone, setPhone] = useState(""),
@@ -44,12 +58,17 @@ export function Auth({ onClose, initial = "login" }) {
   const [sent, setSent] = useState(false),
     [verified, setVerified] = useState(false);
   const [resetToken, setResetToken] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(() => {
+    const savedNotice = sessionStorage.getItem(authNoticeStorageKey) || "";
+    sessionStorage.removeItem(authNoticeStorageKey);
+    return savedNotice;
+  });
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
     useState(false);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
   const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
+  const [birthDate, setBirthDate] = useState("");
   async function run(fn) {
     setBusy(true);
     setError("");
@@ -62,14 +81,7 @@ export function Auth({ onClose, initial = "login" }) {
     }
   }
   function switchMode(next) {
-    setMode(next);
-    setError("");
-    setNotice("");
-    setSent(false);
-    setVerified(false);
-    setResetToken("");
-    setIsPasswordVisible(false);
-    setIsConfirmPasswordVisible(false);
+    location.assign(authPaths[next]);
   }
   function openPolicy(path) {
     window.open(path, "_blank", "noopener,noreferrer");
@@ -84,8 +96,7 @@ export function Auth({ onClose, initial = "login" }) {
       const profile = await api("/accounts/me/");
       setUser(profile);
       setRole(preferred || roles[0]?.role || profile.role);
-      onClose();
-      notify("CLASSY에 오신 것을 환영해요.");
+      location.assign("/home");
     } catch (e) {
       sessionStorage.removeItem("classy_token");
       sessionStorage.removeItem("classy_roles");
@@ -135,6 +146,10 @@ export function Auth({ onClose, initial = "login" }) {
         );
       if (values.password !== values.confirm)
         throw new Error("비밀번호가 서로 다릅니다.");
+      if (!appPasswordPattern.test(values.password))
+        throw new Error(
+          "비밀번호는 영문, 숫자, 특수문자를 포함해 8자 이상 16자 이하로 입력해주세요.",
+        );
       if (!verified) throw new Error("휴대전화 인증을 완료해 주세요.");
       if (mode === "reset") {
         await api("/accounts/password-reset/confirm/", {
@@ -145,14 +160,12 @@ export function Auth({ onClose, initial = "login" }) {
             new_password_confirm: values.confirm,
           },
         });
-        switchMode("login");
-        setNotice("비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.");
+        const resetConfirmation =
+          "비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.";
+        sessionStorage.setItem(authNoticeStorageKey, resetConfirmation);
+        location.assign(authPaths.login);
         return;
       }
-      if (!appPasswordPattern.test(values.password))
-        throw new Error(
-          "비밀번호는 영문, 숫자, 특수문자를 포함해 8자 이상 16자 이하로 입력해주세요.",
-        );
       const subjectLimit = role === "instructor" ? 3 : 9;
       if (!selectedSubjectIds.length)
         throw new Error("관심 과목을 설정해주세요.");
@@ -206,26 +219,37 @@ export function Auth({ onClose, initial = "login" }) {
     });
   }
   return (
-    <Modal
-      title={
-        mode === "login"
-          ? "Classy에 로그인"
-          : mode === "reset"
-            ? "비밀번호 찾기"
-            : "CLASSY 회원가입"
-      }
-      onClose={onClose}
-      wide={mode === "signup" || mode === "reset"}
-    >
-      <div className="login-intro">
-        <img src="/app-icons/logo.svg" alt="" />
+    <main className="auth-page">
+      <section
+        className={`auth-page-content${mode === "signup" || mode === "reset" ? " wide" : ""}`}
+      >
+        <div className="auth-page-scroll">
+          <div className="auth-page-body">
+          <div className="login-intro">
+        <div className="auth-page-topbar">
+          <img src="/app-icons/logo.svg" alt="CLASSY" />
+          <h1 className="auth-page-hero">
+            {mode === "login"
+              ? "로그인"
+              : mode === "signup"
+                ? "회원가입"
+                : "비밀번호 찾기"}
+          </h1>
+        </div>
         <h3>
           {mode === "login"
             ? "다시 만나서 반가워요!"
             : mode === "signup"
-              ? "안녕하세요!"
+              ? "클래씨에 처음 오신 것을 환영해요!"
               : "가입할 때 등록하신 휴대전화 번호를 입력해주세요."}
         </h3>
+        <h4>
+          {mode === "login"
+            ? "이메일과 비밀번호로 로그인 해주세요."
+            : mode === "signup"
+              ? "클래씨에서 사용할 회원님의 정보를 입력해주세요."
+              : "휴대전화 인증 후 비밀번호를 재설정할 수 있어요."}
+        </h4>
       </div>
       {mode === "signup" && (
         <div className="actions">
@@ -253,6 +277,7 @@ export function Auth({ onClose, initial = "login" }) {
                 type="email"
                 autoComplete="username"
                 required
+                placeholder="이메일 주소를 입력해주세요."
               />
             </label>
           )}
@@ -273,16 +298,17 @@ export function Auth({ onClose, initial = "login" }) {
                 <FieldLabel required>휴대전화 번호</FieldLabel>
                 <input
                   type="tel"
-                  value={phone}
+                  value={formatPhoneNumber(phone)}
                   onChange={(e) => {
-                    setPhone(e.target.value.replace(/\D/g, ""));
+                    setPhone(e.target.value.replace(/\D/g, "").slice(0, 11));
                     setVerified(false);
                     setSent(false);
                     setResetToken("");
                   }}
+                  inputMode="numeric"
                   autoComplete="tel"
                   required
-                  placeholder="01012345678"
+                  placeholder="'-' 없이 전화번호를 입력해주세요."
                 />
               </label>
               <Btn type="button" onClick={() => sms(false)}>
@@ -321,6 +347,7 @@ export function Auth({ onClose, initial = "login" }) {
                 autoComplete={
                   mode === "login" ? "current-password" : "new-password"
                 }
+                placeholder={mode === "login" ? "비밀번호를 입력해주세요." : "새 비밀번호를 입력해주세요."}
               />
               <button
                 type="button"
@@ -349,6 +376,7 @@ export function Auth({ onClose, initial = "login" }) {
                   minLength={8}
                   maxLength={16}
                   autoComplete="new-password"
+                  placeholder={mode === "login" ? "비밀번호를 다시 입력해주세요." : "새 비밀번호를 다시 입력해주세요."}
                 />
                 <button
                   type="button"
@@ -383,18 +411,29 @@ export function Auth({ onClose, initial = "login" }) {
                   maxLength={13}
                   pattern="[A-Za-z0-9가-힣]+"
                   title="닉네임은 공백이나 특수문자 없이 2자 이상 13자 이하로 입력해주세요."
+                  placeholder="사용하실 닉네임을 입력해주세요."
                 />
                 <small>공백·특수문자 없이 2~13자로 입력해주세요.</small>
               </label>
               <div className="form-columns">
                 <label>
                   <FieldLabel required>생년월일</FieldLabel>
-                  <input
-                    name="birth_date"
-                    type="date"
-                    required
-                    max={signupBirthDateMax()}
-                  />
+                  <span className={`date-field${birthDate ? " has-value" : ""}`}>
+                    <input
+                      className="birth-date-input"
+                      name="birth_date"
+                      type="date"
+                      value={birthDate}
+                      onChange={(event) => setBirthDate(event.target.value)}
+                      required
+                      min={signupBirthDateMax().slice(0, 4) - 100 + "-01-01"}
+                      max={signupBirthDateMax()}
+                      data-placeholder="생년월일 선택"
+                    />
+                    <span className="date-placeholder" aria-hidden="true">
+                      생년월일 선택
+                    </span>
+                  </span>
                 </label>
                 <label>
                   <FieldLabel required>성별</FieldLabel>
@@ -541,19 +580,28 @@ export function Auth({ onClose, initial = "login" }) {
           maxSelections={role === "instructor" ? 3 : 9}
         />
       )}
-      <div className="auth-links">
-        {mode !== "login" && (
-          <button onClick={() => switchMode("login")}>
-            로그인으로 돌아가기
-          </button>
-        )}
-        {mode !== "signup" && (
-          <button onClick={() => switchMode("signup")}>회원가입</button>
-        )}
-        {mode === "login" && (
-          <button onClick={() => switchMode("reset")}>비밀번호 찾기</button>
-        )}
+        <div className="auth-links">
+          {mode !== "login" && (
+            <button onClick={() => switchMode("login")}>
+              로그인으로 돌아가기
+            </button>
+          )}
+          {mode === "reset" && (
+            <span className="auth-link-divider" aria-hidden="true" />
+          )}
+          {mode !== "signup" && (
+            <button onClick={() => switchMode("signup")}>회원가입</button>
+          )}
+          {mode === "login" && (
+            <>
+              <span className="auth-link-divider" aria-hidden="true" />
+              <button onClick={() => switchMode("reset")}>비밀번호 찾기</button>
+            </>
+          )}
+        </div>
       </div>
-    </Modal>
+      </div>
+      </section>
+    </main>
   );
 }

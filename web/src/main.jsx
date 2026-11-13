@@ -84,6 +84,12 @@ const lectureCommentNotificationTypes = new Set([
   "lecture_comment_reply",
 ]);
 
+const authPageModes = {
+  "/login": "login",
+  "/signup": "signup",
+  "/password-reset": "reset",
+};
+
 function App() {
   const uploadLock = useRef(false);
   const [activeRole, setActiveRole] = useState(
@@ -269,10 +275,7 @@ function App() {
     notify,
     go,
     openChat,
-    login: () => {
-      setToast("");
-      setModal({ type: "login" });
-    },
+    login: () => location.assign("/login"),
     detail: (kind, id, item) => {
       setToast("");
       setModal({ type: "detail", kind, id, item });
@@ -282,7 +285,7 @@ function App() {
     refreshNotificationUnreadCount: unreadNotifications.reload,
     setRole: (role) => changeRole(role),
     openNotificationTarget,
-    signup: () => setModal({ type: "signup" }),
+    signup: () => location.assign("/signup"),
   };
   const changeRole = (role) => {
     if (uploadLock.current) {
@@ -294,6 +297,13 @@ function App() {
     setModal(null);
     go("home");
   };
+  const authPageMode = authPageModes[location.pathname];
+  if (authPageMode)
+    return (
+      <Ctx.Provider value={context}>
+        <Auth initial={authPageMode} />
+      </Ctx.Provider>
+    );
   return (
     <Ctx.Provider value={context}>
       <Shell page={page} activeRole={activeRole} setActiveRole={changeRole}>
@@ -366,9 +376,6 @@ function App() {
             <X size={16} />
           </button>
         </div>
-      )}
-      {["login", "signup"].includes(modal?.type) && (
-        <Auth initial={modal.type} onClose={() => setModal(null)} />
       )}
       {modal?.type === "detail" && (
         <Detail

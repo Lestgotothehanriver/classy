@@ -101,10 +101,9 @@ try {
   await page.goto(origin+"/#lectures");
   await page.getByRole("heading", { name: "실제 형식의 강의" }).waitFor();
   await page.getByRole("heading", { name: "실제 형식의 강의" }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "회원가입", exact: true })
-    .click();
+  await page.waitForURL("**/login");
+  await page.getByRole("button", { name: "회원가입", exact: true }).click();
+  await page.waitForURL("**/signup");
   await page.getByLabel("이메일", { exact: true }).fill("test@example.invalid");
   await page.getByLabel("이름", { exact: true }).fill("웹 회원");
   await page.getByLabel("휴대전화 번호", { exact: true }).fill("01012345678");
@@ -301,17 +300,19 @@ try {
     .getByRole("button", { name: "로그인", exact: true })
     .first()
     .click();
+  await page.waitForURL("**/login");
   await page
     .getByRole("button", { name: "비밀번호 찾기", exact: true })
     .click();
+  await page.waitForURL("**/password-reset");
   await page.getByLabel("휴대전화 번호", { exact: true }).fill("01012345678");
   await page
     .getByRole("button", { name: "인증번호 받기", exact: true })
     .click();
   await page.getByLabel("인증번호", { exact: true }).fill("123456");
   await page.getByRole("button", { name: "인증 확인", exact: true }).click();
-  await page.getByLabel("새 비밀번호", { exact: true }).fill("new-password");
-  await page.getByLabel("비밀번호 확인", { exact: true }).fill("new-password");
+  await page.getByLabel("새 비밀번호", { exact: true }).fill("Newpass1!");
+  await page.getByLabel("비밀번호 확인", { exact: true }).fill("Newpass1!");
   await page
     .getByRole("button", { name: "비밀번호 변경", exact: true })
     .click();
@@ -324,6 +325,7 @@ try {
     "one-time-test-token",
   );
   await page.getByRole("button", { name: "회원가입", exact: true }).click();
+  await page.waitForURL("**/signup");
   await page
     .getByRole("button", { name: "선생님으로 가입", exact: true })
     .click();

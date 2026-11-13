@@ -18,10 +18,11 @@ await page.evaluate(()=>document.fonts.ready);
 await page.screenshot({path:'test-results/redesign-home-desktop.png',fullPage:true});
 await page.getByRole('navigation',{name:'주요 메뉴',exact:true}).getByRole('link',{name:'강의',exact:true}).click();
 await page.getByRole('button',{name:'로그인',exact:true}).first().click();
+await page.waitForURL('**/login');
 await page.getByLabel('이메일',{exact:true}).fill('web-test@example.invalid');
 await page.getByLabel('비밀번호',{exact:true}).fill('mock-password');
 await page.route('**/api/accounts/login/',r=>r.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'Invalid credentials'})}));
-await page.getByRole('dialog').getByRole('button',{name:'로그인',exact:true}).click();
+await page.getByRole('button',{name:'로그인',exact:true}).click();
 await page.getByRole('alert').filter({hasText:'이메일 또는 비밀번호'}).waitFor();
 await page.keyboard.press('Escape');
 await page.goto('http://127.0.0.1:4173/home#posts');
@@ -50,6 +51,19 @@ for(const width of [390,768,1024]){
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow at '+width);
   if(width===390){
     await page.screenshot({path:'test-results/redesign-home-mobile.png',fullPage:true});
+    await page.getByRole('button',{name:'로그인',exact:true}).first().click();
+    await page.waitForURL('**/login');
+    const authPage=page.locator('main.auth-page');
+    await authPage.waitFor();
+    assert.equal(await authPage.evaluate(el=>{
+      const box=el.getBoundingClientRect(),style=getComputedStyle(el),scroll=el.querySelector('.auth-page-scroll'),content=el.querySelector('.auth-page-body'),form=el.querySelector('.form'),scrollStyle=getComputedStyle(scroll),contentStyle=getComputedStyle(content),formBox=form.getBoundingClientRect(),rightGutter=innerWidth-formBox.right;
+      return box.width===innerWidth&&box.height===innerHeight&&scrollStyle.overflowY==='visible'&&parseFloat(contentStyle.paddingLeft)>=20&&parseFloat(contentStyle.paddingRight)>=20&&formBox.left>=20&&rightGutter>=20&&Math.abs(formBox.left-rightGutter)<1;
+    }),true,'auth page uses responsive symmetric gutters without an inner scroll container');
+    await page.screenshot({path:'test-results/auth-login-mobile.png',fullPage:true});
+    await page.getByRole('button',{name:'회원가입',exact:true}).click();
+    await page.waitForURL('**/signup');
+    assert.equal(await page.locator('main.auth-page').evaluate(el=>document.documentElement.scrollHeight>innerHeight),true,'long sign-up form scrolls with the document');
+    await page.goto('http://127.0.0.1:4173/home#home');
     await page.getByRole('navigation',{name:'모바일 메뉴',exact:true}).getByRole('link',{name:'과외',exact:true}).click();
     await page.getByRole('textbox',{name:'검색',exact:true}).waitFor();
     await page.screenshot({path:'test-results/redesign-tutoring-mobile.png',fullPage:true});

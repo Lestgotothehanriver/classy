@@ -447,22 +447,15 @@ export function Gate({ children }) {
     </Empty>
   );
 }
-export function Modal({ title, onClose, children, wide = false }) {
+export function Modal({ title, onClose, children, wide = false, className = "" }) {
   const { toast } = useContext(Ctx);
   const ref = useRef();
   useEffect(() => {
     ref.current.showModal();
     return () => ref.current?.close();
   }, []);
-  return (
-    <dialog
-      ref={ref}
-      className={wide ? "wide" : ""}
-      onCancel={onClose}
-      onClick={(e) => {
-        if (e.target === ref.current) onClose();
-      }}
-    >
+  const content = (
+    <>
       <div className="modal-head">
         <h2>{title}</h2>
         <button className="icon-button" aria-label="닫기" onClick={onClose}>
@@ -475,6 +468,21 @@ export function Modal({ title, onClose, children, wide = false }) {
         </p>
       )}
       {children}
+    </>
+  );
+  const surfaceClassName = [wide && "wide", className]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <dialog
+      ref={ref}
+      className={surfaceClassName}
+      onCancel={onClose}
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
+    >
+      {content}
     </dialog>
   );
 }

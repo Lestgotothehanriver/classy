@@ -29,9 +29,11 @@ try{
   await page.getByRole('heading',{name:'강의 찾기',exact:true}).waitFor();
   if(catalog.count)await page.getByRole('heading',{name:catalog.results[0].title,exact:true}).waitFor();
   await page.getByRole('button',{name:'로그인',exact:true}).first().click();
-  await page.getByRole('dialog').getByRole('button',{name:'회원가입',exact:true}).click();
+  await page.waitForURL('**/login');
+  await page.getByRole('button',{name:'회원가입',exact:true}).click();
+  await page.waitForURL('**/signup');
   await page.getByRole('button',{name:'선생님으로 가입',exact:true}).waitFor();
-  await page.keyboard.press('Escape');
+  await page.goto(origin+'/#lectures');
   const locked=await page.request.get(origin+'/api/accounts/me/');
   assert.equal(locked.status(),401);
   const manifest=JSON.parse(await readFile(new URL('../public/policies/manifest.json',import.meta.url),'utf8'));

@@ -41,9 +41,10 @@ await page.route('**/api/**',async route=>{
 });
 await page.goto('http://127.0.0.1:4173');
 await page.getByRole('button',{name:'로그인',exact:true}).first().click();
+await page.waitForURL('**/login');
 await page.getByLabel('이메일',{exact:true}).fill('test@example.invalid');
 await page.getByLabel('비밀번호',{exact:true}).fill('mock');
-await page.getByRole('dialog').getByRole('button',{name:'로그인',exact:true}).click();
+await page.getByRole('button',{name:'로그인',exact:true}).click();
 await page.getByRole('heading',{name:'테스트 학생님, 반가워요.'}).waitFor();
 await page.getByRole('link',{name:'강의',exact:true}).click();
 await page.getByRole('heading',{name:'테스트 미적분 강의'}).waitFor();
