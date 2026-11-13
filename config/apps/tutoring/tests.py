@@ -386,10 +386,13 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
         self.assertEqual(likes_map[self.inst2.id], True)
         self.assertEqual(likes_map[self.inst3.id], False)
 
-    def test_unauthenticated_list_is_public_and_not_liked(self):
-        """비로그인 방문자는 목록을 보고 찜 상태를 false로 받는다."""
+    def test_unauthenticated_list_includes_card_profile_fields(self):
+        """비로그인 목록은 카드용 학번·성별을 반환하고 생년월일은 숨긴다."""
         self.inst3.is_tutoring = True
-        self.inst3.save(update_fields=["is_tutoring"])
+        self.inst3.student_number = "2024"
+        self.inst3.save(update_fields=["is_tutoring", "student_number"])
+        self.instructor_user3.sex = "여성"
+        self.instructor_user3.save(update_fields=["sex"])
 
         client = APIClient()
         resp = client.get("/tutoring/instructors/")
@@ -398,7 +401,8 @@ class InstructorLikeSortingTest(LikeSortingTestBase):
             item for item in resp.json()["results"] if item["id"] == self.inst3.id
         )
         self.assertFalse(item["is_liked"])
-        self.assertNotIn("student_number", item)
+        self.assertEqual(item["student_number"], "2024")
+        self.assertEqual(item["sex"], "여성")
         self.assertNotIn("birth_date", item)
 
 

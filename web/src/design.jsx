@@ -8,6 +8,7 @@ import {
   Bell,
   BookOpen,
   MapPin,
+  UserRound,
   Play,
   SlidersHorizontal,
   RefreshCw,
@@ -86,6 +87,34 @@ const studentNumberOptions = () => {
     `${currentYear - 10}학번 이전`,
   ];
 };
+
+function formatStudentNumber(value) {
+  const studentNumber = String(value || "").trim();
+  return studentNumber.length >= 4 ? `${studentNumber.slice(2, 4)}학번` : "";
+}
+
+function formatTeacherSex(value) {
+  if (["M", "남", "남성"].includes(value)) return "남성";
+  if (["F", "여", "여성"].includes(value)) return "여성";
+  return "";
+}
+
+function formatTeacherAge(value) {
+  if (!value) return "";
+  const birthDate = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(birthDate.valueOf())) return "";
+
+  const today = new Date();
+  const age =
+    today.getFullYear() -
+    birthDate.getFullYear() -
+    (today.getMonth() < birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() &&
+      today.getDate() < birthDate.getDate())
+      ? 1
+      : 0);
+  return age >= 0 ? `만 ${age}세` : "";
+}
 
 function defaultFilters(kind) {
   return {
@@ -1385,6 +1414,13 @@ export function Card({ item, kind, onClick }) {
   const region = Array.isArray(item.regions)
     ? item.regions.map((r) => r.label || r.name).join(", ")
     : item.region;
+  const studentNumberLabel = formatStudentNumber(item.student_number);
+  const teacherPersonalInfo = [
+    formatTeacherSex(item.sex),
+    formatTeacherAge(item.birth_date),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   async function like(e) {
     e.stopPropagation();
     if (!user) {
@@ -1461,6 +1497,9 @@ export function Card({ item, kind, onClick }) {
               {kind === "teachers" && item.university && (
                 <span>{item.university}</span>
               )}
+              {kind === "teachers" && studentNumberLabel && (
+                <span>{studentNumberLabel}</span>
+              )}
             </div>
             <p>
               {kind === "teachers"
@@ -1480,6 +1519,12 @@ export function Card({ item, kind, onClick }) {
           </div>
         </div>
         <div className="teacher-details">
+          {kind === "teachers" && teacherPersonalInfo && (
+            <p>
+              <UserRound size={15} />
+              {teacherPersonalInfo}
+            </p>
+          )}
           {region && (
             <p>
               <MapPin size={15} />

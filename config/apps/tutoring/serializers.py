@@ -153,8 +153,8 @@ class InstructorListSerializer(SafeModelSerializer):
 
         request = self.context.get("request")
         if request is not None and not request.user.is_authenticated:
-            # 공개 목록에는 카드 UI에 사용하지 않는 계정 식별·활동 정보를 포함하지 않는다.
-            for field in ("user", "student_number", "last_login", "birth_date"):
+            # 공개 카드에 필요한 학번·성별은 유지하고 계정 식별·활동 정보만 제외한다.
+            for field in ("user", "last_login", "birth_date"):
                 data.pop(field, None)
         return data
 
