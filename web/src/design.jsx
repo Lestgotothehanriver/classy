@@ -1494,12 +1494,14 @@ export function Card({ item, kind, onClick }) {
                   aria-label="인증된 선생님"
                 />
               )}
-              {kind === "teachers" && item.university && (
-                <span>{item.university}</span>
-              )}
-              {kind === "teachers" && studentNumberLabel && (
-                <span>{studentNumberLabel}</span>
-              )}
+              {kind === "teachers" &&
+                (item.university || studentNumberLabel) && (
+                  <span>
+                    {[item.university, studentNumberLabel]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </span>
+                )}
             </div>
             <p>
               {kind === "teachers"
