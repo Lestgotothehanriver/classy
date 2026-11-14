@@ -1848,6 +1848,9 @@ dialog.teacher-profile-modal {
 .proposal-form-actions .proposal-post-create {
   margin-top: 0;
 }
+.info-panel .form > .proposal-post-create {
+  width: 100%;
+}
 .info-panel .form-note {
   font-size: 12px;
 }

@@ -1007,6 +1007,7 @@ function Proposal({ kind, id, onClose }) {
   );
   const [busy, setBusy] = useState(false),
     [open, setOpen] = useState(false);
+  const hasActivePosts = list(posts.data).some((post) => post.is_active !== false);
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -1059,7 +1060,16 @@ function Proposal({ kind, id, onClose }) {
                   </select>
                 </label>
               ) : (
-                <p>상담을 제안하려면 과외 공고가 필요해요.</p>
+                <>
+                  <p>상담을 제안하려면 과외 공고가 필요해요.</p>
+                  <Btn
+                    className="proposal-post-create"
+                    type="button"
+                    onClick={() => go(`tutoring-post/new/teacher-profile/${id}`)}
+                  >
+                    새 모집 공고 작성하러 가기
+                  </Btn>
+                </>
               )}
             </State>
           ) : (
@@ -1082,7 +1092,7 @@ function Proposal({ kind, id, onClose }) {
               <Btn type="button" onClick={() => setOpen(false)}>
                 취소
               </Btn>
-              {kind === "teachers" && (
+              {kind === "teachers" && hasActivePosts && (
                 <Btn
                   className="proposal-post-create"
                   type="button"
@@ -1096,8 +1106,7 @@ function Proposal({ kind, id, onClose }) {
               className="primary"
               disabled={
                 busy ||
-                (kind === "teachers" &&
-                  !list(posts.data).some((p) => p.is_active !== false))
+                (kind === "teachers" && !hasActivePosts)
               }
             >
               제안 보내기
