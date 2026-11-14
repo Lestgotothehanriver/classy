@@ -493,6 +493,29 @@ export function Modal({
     </dialog>
   );
 }
+export function ConfirmDialog({
+  title,
+  description,
+  onCancel,
+  onConfirm,
+  cancelLabel = "취소",
+  confirmLabel = "확인",
+  busy = false,
+}) {
+  return (
+    <Modal title={title} onClose={onCancel} className="confirm-dialog">
+      <p className="confirm-dialog-description">{description}</p>
+      <div className="confirm-dialog-actions">
+        <Btn disabled={busy} onClick={onCancel}>
+          {cancelLabel}
+        </Btn>
+        <Btn className="primary" disabled={busy} onClick={onConfirm}>
+          {busy ? "처리 중…" : confirmLabel}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
 export function Subjects({ values = [] }) {
   const { subjects } = useContext(Ctx);
   return (

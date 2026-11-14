@@ -1609,16 +1609,20 @@ export function Card({ item, kind, onClick }) {
           <div className="teacher-identity">
             <div className="identity-line">
               <h3>{name}</h3>
-              {item.is_certified && (
-                <ShieldCheck
-                  size={15}
-                  className="certified"
-                  aria-label="인증된 선생님"
-                />
+              {kind === "teachers" && !item.is_official_creator && (
+                item.is_certified ? (
+                  <ShieldCheck
+                    size={15}
+                    className="certified"
+                    aria-label="인증된 선생님"
+                  />
+                ) : (
+                  <span className="verification-badge unverified">미인증</span>
+                )
               )}
               {kind === "teachers" &&
                 (item.university || studentNumberLabel) && (
-                  <span>
+                  <span className="teacher-academic-label">
                     {[item.university, studentNumberLabel]
                       .filter(Boolean)
                       .join(" ")}

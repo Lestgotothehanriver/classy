@@ -17,6 +17,9 @@ import {
   Home,
   Users,
   Play,
+  Eye,
+  Star,
+  ThumbsUp,
   MessageCircle,
   Heart,
   Bell,
@@ -55,6 +58,7 @@ import {
   State,
   Gate,
   Modal,
+  ConfirmDialog,
   Subjects,
 } from "./shared";
 import {
@@ -854,7 +858,7 @@ function TeacherProfilePage({ id }) {
             선생님 목록으로
           </Btn>
           <ProfileSafetyActions
-            className="teacher-profile-mobile-safety-actions"
+            className="teacher-profile-compact-safety-actions teacher-profile-mobile-safety-actions"
             instructorId={id}
             userId={teacher.user}
             teacherName={teacherName || "선생님"}
@@ -863,15 +867,23 @@ function TeacherProfilePage({ id }) {
             blockLabel="차단"
           />
         </div>
-        <TeacherProfile id={id} teacher={teacher} />
-        <ProfileSafetyActions
-          className="teacher-profile-desktop-safety-actions"
-          instructorId={id}
-          userId={teacher.user}
-          teacherName={teacherName || "선생님"}
-          onBlocked={() => go("teachers")}
-        />
-        <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+        <div className="teacher-profile-page-layout">
+          <div className="teacher-profile-page-content">
+            <TeacherProfile id={id} teacher={teacher} />
+          </div>
+          <aside className="teacher-profile-sidebar" aria-label="선생님 프로필 작업">
+            <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+            <ProfileSafetyActions
+              className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
+              instructorId={id}
+              userId={teacher.user}
+              teacherName={teacherName || "선생님"}
+              onBlocked={() => go("teachers")}
+              reportLabel="신고"
+              blockLabel="차단"
+            />
+          </aside>
+        </div>
       </State>
     </div>
   );
@@ -909,6 +921,7 @@ function BlockTeacherButton({
 }) {
   const { user, notify } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const targetUserId = Number(userId);
   const currentUserId = Number(user?.id);
 
@@ -921,20 +934,13 @@ function BlockTeacherButton({
   }
 
   async function blockTeacher() {
-    if (
-      !window.confirm(
-        `${teacherName} 선생님을 차단할까요? 차단한 선생님의 프로필과 강의를 더 이상 볼 수 없어요.`,
-      )
-    ) {
-      return;
-    }
-
     setBusy(true);
     try {
       await api("/blocks/", {
         method: "POST",
         body: { blocked_user: targetUserId },
       });
+      setIsConfirmOpen(false);
       notify(`${teacherName} 선생님을 차단했어요.`);
       onBlocked();
     } catch (error) {
@@ -945,10 +951,27 @@ function BlockTeacherButton({
   }
 
   return (
-    <Btn className="block-teacher-button" disabled={busy} onClick={blockTeacher}>
-      <Ban size={16} aria-hidden="true" />
-      {busy ? "차단 중…" : label}
-    </Btn>
+    <>
+      <Btn
+        className="block-teacher-button"
+        disabled={busy}
+        onClick={() => setIsConfirmOpen(true)}
+      >
+        <Ban size={16} aria-hidden="true" />
+        {busy ? "차단 중…" : label}
+      </Btn>
+      {isConfirmOpen && (
+        <ConfirmDialog
+          title={`${teacherName} 선생님을 차단할까요?`}
+          description="차단한 선생님의 프로필과 강의를 더 이상 볼 수 없어요.(차단한 선생님은 마이페이지에서 수정할 수 있어요.)"
+          cancelLabel="취소"
+          confirmLabel="차단하기"
+          busy={busy}
+          onCancel={() => setIsConfirmOpen(false)}
+          onConfirm={blockTeacher}
+        />
+      )}
+    </>
   );
 }
 function Proposal({ kind, id, onClose }) {
@@ -987,7 +1010,7 @@ function Proposal({ kind, id, onClose }) {
   if (!eligible) return null;
   return (
     <div className="info-panel">
-      <h3>함께 배움을 시작해 볼까요?</h3>
+      <h3>지금 과외 상담을 시작해보세요.</h3>
       {!open ? (
         <Btn className="primary" onClick={() => setOpen(true)}>
           <MessageCircle size={16} />
@@ -999,7 +1022,7 @@ function Proposal({ kind, id, onClose }) {
             <State resource={posts}>
               {list(posts.data).filter((p) => p.is_active !== false).length ? (
                 <label>
-                  상담할 내 과외 공고
+                  내 과외 공고
                   <select name="post_id" required>
                     {list(posts.data)
                       .filter((p) => p.is_active !== false)
@@ -1011,9 +1034,10 @@ function Proposal({ kind, id, onClose }) {
                   </select>
                 </label>
               ) : (
-                <p>
-                  상담을 제안하려면 과외 공고가 필요해요.
+                <>
+                  <p>상담을 제안하려면 과외 공고가 필요해요.</p>
                   <Btn
+                    className="proposal-post-create"
                     type="button"
                     onClick={() => {
                       onClose();
@@ -1022,7 +1046,7 @@ function Proposal({ kind, id, onClose }) {
                   >
                     모집 공고 작성하기
                   </Btn>
-                </p>
+                </>
               )}
             </State>
           ) : (
@@ -1060,6 +1084,35 @@ function Proposal({ kind, id, onClose }) {
     </div>
   );
 }
+
+function TeacherProfileTabEmpty({ title, description }) {
+  return (
+    <div className="teacher-profile-tab-empty">
+      <p>{title}</p>
+      {description && <small>{description}</small>}
+    </div>
+  );
+}
+
+function TeacherRatingGauge({ label, rating }) {
+  const normalizedRating = Math.min(5, Math.max(0, Number(rating) || 0));
+  const displayRating = Number.isInteger(normalizedRating)
+    ? String(normalizedRating)
+    : normalizedRating.toFixed(1);
+
+  return (
+    <div className="teacher-rating-gauge">
+      <div>
+        <span>{label}</span>
+        <span><b>{displayRating}</b>/5</span>
+      </div>
+      <span className="teacher-rating-gauge-track" aria-hidden="true">
+        <span style={{ width: `${(normalizedRating / 5) * 100}%` }} />
+      </span>
+    </div>
+  );
+}
+
 function TeacherProfile({ id, teacher, item }) {
   const { user, notify, detail, subjects } = useContext(Ctx);
   const [tab, setTab] = useState("info");
@@ -1104,6 +1157,14 @@ function TeacherProfile({ id, teacher, item }) {
         ? "대면"
         : method || "협의";
   const infoData = info.data || {};
+  const hasTutoringInfo =
+    Boolean(info.data) &&
+    Boolean(
+      infoData.cost ||
+        infoData.schedule ||
+        textLabels(infoData.subjects),
+    );
+  const isOwnProfile = Number(profile.user) === Number(user?.id);
   const sexLabel =
     profile.sex === "여" || profile.sex === "여성" || profile.sex === "F"
       ? "여성"
@@ -1143,9 +1204,75 @@ function TeacherProfile({ id, teacher, item }) {
   const averageRating = reviewRows.length
     ? (professional + teaching + punctuality) / 3
     : Number(infoData.avg_rating || profile.average_rate || 0);
+  const formatRating = (rating) => {
+    const value = Number(rating) || 0;
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  };
+  const reviewDate = (value) => {
+    const reviewCreatedAt = new Date(value);
+    if (Number.isNaN(reviewCreatedAt.valueOf())) return "";
+    return [
+      reviewCreatedAt.getFullYear(),
+      String(reviewCreatedAt.getMonth() + 1).padStart(2, "0"),
+      String(reviewCreatedAt.getDate()).padStart(2, "0"),
+    ].join(".");
+  };
   const studentNumber = profile.student_number
     ? `${String(profile.student_number).slice(2)}학번`
     : "";
+  const lectureRows = list(lectures.data);
+  const previewLecture = lectureRows.find((lecture) => lecture.is_preview);
+  const otherLectures = lectureRows.filter((lecture) => !lecture.is_preview);
+  const lectureSubject = (lecture) => {
+    const [subject] = Array.isArray(lecture.subjects) ? lecture.subjects : [];
+    if (typeof subject === "object") return subject.label || subject.name || "";
+    if (typeof subject === "string" && !/^\d+$/.test(subject)) return subject;
+    return subjects.find((item) => item.number === Number(subject))?.name || "";
+  };
+  const reviewSubjects = (values) =>
+    (Array.isArray(values) ? values : [])
+      .map((subject) => {
+        if (typeof subject === "object") return subject.label || subject.name;
+        if (typeof subject === "string" && !/^\d+$/.test(subject)) return subject;
+        return subjects.find((item) => item.number === Number(subject))?.name;
+      })
+      .filter(Boolean)
+      .join(", ");
+  const compactCount = (value) => {
+    const count = Number(value) || 0;
+    if (count >= 10000) return `${Number((count / 10000).toFixed(1))}만`;
+    if (count >= 1000) return `${Number((count / 1000).toFixed(1))}천`;
+    return String(count);
+  };
+  const timeAgo = (value) => {
+    const createdAt = new Date(value);
+    if (Number.isNaN(createdAt.valueOf())) return "";
+    const minutes = Math.max(0, Math.floor((Date.now() - createdAt.valueOf()) / 60000));
+    if (minutes >= 525600) return `${Math.floor(minutes / 525600)}년 전`;
+    if (minutes >= 43200) return `${Math.floor(minutes / 43200)}달 전`;
+    if (minutes >= 1440) return `${Math.floor(minutes / 1440)}일 전`;
+    if (minutes >= 60) return `${Math.floor(minutes / 60)}시간 전`;
+    if (minutes > 0) return `${minutes}분 전`;
+    return "방금 전";
+  };
+  const lectureMeta = (lecture) => (
+    <div className="teacher-lecture-meta">
+      {lectureSubject(lecture) && (
+        <span className="teacher-lecture-meta-item">{lectureSubject(lecture)}</span>
+      )}
+      <span className="teacher-lecture-meta-item">
+        <Eye size={16} aria-hidden="true" />
+        {compactCount(lecture.view_count)}
+      </span>
+      <span className="teacher-lecture-meta-item">
+        <ThumbsUp size={16} aria-hidden="true" />
+        {compactCount(lecture.like_count)}
+      </span>
+      {timeAgo(lecture.created_at) && (
+        <span className="teacher-lecture-meta-item">{timeAgo(lecture.created_at)}</span>
+      )}
+    </div>
+  );
 
   async function toggleLike() {
     try {
@@ -1298,37 +1425,74 @@ function TeacherProfile({ id, teacher, item }) {
       </div>
       {tab === "lectures" && (
         <State resource={lectures}>
-          {list(lectures.data).length ? (
+          {lectureRows.length ? (
             <div className="teacher-profile-lectures">
-              {list(lectures.data).map((lecture) => (
-                <button
-                  type="button"
-                  key={lecture.id}
-                  className="teacher-lecture-row"
-                  onClick={() => detail("lectures", lecture.id, lecture)}
-                >
-                  {lecture.thumbnail ? (
-                    <img src={lecture.thumbnail} alt="" />
-                  ) : (
-                    <span className="teacher-lecture-placeholder"><Play size={22} /></span>
-                  )}
-                  <span>
-                    <b>{lecture.title}</b>
-                    <small>
-                      조회 {lecture.view_count || 0}회 · 찜 {lecture.like_count || 0}
-                    </small>
-                  </span>
-                </button>
-              ))}
+              {previewLecture && (
+                <section className="teacher-profile-lecture-section teacher-profile-preview-section">
+                  <h3>{profile.user_name || "선생님"} 선생님의 프리뷰 영상</h3>
+                  <button
+                    type="button"
+                    className="teacher-preview-lecture"
+                    onClick={() => detail("lectures", previewLecture.id, previewLecture)}
+                  >
+                    {previewLecture.thumbnail ? (
+                      <img src={previewLecture.thumbnail} alt="" />
+                    ) : (
+                      <span className="teacher-preview-placeholder"><Play size={48} /></span>
+                    )}
+                    <b>{previewLecture.title}</b>
+                    {lectureMeta(previewLecture)}
+                  </button>
+                </section>
+              )}
+              {otherLectures.length > 0 && (
+                <section className="teacher-profile-lecture-section">
+                  <h3>{profile.user_name || "선생님"} 선생님의 강의</h3>
+                  <div className="teacher-profile-lecture-list">
+                    {otherLectures.map((lecture) => (
+                      <button
+                        type="button"
+                        key={lecture.id}
+                        className="teacher-lecture-row"
+                        onClick={() => detail("lectures", lecture.id, lecture)}
+                      >
+                        {lecture.thumbnail ? (
+                          <img src={lecture.thumbnail} alt="" />
+                        ) : (
+                          <span className="teacher-lecture-placeholder"><Play size={22} /></span>
+                        )}
+                        <span className="teacher-lecture-content">
+                          <b>{lecture.title}</b>
+                          {lectureMeta(lecture)}
+                          <small>
+                            {lecture.is_preview
+                              ? "프리뷰 강의"
+                              : Number(lecture.price) === 0
+                                ? "무료 강의"
+                                : `${money(lecture.price)} 캐시`}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           ) : (
-            <p className="muted">강의가 아직 없어요.</p>
+            <TeacherProfileTabEmpty
+              title="강의가 아직 없어요."
+              description={
+                isOwnProfile
+                  ? "첫 강의를 등록해 학생들에게 선생님을 알려보세요."
+                  : "선생님이 강의를 올리기를 기다려주세요."
+              }
+            />
           )}
         </State>
       )}
       {tab === "info" && (
         <State resource={info}>
-          {info.data && (
+          {hasTutoringInfo ? (
             <dl className="class-info-list post-detail-list">
               <div>
                 <dt>수업 과목</dt>
@@ -1357,6 +1521,8 @@ function TeacherProfile({ id, teacher, item }) {
                 </div>
               )}
             </dl>
+          ) : (
+            <TeacherProfileTabEmpty title="아직 과외 정보를 등록하지 않은 선생님이에요" />
           )}
         </State>
       )}
@@ -1365,41 +1531,54 @@ function TeacherProfile({ id, teacher, item }) {
           {reviewRows.length ? (
             <>
               <section className="teacher-review-summary">
-                <b>{averageRating.toFixed(1)} / 5</b>
-                <span>({reviewRows.length})</span>
-                <div>
-                  <span>전문성 {professional.toFixed(1)}</span>
-                  <span>강의력 {teaching.toFixed(1)}</span>
-                  <span>시간 준수 {punctuality.toFixed(1)}</span>
+                <div className="teacher-review-total">
+                  <Star size={24} fill="currentColor" aria-hidden="true" />
+                  <b>{formatRating(averageRating)}<span> /5</span></b>
+                  <small>({reviewRows.length})</small>
+                </div>
+                <div className="teacher-review-summary-gauges">
+                  <TeacherRatingGauge label="전문적이에요" rating={professional} />
+                  <TeacherRatingGauge label="강의력이 좋아요" rating={teaching} />
+                  <TeacherRatingGauge label="시간을 잘 지켜요" rating={punctuality} />
                 </div>
               </section>
-              <div className="review-list">
+              <div className="teacher-review-list">
                 {reviewRows.map((review) => (
-                  <article className="comment teacher-review-card" key={review.id}>
+                  <article className="teacher-review-card" key={review.id}>
                     <div className="teacher-review-author">
-                      {review.student_profile_image ? (
-                        <img src={review.student_profile_image} alt="" className="avatar" />
-                      ) : (
-                        <span className="avatar">{(review.student_label || "학").slice(0, 1)}</span>
-                      )}
-                      <div>
-                        <b>{review.student_label || "학생"}</b>
-                        <small>{[review.class_type, review.created_at ? date(review.created_at) : ""].filter(Boolean).join(" · ")}</small>
+                      <Avatar
+                        src={review.student_profile_image}
+                        name={review.student_label || "학생"}
+                      />
+                      <div className="teacher-review-identity">
+                        <div>
+                          <b>{review.student_label || "학생"}</b>
+                          {review.class_type && <span>{review.class_type}</span>}
+                        </div>
+                        {reviewDate(review.created_at) && <small>{reviewDate(review.created_at)}</small>}
                       </div>
                     </div>
-                    <Subjects values={review.subjects} />
+                    {reviewSubjects(review.subjects) && (
+                      <p className="teacher-review-subjects">
+                        <BookOpen size={14} aria-hidden="true" />
+                        {reviewSubjects(review.subjects)}
+                      </p>
+                    )}
                     <p>{review.comment}</p>
                     <div className="teacher-review-scores">
-                      <span>전문성 {review.professionalism}점</span>
-                      <span>강의력 {review.teaching_skill}점</span>
-                      <span>시간 준수 {review.punctuality}점</span>
+                      <TeacherRatingGauge label="전문적이에요" rating={review.professionalism} />
+                      <TeacherRatingGauge label="강의력이 좋아요" rating={review.teaching_skill} />
+                      <TeacherRatingGauge label="시간을 잘 지켜요" rating={review.punctuality} />
                     </div>
                   </article>
                 ))}
               </div>
             </>
           ) : (
-            <p className="muted">아직 리뷰가 없어요.</p>
+            <TeacherProfileTabEmpty
+              title="아직 리뷰가 없어요."
+              description="첫 번째 리뷰를 남겨주세요."
+            />
           )}
         </State>
       )}
