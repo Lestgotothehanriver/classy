@@ -14,6 +14,7 @@ import {
   Check,
   Search,
   X,
+  ChevronLeft,
 } from "lucide-react";
 import { api } from "./api";
 import regions from "./regions.json";
@@ -398,6 +399,54 @@ export function Btn({ children, className = "", ...props }) {
     </button>
   );
 }
+
+/**
+ * 기본 Formfield 디자인을 따르는 재사용 파일 선택 필드다.
+ *
+ * [trailing]으로 용도별 아이콘이나 안내를 바꾸고, [accept]와 [multiple]로
+ * 허용 형식과 다중 선택 여부를 지정한다.
+ */
+export function FilePicker({
+  name,
+  accept,
+  multiple = false,
+  disabled = false,
+  onChange,
+  placeholder = "파일을 선택해주세요.",
+  trailing,
+  inputRef,
+  className = "",
+  ...inputProps
+}) {
+  return (
+    <label
+      className={`file-picker ${disabled ? "disabled" : ""} ${className}`.trim()}
+    >
+      <span className="file-picker-placeholder">{placeholder}</span>
+      {trailing && <span className="file-picker-trailing">{trailing}</span>}
+      <input
+        {...inputProps}
+        ref={inputRef}
+        type="file"
+        name={name}
+        accept={accept}
+        multiple={multiple}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </label>
+  );
+}
+
+/** 모바일 전용 목록 복귀 CTA를 모든 전용 상세·작성 화면에서 공유한다. */
+export function MobileBackAction({ children, className = "", ...props }) {
+  return (
+    <Btn className={`mobile-back-action ${className}`} {...props}>
+      <ChevronLeft size={16} aria-hidden="true" />
+      {children}
+    </Btn>
+  );
+}
 export function Empty({
   title = "아직 등록된 내용이 없어요",
   text = "새로운 소식이 생기면 이곳에서 확인할 수 있어요.",
@@ -484,7 +533,11 @@ export function Modal({
     <dialog
       ref={ref}
       className={surfaceClassName}
-      onCancel={onClose}
+      onCancel={(event) => {
+        if (event.target !== ref.current) return;
+        event.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}

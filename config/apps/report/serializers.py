@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from .models import (
     Report,
+    ReportAttachment,
     ReportChoice,
     ReportReasonChoices,
     ReportSourceChoices,
@@ -44,7 +45,7 @@ class ReportCreateSerializer(serializers.Serializer):
         "source": "lecture",           # teacher_profile|chat|lecture|comment|tutoring_post
         "target_id": 12,               # 대상 콘텐츠/프로필/채팅방 id
         "description": "부적절합니다",
-        "evidence_image": null,
+        "evidence_images": [file, file],
         "choices": ["inappropriate_content", "abusive_language"]
     }
     """
@@ -56,9 +57,19 @@ class ReportCreateSerializer(serializers.Serializer):
         required=False, help_text="대상 콘텐츠/프로필/채팅방 id"
     )
     description = serializers.CharField(
-        required=False, allow_blank=True, default="", help_text="자유서술"
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=500,
+        help_text="자유서술 (최대 500자)",
     )
     evidence_image = serializers.ImageField(required=False, allow_null=True)
+    evidence_images = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        max_length=3,
+        help_text="증거 이미지 목록 (최대 3장)",
+    )
     choices = serializers.ListField(
         child=ReportReasonField(choices=ReportReasonChoices.choices),
         min_length=1,
@@ -169,12 +180,17 @@ class ReportCreateSerializer(serializers.Serializer):
         # source 미전송(구 앱)은 모델 기본값을 따른다.
         source = validated_data.get("source")
 
+        evidence_images = validated_data.get("evidence_images", [])
+        legacy_evidence_image = validated_data.get("evidence_image")
+        if not evidence_images and legacy_evidence_image:
+            evidence_images = [legacy_evidence_image]
+
         with transaction.atomic():
             report = Report(
                 reporter=reporter,
                 reported_user=reported_user,
                 description=validated_data.get("description", ""),
-                evidence_image=validated_data.get("evidence_image"),
+                evidence_image=evidence_images[0] if evidence_images else None,
             )
             if source:
                 report.source = source
@@ -186,6 +202,10 @@ class ReportCreateSerializer(serializers.Serializer):
                 ReportChoice(report=report, content=choice)
                 for choice in choices_data
             ])
+            ReportAttachment.objects.bulk_create([
+                ReportAttachment(report=report, image=image, position=index)
+                for index, image in enumerate(evidence_images)
+            ])
 
         return report
 
@@ -193,6 +213,7 @@ class ReportCreateSerializer(serializers.Serializer):
 class ReportResponseSerializer(serializers.ModelSerializer):
     """신고 생성 응답용 Serializer."""
     choices = serializers.SerializerMethodField()
+    evidence_images = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -204,6 +225,7 @@ class ReportResponseSerializer(serializers.ModelSerializer):
             "description",
             "status",
             "evidence_image",
+            "evidence_images",
             "choices",
             "created_at",
         ]
@@ -211,6 +233,13 @@ class ReportResponseSerializer(serializers.ModelSerializer):
 
     def get_choices(self, obj):
         return list(obj.choices.values_list("content", flat=True))
+
+    def get_evidence_images(self, obj):
+        """기존 단일 이미지 신고도 새 배열 계약으로 노출한다."""
+        images = list(obj.attachments.values_list("image", flat=True))
+        if images:
+            return images
+        return [obj.evidence_image.name] if obj.evidence_image else []
 
 
 class InquirySerializer(serializers.ModelSerializer):

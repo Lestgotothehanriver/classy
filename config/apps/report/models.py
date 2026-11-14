@@ -135,6 +135,28 @@ class ReportChoice(models.Model):
         return f"{self.report_id} - {self.get_content_display()}"
 
 
+class ReportAttachment(models.Model):
+    """신고에 첨부한 증거 이미지.
+
+    기존 ``Report.evidence_image`` 는 이전 앱과의 응답 호환성을 위해 첫 번째
+    이미지를 계속 보관하고, 추가 이미지는 이 모델에 순서대로 저장한다.
+    """
+
+    report = models.ForeignKey(
+        Report,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    image = models.ImageField(upload_to="reports/evidence/")
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"Report attachment #{self.pk} for report #{self.report_id}"
+
+
 class Inquiry(models.Model):
     """고객센터 1:1 문의 모델"""
     user = models.ForeignKey(

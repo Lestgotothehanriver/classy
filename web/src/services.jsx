@@ -1,5 +1,5 @@
-import React, { useContext, useState } from "react";
-import { Flag } from "lucide-react";
+import React, { useContext, useRef, useState } from "react";
+import { BookOpen, Eye, Flag, ImagePlus, X } from "lucide-react";
 import { api, downloadProtectedFile, list } from "./api";
 import {
   Ctx,
@@ -13,10 +13,13 @@ import {
   Subjects,
   AcademicFields,
   BANKS,
+  FilePicker,
+  MobileBackAction,
 } from "./shared";
 import { PageHeading, pageNames } from "./design";
 import regions from "./regions.json";
 import { ClassHistory } from "./contracts";
+import { StudentPostFormFields, toStudentPostPayload, toSubjectNumbers } from "./student-post-form";
 
 export function ActionForm({
   title,
@@ -76,6 +79,7 @@ export function ActionForm({
     </section>
   );
 }
+
 export function Services({ page, onLogout }) {
   const { user } = useContext(Ctx);
   if (
@@ -591,13 +595,14 @@ function TicketThread({ ticket, resource, onClose, onUpdated }) {
 }
 
 function Tutoring() {
-  const { user, subjects, notify, detail } = useContext(Ctx),
+  const { user, subjects, notify, detail, go } = useContext(Ctx),
     teacher = user.role === "instructor";
   const resource = useLoad(
     teacher ? "/tutoring/instructor-info/mine/" : "/tutoring/my-posts/",
   );
   const [editing, setEditing] = useState(null),
-    [postTab, setPostTab] = useState("active");
+    [postTab, setPostTab] = useState("active"),
+    [studentTab, setStudentTab] = useState("posts");
   const rows = teacher
     ? resource.data
       ? [resource.data]
@@ -611,84 +616,140 @@ function Tutoring() {
     : rows.filter((post) =>
         postTab === "active" ? post.is_active !== false : post.is_active === false,
       );
+  const postSubjectLabel = (values) => {
+    const labels = (Array.isArray(values) ? values : [])
+      .map((value) => {
+        if (typeof value === "object") return value.label || value.name;
+        if (typeof value === "string" && !/^\d+$/.test(value)) return value;
+        return subjects.find((subject) => subject.number === Number(value))?.name;
+      })
+      .filter(Boolean);
+    const visible = labels.slice(0, 3).join(", ");
+    return labels.length > 3 ? `${visible} 외 ${labels.length - 3}` : visible;
+  };
   return (
-    <State resource={resource}>
+    <>
+      {!teacher && (
+        <section className="student-payback-notice">
+          <b>페이백 안내: 성사 등록 시 수업료 일부를 돌려드려요.</b>
+          <p>
+            수업 성사 등록 시 등록하신 첫 달 수업료의 0.5%를 고객님의 계좌로 입금해드려요.
+            페이백은 선생님과 학생 모두 수업 신고를 완료하신 뒤 등록하신 계좌로 3영업일 이내 입금됩니다.
+          </p>
+        </section>
+      )}
+      {!teacher && (
+        <div
+          className="tutoring-manage-tabs"
+          role="tablist"
+          aria-label="과외 관리 메뉴"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={studentTab === "posts"}
+            className={studentTab === "posts" ? "active" : ""}
+            onClick={() => setStudentTab("posts")}
+          >
+            내 모집 공고
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={studentTab === "classes"}
+            className={studentTab === "classes" ? "active" : ""}
+            onClick={() => setStudentTab("classes")}
+          >
+            내 수업/과외
+          </button>
+        </div>
+      )}
+      {(teacher || studentTab === "posts") && (
+        <State resource={resource}>
       <section className="service-section">
         <div className="section-title">
-          <h2>{teacher ? "나의 과외 소개" : "나의 모집 공고"}</h2>
-          <Btn onClick={() => setEditing(teacher ? rows[0] || {} : {})}>
-            {teacher ? "소개 작성·수정" : "새 모집 공고"}
+          {teacher && <h2>나의 과외 소개</h2>}
+          {!teacher && (
+            <label className="tutoring-status-filter">
+              <span>모집 공고 상태</span>
+              <select
+                value={postTab}
+                onChange={(event) => setPostTab(event.target.value)}
+              >
+                <option value="active">모집 중</option>
+                <option value="closed">마감</option>
+              </select>
+            </label>
+          )}
+          <Btn onClick={() => teacher ? setEditing(rows[0] || {}) : go("tutoring-post/new")}>
+            {teacher ? "소개 작성·수정" : "새 모집 공고 등록"}
           </Btn>
         </div>
-        {!teacher && (
-          <div
-            className="registration-tabs"
-            role="tablist"
-            aria-label="모집 공고 상태"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={postTab === "active"}
-              className={postTab === "active" ? "active" : ""}
-              onClick={() => setPostTab("active")}
-            >
-              모집 중
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={postTab === "closed"}
-              className={postTab === "closed" ? "active" : ""}
-              onClick={() => setPostTab("closed")}
-            >
-              마감
-            </button>
-          </div>
-        )}
-        {visibleRows.map((x) => (
+        {visibleRows.map((x) => teacher ? (
           <article className="history-row" key={x.id}>
             <button
               type="button"
               className="post-management-card"
-              onClick={() =>
-                detail(teacher ? "teachers" : "posts", x.id, x)
-              }
+              onClick={() => detail("teachers", x.id, x)}
             >
               <b>{x.title || "과외 소개"}</b>
-              {teacher ? (
-                <p className="muted">
-                  {x.schedule} · {money(x.cost)}원
-                </p>
-              ) : (
-                <>
-                  <Subjects values={x.subjects} />
-                  <p className="muted">
-                    조회 {x.view_count || 0}회 ·{" "}
-                    {x.relative_time || date(x.created_at)}
-                  </p>
-                </>
-              )}
+              <p className="muted">
+                {x.schedule} · {money(x.cost)}원
+              </p>
             </button>
             <div className="actions">
-              <Btn onClick={() => setEditing(x)}>수정</Btn>
-              {!teacher && (
-                <Btn
-                  onClick={async () => {
-                    try {
-                      await api(base + x.id + "/", {
-                        method: "PATCH",
-                        body: { is_active: !x.is_active },
-                      });
-                      resource.reload();
-                    } catch (e) {
-                      notify(e.message);
-                    }
-                  }}
-                >
-                  {x.is_active ? "모집 마감" : "모집 재개"}
-                </Btn>
-              )}
+              <Btn onClick={() => go(`tutoring-post/${x.id}`)}>수정</Btn>
+              <Btn
+                onClick={async () => {
+                  if (!window.confirm("이 글을 삭제할까요?")) return;
+                  try {
+                    await api(base + x.id + "/", { method: "DELETE" });
+                    resource.reload();
+                  } catch (e) {
+                    notify(e.message);
+                  }
+                }}
+              >
+                삭제
+              </Btn>
+            </div>
+          </article>
+        ) : (
+          <article className="student-post-management-card" key={x.id}>
+            <button
+              type="button"
+              className="student-post-management-open"
+              onClick={() => detail("posts", x.id, x)}
+            >
+              <b>{x.title || "과외 모집 공고"}</b>
+              <span className="student-post-management-subject">
+                <BookOpen size={16} aria-hidden="true" />
+                {postSubjectLabel(x.subjects) || "과목 협의"}
+              </span>
+              <span className="student-post-management-meta">
+                <Eye size={16} aria-hidden="true" />
+                {x.view_count || 0}
+                <i aria-hidden="true" />
+                {x.relative_time || date(x.created_at)}
+              </span>
+            </button>
+            <div className="student-post-management-actions">
+              <Btn onClick={() => go(`tutoring-post/${x.id}`)}>수정</Btn>
+              <Btn
+                onClick={async () => {
+                  try {
+                    await api(base + x.id + "/", {
+                      method: "PATCH",
+                      body: { is_active: !x.is_active },
+                    });
+                    resource.reload();
+                  } catch (e) {
+                    notify(e.message);
+                  }
+                }}
+              >
+                {x.is_active ? "모집 마감" : "모집 재개"}
+              </Btn>
               <Btn
                 onClick={async () => {
                   if (!window.confirm("이 글을 삭제할까요?")) return;
@@ -706,7 +767,7 @@ function Tutoring() {
           </article>
         ))}
         {!visibleRows.length && (
-          <p className="muted">
+          <p className={teacher ? "muted" : "student-post-management-empty"}>
             {teacher
               ? "작성한 글이 없습니다."
               : postTab === "active"
@@ -715,10 +776,10 @@ function Tutoring() {
           </p>
         )}
       </section>
-      {editing && (
+      {editing && teacher && (
         <ActionForm
           key={editing.id || "new"}
-          title={teacher ? "과외 소개" : "모집 공고 작성"}
+          title={teacher ? "과외 소개" : null}
           path={base + (editing.id ? editing.id + "/" : "")}
           method={editing.id ? "PATCH" : "POST"}
           onDone={() => {
@@ -726,201 +787,268 @@ function Tutoring() {
             resource.reload();
           }}
           transform={(f) => {
-            const d = Object.fromEntries(f);
-            d.subjects = f.getAll("subjects").map(Number);
-            d.regions = f.getAll("regions").map(Number);
-            d.cost = Number(d.cost);
-            return d;
+            if (teacher) {
+              const d = Object.fromEntries(f);
+              d.subjects = f.getAll("subjects").map(Number);
+              d.regions = f.getAll("regions").map(Number);
+              d.cost = Number(d.cost);
+              return d;
+            }
+            return toStudentPostPayload(f);
           }}
         >
-          {!teacher && (
-            <>
+          <>
               <label>
-                제목
-                <input
-                  name="title"
-                  defaultValue={editing.title}
+                과목
+                <select
+                  name="subjects"
+                  multiple
+                  size={5}
+                  defaultValue={toSubjectNumbers(editing.subjects || [], subjects)}
                   required
-                  maxLength={255}
-                />
-              </label>
-              <label>
-                학년
-                <select name="grade" defaultValue={editing.grade || "사회인"}>
-                  {[
-                    "유치원생",
-                    "초1",
-                    "초2",
-                    "초3",
-                    "초4",
-                    "초5",
-                    "초6",
-                    "중1",
-                    "중2",
-                    "중3",
-                    "고1",
-                    "고2",
-                    "고3",
-                    "N수생",
-                    "대학생",
-                    "사회인",
-                  ].map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
+                >
+                  {subjects.map((subject) => <option key={subject.number} value={subject.number}>{subject.name}</option>)}
                 </select>
               </label>
               <label>
-                계열
-                <select name="field" defaultValue={editing.field || ""}>
-                  <option value="">해당 없음</option>
-                  {["문과", "이과", "예체능", "특성화", "기타"].map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
+                활동 지역
+                <select
+                  name="regions"
+                  multiple
+                  size={5}
+                  defaultValue={(editing.regions || []).map((region) => String(region.number || region.id || regions.find((item) => item[1] === (region.label || region))?.[0] || region))}
+                >
+                  {regions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
                 </select>
               </label>
-              <label>
-                학습 상황·목표
-                <textarea
-                  name="situation"
-                  defaultValue={editing.situation}
-                  maxLength={255}
-                />
-              </label>
+              <label>수업 방식<select name="method" defaultValue={editing.method || "대면"}><option>대면</option><option>비대면</option><option value="대면,비대면">모두 가능</option></select></label>
+              <label>과외비 (원)<input type="number" name="cost" min="0" step="1000" defaultValue={editing.cost || 0} required /></label>
+              <label>수업 가능 시간<input name="schedule" defaultValue={editing.schedule} maxLength={255} required /></label>
+              <label>활동 지역<input name="location" defaultValue={editing.location} maxLength={255} /></label>
+              <label>기타 소개<textarea name="etc" defaultValue={editing.etc} maxLength={255} /></label>
             </>
-          )}
-          <label>
-            과목
-            <select
-              name="subjects"
-              multiple
-              size={5}
-              defaultValue={(editing.subjects || []).map((x) =>
-                String(
-                  x.number || subjects.find((s) => s.name === x)?.number || x,
-                ),
-              )}
-              required
-            >
-              {subjects.map((x) => (
-                <option key={x.number} value={x.number}>
-                  {x.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            활동 지역
-            <select
-              name="regions"
-              multiple
-              size={5}
-              defaultValue={(editing.regions || []).map((x) =>
-                String(
-                  regions.find((r) => r[1] === (x.label || x))?.[0] ||
-                    x.number ||
-                    x.id ||
-                    x,
-                ),
-              )}
-            >
-              {regions.map(([id, name]) => (
-                <option value={id} key={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            수업 방식
-            <select name="method" defaultValue={editing.method || "대면"}>
-              <option>대면</option>
-              <option>비대면</option>
-              <option value="대면,비대면">모두 가능</option>
-            </select>
-          </label>
-          <label>
-            과외비 (원)
-            <input
-              type="number"
-              name="cost"
-              min="0"
-              step="1000"
-              defaultValue={editing.cost || 0}
-              required
-            />
-          </label>
-          <label>
-            수업 가능 시간
-            <input
-              name="schedule"
-              defaultValue={editing.schedule}
-              maxLength={255}
-              required
-            />
-          </label>
-          {teacher && (
-            <label>
-              활동 지역
-              <input
-                name="location"
-                defaultValue={editing.location}
-                maxLength={255}
-              />
-            </label>
-          )}
-          <label>
-            기타 소개
-            <textarea name="etc" defaultValue={editing.etc} maxLength={255} />
-          </label>
           <Btn type="button" onClick={() => setEditing(null)}>
             취소
           </Btn>
         </ActionForm>
       )}
-      <ClassHistory />
-    </State>
+        </State>
+      )}
+      {(teacher || studentTab === "classes") && <ClassHistory />}
+    </>
+  );
+}
+
+/** 학생 모집 공고를 전용 페이지에서 작성하거나 수정한다. */
+export function StudentPostEditorPage({ postId, returnTo = "" }) {
+  const { subjects, go } = useContext(Ctx);
+  const isNew = postId === "new";
+  const returnDestination = returnTo || "tutoring-manage";
+  const returnLabel = returnTo ? "선생님 프로필로" : "과외 관리로";
+  const posts = useLoad(isNew ? null : "/tutoring/my-posts/", [postId]);
+  const post = isNew
+    ? {}
+    : list(posts.data).find((item) => String(item.id) === String(postId));
+  const content = post ? (
+    <StudentPostEditorForm
+      key={post.id || "new"}
+      editing={post}
+      subjects={subjects}
+      returnDestination={returnDestination}
+    />
+  ) : (
+    <Empty
+      title="모집 공고를 찾을 수 없어요"
+      text="목록에서 수정할 공고를 다시 선택해 주세요."
+    >
+      <Btn onClick={() => go(returnDestination)}>{returnLabel}</Btn>
+    </Empty>
+  );
+
+  return (
+    <main className="student-post-editor-page">
+      <div className="student-post-editor-content">
+        <PageHeading title={isNew ? "모집 공고 작성" : "모집 공고 수정"}>
+          <MobileBackAction onClick={() => go(returnDestination)}>
+            {returnLabel}
+          </MobileBackAction>
+        </PageHeading>
+        {isNew ? content : <State resource={posts}>{content}</State>}
+      </div>
+    </main>
+  );
+}
+
+/** 재사용 학생 모집 공고 폼을 페이지 저장 흐름에 연결한다. */
+function StudentPostEditorForm({ editing, subjects, returnDestination }) {
+  const { go } = useContext(Ctx);
+  return (
+    <ActionForm
+      path={`/tutoring/posts/write/${editing.id ? `${editing.id}/` : ""}`}
+      method={editing.id ? "PATCH" : "POST"}
+      submit={editing.id ? "수정 완료" : "모집 공고 등록"}
+      transform={toStudentPostPayload}
+      onDone={() => go(returnDestination)}
+    >
+      <StudentPostFormFields editing={editing} subjects={subjects} />
+      <Btn type="button" onClick={() => go(returnDestination)}>취소</Btn>
+    </ActionForm>
   );
 }
 
 export function ReportForm({ source, id, label = "신고하기" }) {
+  const [open, setOpen] = useState(false);
+  const [selectedReasons, setSelectedReasons] = useState([]);
+  const [description, setDescription] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const attachmentInputRef = useRef(null);
+  const reasons = [
+    ["inappropriate_content", "부적절한 내용"],
+    ["false_information", "허위 정보 기재"],
+    ["abusive_language", "비속어/폭언"],
+    ["excessive_request", "불합리함/과도한 요구"],
+    ["unreported_class_completion", "수업 성사 미신고"],
+    ["other", "기타"],
+  ];
+
+  function toggleReason(reason) {
+    setSelectedReasons((current) =>
+      current.includes(reason)
+        ? current.filter((value) => value !== reason)
+        : [...current, reason],
+    );
+  }
+
+  function setAttachmentFiles(files) {
+    const imageFiles = Array.from(files).filter((file) =>
+      ["image/jpeg", "image/png"].includes(file.type),
+    );
+    const nextAttachments = [...attachments, ...imageFiles].slice(0, 3);
+    const transfer = new DataTransfer();
+    nextAttachments.forEach((file) => transfer.items.add(file));
+    if (attachmentInputRef.current)
+      attachmentInputRef.current.files = transfer.files;
+    setAttachments(nextAttachments);
+    setAttachmentError(
+      imageFiles.length !== files.length
+        ? "JPG 또는 PNG 형식의 사진만 첨부할 수 있어요."
+        : attachments.length + imageFiles.length > 3
+          ? "사진 자료는 최대 3장까지 첨부할 수 있어요."
+          : "",
+    );
+  }
+
+  function removeAttachment(index) {
+    const nextAttachments = attachments.filter((_, itemIndex) => itemIndex !== index);
+    const transfer = new DataTransfer();
+    nextAttachments.forEach((file) => transfer.items.add(file));
+    if (attachmentInputRef.current)
+      attachmentInputRef.current.files = transfer.files;
+    setAttachments(nextAttachments);
+    setAttachmentError("");
+  }
+
+  function closeReportDialog() {
+    setOpen(false);
+    setSelectedReasons([]);
+    setDescription("");
+    setAttachments([]);
+    setAttachmentError("");
+  }
+
   return (
-    <details className="service-section report-form">
-      <summary>
+    <>
+      <Btn
+        type="button"
+        className="report-form"
+        onClick={() => setOpen(true)}
+      >
         <Flag size={16} aria-hidden="true" />
         {label}
-      </summary>
-      <ActionForm
-        path="/report/create/"
-        submit="신고하기"
-        transform={(f) => ({
-          source,
-          target_id: id,
-          choices: [f.get("reason")],
-          description: f.get("description"),
-        })}
-      >
-        <label>
-          신고 사유
-          <select name="reason">
-            {[
-              ["inappropriate_content", "부적절한 내용"],
-              ["false_information", "허위 정보"],
-              ["abusive_language", "비속어/폭언"],
-              ["excessive_request", "불합리함/과도한 요구"],
-              ["unreported_class_completion", "수업 성사 미신고"],
-              ["other", "기타"],
-            ].map(([value, label]) => (
-              <option value={value} key={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          상세 내용
-          <textarea name="description" required />
-        </label>
-      </ActionForm>
-    </details>
+      </Btn>
+      {open && (
+        <Modal
+          title="신고하기"
+          className="report-dialog"
+          scrollable
+          onClose={closeReportDialog}
+        >
+          <ActionForm
+            path="/report/create/"
+            submit="신고하기"
+            multipart
+            submitDisabled={!selectedReasons.length}
+            onDone={closeReportDialog}
+          >
+            <input type="hidden" name="source" value={source} />
+            <input type="hidden" name="target_id" value={id} />
+            <fieldset className="report-reason-field">
+              <legend>
+                신고유형 <span className="required-label">필수</span>
+              </legend>
+              <p className="report-field-hint">복수 선택 가능</p>
+              <div className="report-reason-list">
+                {reasons.map(([value, reasonLabel]) => (
+                  <label className="check-label" key={value}>
+                    <input
+                      type="checkbox"
+                      name="choices"
+                      value={value}
+                      checked={selectedReasons.includes(value)}
+                      onChange={() => toggleReason(value)}
+                    />
+                    {reasonLabel}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <label className="report-description-field">
+              <span className="report-field-label">
+                상세 내용
+                <small>{description.length}/500</small>
+              </span>
+              <textarea
+                name="description"
+                value={description}
+                maxLength={500}
+                rows={6}
+                placeholder={"자세한 신고 이유 및 상세 내용을 적어주시면 보다 정확한 확인에 도움이 될 수 있습니다.\n작성해주신 내용은 운영팀에서만 확인합니다."}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
+            <section className="report-attachment-field" aria-labelledby="report-attachment-title">
+              <div className="report-field-label">
+                <span id="report-attachment-title">사진 자료</span>
+                <small>{attachments.length}/3</small>
+              </div>
+              <FilePicker
+                inputRef={attachmentInputRef}
+                name="evidence_images"
+                accept="image/jpeg,image/png"
+                multiple
+                placeholder="사진 자료를 업로드 해주세요."
+                trailing={<ImagePlus size={18} aria-hidden="true" />}
+                onChange={(event) => setAttachmentFiles(event.target.files)}
+              />
+              {attachmentError && <p className="error">{attachmentError}</p>}
+              {attachments.map((file, index) => (
+                <div className="report-attachment-row" key={`${file.name}-${file.lastModified}`}>
+                  <span>{file.name}</span>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`${file.name} 삭제`}
+                    onClick={() => removeAttachment(index)}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </section>
+          </ActionForm>
+        </Modal>
+      )}
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
+import { BookOpen } from "lucide-react";
 import { api, list } from "./api";
 import { BANKS, Ctx, Modal, Btn, State, Empty, useLoad, money, date } from "./shared";
 import { ActionForm } from "./services";
@@ -284,7 +285,7 @@ export function Registration({ room, onClose, onUpdated }) {
 }
 
 export function ClassHistory() {
-  const { user, notify } = useContext(Ctx),
+  const { user, notify, openChat } = useContext(Ctx),
     [page, setPage] = useState(1),
     [tab, setTab] = useState("all"),
     [edit, setEdit] = useState(null);
@@ -297,40 +298,96 @@ export function ClassHistory() {
     tab === "progress"
       ? resources.filter((resource) => {
           const status = registrationStatus(resource);
-          return !status.isComplete && status.tone !== "rejected";
+          return !status.isComplete;
         })
       : resources;
+  const classStatus = (resource) => {
+    const completed = String(resource.contract_status || "").toUpperCase() === "ACTIVE";
+    return {
+      completed,
+      label: completed
+        ? resource.class_type === "단기 수업" || resource.class_type === "SHORT_TERM"
+          ? "단기 수업"
+          : "정규 수업"
+        : "성사 등록 진행 중",
+    };
+  };
+  const subjectLabel = (resource) =>
+    (Array.isArray(resource.subject) ? resource.subject : [])
+      .map((subject) =>
+        typeof subject === "object" ? subject.label || subject.name : subject,
+      )
+      .filter(Boolean)
+      .join(", ") || "과목 미정";
+  const createdDate = (value) => {
+    const createdAt = new Date(value);
+    if (Number.isNaN(createdAt.valueOf())) return "";
+    return [
+      createdAt.getFullYear(),
+      String(createdAt.getMonth() + 1).padStart(2, "0"),
+      String(createdAt.getDate()).padStart(2, "0"),
+    ].join(".");
+  };
+  const processingMessage = (resource) => {
+    if (registrationStatus(resource).tone === "rejected") {
+      return resource.rejection_reason || "입력한 수업 정보가 일치하지 않아 자동 반려되었어요. 다시 등록해 주세요.";
+    }
+    if (!resource.my_submission_finalized) return "성사 등록을 완료해 주세요.";
+    if (!resource.is_instructor_confirmed) return "선생님의 성사 등록을 기다리고 있어요.";
+    return "수수료 입금 확인을 기다리고 있어요.";
+  };
   return (
-    <section className="service-section">
-      <h2>나의 과외</h2>
+    <section className={"service-section class-history " + (teacher ? "" : "student-class-history")}>
+      {teacher && <h2>나의 과외</h2>}
       <div className="registration-controls">
-        <div className="registration-tabs" role="tablist" aria-label="과외 상태">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "all"}
-            className={tab === "all" ? "active" : ""}
-            onClick={() => setTab("all")}
-          >
-            전체
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "progress"}
-            className={tab === "progress" ? "active" : ""}
-            onClick={() => setTab("progress")}
-          >
-            성사 등록 진행 중
-          </button>
-        </div>
-        <Btn type="button" onClick={r.reload}>
-          새로고침
-        </Btn>
+        <label className="tutoring-status-filter">
+          <span>수업/과외 상태</span>
+          <select value={tab} onChange={(event) => setTab(event.target.value)}>
+            <option value="all">전체</option>
+            <option value="progress">성사 등록 진행 중</option>
+          </select>
+        </label>
+        {teacher && <Btn type="button" onClick={r.reload}>새로고침</Btn>}
       </div>
       <State resource={r}>
         {visibleResources.map((x) => {
           const status = registrationStatus(x);
+          const studentStatus = classStatus(x);
+          if (!teacher) {
+            const counterpart = x.counterpart?.nickname || x.instructor_user_name || "선생님";
+            return (
+              <article key={x.id} className="student-class-card">
+                <div className="student-class-card-head">
+                  <b>{counterpart} 선생님과의 수업</b>
+                  <span className={studentStatus.completed ? "complete" : "progress"}>
+                    {studentStatus.label}
+                  </span>
+                </div>
+                <p className="student-class-subject">
+                  <BookOpen size={16} aria-hidden="true" />
+                  {subjectLabel(x)}
+                </p>
+                {createdDate(x.created_at) && <small>{createdDate(x.created_at)}</small>}
+                {!studentStatus.completed && <p className="student-class-progress">{processingMessage(x)}</p>}
+                <div className="student-class-actions">
+                  {studentStatus.completed ? (
+                    <>
+                      <Btn className="primary" onClick={() => openChat(x.chat_room_id)}>
+                        수업 정보
+                      </Btn>
+                      <Btn onClick={() => setEdit(x)}>
+                        {x.my_review ? "리뷰 수정" : "리뷰 작성"}
+                      </Btn>
+                    </>
+                  ) : (
+                    <Btn className="primary full" onClick={() => openChat(x.chat_room_id)}>
+                      {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
+                    </Btn>
+                  )}
+                </div>
+              </article>
+            );
+          }
           return (
             <article key={x.id} className="history-row">
               <div>
@@ -357,10 +414,12 @@ export function ClassHistory() {
           );
         })}
         {!visibleResources.length && (
-          <p className="muted">
+          <p className={teacher ? "muted" : "student-class-empty"}>
             {tab === "progress"
               ? "진행 중인 성사 등록이 없습니다."
-              : "성사 등록은 상담 채팅방에서 시작할 수 있습니다."}
+              : teacher
+                ? "성사 등록은 상담 채팅방에서 시작할 수 있습니다."
+                : "수업 내역이 없습니다."}
           </p>
         )}
         <div className="actions">

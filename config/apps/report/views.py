@@ -14,12 +14,13 @@ class ReportCreateAPIView(APIView):
 
     인증된 사용자가 다른 사용자를 신고하는 API View입니다.
 
-    POST 요청 시, 신고 대상 유저 ID(reported_user), 신고 유형 리스트(choices), 그리고 증빙 이미지 파일(evidence_image)을 수신하여 신고 내역을 생성합니다.
+    POST 요청 시, 신고 대상 유저 ID(reported_user), 신고 유형 리스트(choices), 그리고
+    최대 3장의 증빙 이미지 파일(evidence_images)을 수신하여 신고 내역을 생성합니다.
 
     Request Body (POST, Multipart/Form-data):
         reported_user (int): 신고 대상 사용자 ID (필수).
         choices (list[str]): 신고 사유 종류 목록 (필수).
-        evidence_image (File, optional): 신고 증빙 이미지 파일.
+        evidence_images (File[], optional): 신고 증빙 이미지 파일(최대 3장).
 
     Returns:
         Response: ReportResponseSerializer 데이터 (HTTP 201 Created)

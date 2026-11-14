@@ -63,8 +63,9 @@ export const pageNames = {
   settlement: "수익 및 정산",
   verification: "강사 인증",
   account: "계정 관리",
-  "tutoring-manage": "나의 과외 관리",
-  support: "고객지원",
+  "tutoring-manage": "과외 관리",
+  "tutoring-post": "모집 공고 작성",
+  support: "고객센터",
   notices: "공지사항",
   "teacher-profile": "선생님 프로필",
 };
@@ -288,7 +289,7 @@ export function Avatar({ src, name = "", size = "" }) {
 }
 
 // ClassyDestination and HomeHeader: same five destinations and original SVGs.
-export function Shell({ page, activeRole, setActiveRole, children }) {
+export function Shell({ page, activeRole, setActiveRole, children, fullBleed = false }) {
   const { user, go, login, unreadNotificationCount } = useContext(Ctx);
   const tutoring = user?.role === "instructor" ? "posts" : "teachers";
   const nav = [
@@ -306,7 +307,17 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
     id === page ||
     (id === tutoring && ["teachers", "posts"].includes(page)) ||
     (id === "teachers" && page === "teacher-profile") ||
-    (id === "profile" && ["saved", "learning", "upload"].includes(page));
+    (id === "profile" && [
+      "profile",
+      "cash",
+      "tutoring-manage",
+      "account",
+      "saved",
+      "notifications",
+      "support",
+      "learning",
+      "upload",
+    ].includes(page));
   return (
     <>
       <a
@@ -387,10 +398,14 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
           </div>
         </div>
       </header>
-      <main id="main" tabIndex={-1} className={"page page-" + page}>
+      <main
+        id="main"
+        tabIndex={-1}
+        className={`page page-${page}${fullBleed ? " page-full-bleed" : ""}`}
+      >
         {children}
       </main>
-      <footer className="site-footer">
+      {!fullBleed && <footer className="site-footer">
         <div className="footer-identity">
           <span className="footer-brand">CLASSY</span>
         </div>
@@ -425,7 +440,7 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
           </address>
         </div>
         <small>© {new Date().getFullYear()} CLASSY</small>
-      </footer>
+      </footer>}
       <nav className="bottom-nav" aria-label="모바일 메뉴">
         {nav.map(([id, label, icon]) => (
           <a
@@ -1731,9 +1746,8 @@ export function Profile({ onLogout }) {
               : [["cash", "캐시 관리"]]
             )
               .concat([
-                ["tutoring-manage", "나의 과외 관리"],
+                ["tutoring-manage", "과외 관리"],
                 ["account", "계정 관리"],
-                ["support", "고객지원"],
                 ["notices", "공지사항"],
               ])
               .map(([id, label]) => (

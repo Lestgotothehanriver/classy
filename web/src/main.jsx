@@ -44,7 +44,7 @@ import {
 import { api, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
-import { Services, ReportForm } from "./services";
+import { Services, ReportForm, StudentPostEditorPage } from "./services";
 import { Registration, registrationStatus } from "./contracts";
 import "./redesign.css";
 import {
@@ -60,6 +60,7 @@ import {
   Modal,
   ConfirmDialog,
   Subjects,
+  MobileBackAction,
 } from "./shared";
 import {
   Shell,
@@ -324,6 +325,30 @@ function App() {
         <Auth initial={authPageMode} />
       </Ctx.Provider>
     );
+  if (page === "tutoring-post") {
+    const route = location.hash.slice(1).split("/");
+    const returnTo =
+      route[2] === "teacher-profile" && Number(route[3]) > 0
+        ? `teacher-profile/${route[3]}`
+        : "";
+    return (
+      <Ctx.Provider value={context}>
+        <Shell
+          page={page}
+          activeRole={activeRole}
+          setActiveRole={changeRole}
+          fullBleed
+        >
+          <Gate>
+            <StudentPostEditorPage
+              postId={route[1] || "new"}
+              returnTo={returnTo}
+            />
+          </Gate>
+        </Shell>
+      </Ctx.Provider>
+    );
+  }
   return (
     <Ctx.Provider value={context}>
       <Shell page={page} activeRole={activeRole} setActiveRole={changeRole}>
@@ -850,13 +875,12 @@ function TeacherProfilePage({ id }) {
     <div className="teacher-profile-page">
       <State resource={resource}>
         <div className="teacher-profile-mobile-actions">
-          <Btn
+          <MobileBackAction
             className="small teacher-profile-mobile-list"
             onClick={() => go("teachers")}
           >
-            <ChevronLeft size={16} aria-hidden="true" />
             선생님 목록으로
-          </Btn>
+          </MobileBackAction>
           <ProfileSafetyActions
             className="teacher-profile-compact-safety-actions teacher-profile-mobile-safety-actions"
             instructorId={id}
@@ -1022,8 +1046,9 @@ function Proposal({ kind, id, onClose }) {
             <State resource={posts}>
               {list(posts.data).filter((p) => p.is_active !== false).length ? (
                 <label>
-                  내 과외 공고
-                  <select name="post_id" required>
+                  과외 공고를 선택해 주세요.
+                  <select name="post_id" required defaultValue="">
+                    <option value="" disabled>과외 공고 선택</option>
                     {list(posts.data)
                       .filter((p) => p.is_active !== false)
                       .map((p) => (
@@ -1034,19 +1059,7 @@ function Proposal({ kind, id, onClose }) {
                   </select>
                 </label>
               ) : (
-                <>
-                  <p>상담을 제안하려면 과외 공고가 필요해요.</p>
-                  <Btn
-                    className="proposal-post-create"
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      go("tutoring-manage");
-                    }}
-                  >
-                    모집 공고 작성하기
-                  </Btn>
-                </>
+                <p>상담을 제안하려면 과외 공고가 필요해요.</p>
               )}
             </State>
           ) : (
@@ -1064,10 +1077,21 @@ function Proposal({ kind, id, onClose }) {
           <p className="form-note">
             제안을 보내면 상대방에게 알림이 전달되고 상담 채팅방이 만들어집니다.
           </p>
-          <div className="actions">
-            <Btn type="button" onClick={() => setOpen(false)}>
-              취소
-            </Btn>
+          <div className="actions proposal-form-actions">
+            <div className="proposal-form-secondary-actions">
+              <Btn type="button" onClick={() => setOpen(false)}>
+                취소
+              </Btn>
+              {kind === "teachers" && (
+                <Btn
+                  className="proposal-post-create"
+                  type="button"
+                  onClick={() => go(`tutoring-post/new/teacher-profile/${id}`)}
+                >
+                  새 모집 공고 작성하러 가기
+                </Btn>
+              )}
+            </div>
             <Btn
               className="primary"
               disabled={

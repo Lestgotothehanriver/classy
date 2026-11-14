@@ -1,12 +1,20 @@
 from django.contrib import admin
 
-from .models import Report, ReportChoice, Inquiry
+from .models import Inquiry, Report, ReportAttachment, ReportChoice
 
 
 class ReportChoiceInline(admin.TabularInline):
     model = ReportChoice
     extra = 0
     readonly_fields = ("content",)
+
+
+class ReportAttachmentInline(admin.TabularInline):
+    """관리자 신고 화면에서 첨부 증거를 함께 표시한다."""
+
+    model = ReportAttachment
+    extra = 0
+    readonly_fields = ("image", "position")
 
 @admin.register(Inquiry)
 class InquiryAdmin(admin.ModelAdmin):
@@ -22,7 +30,7 @@ class ReportAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
     search_fields = ("reporter__username", "reported_user__username")
     readonly_fields = ("created_at",)
-    inlines = [ReportChoiceInline]
+    inlines = [ReportChoiceInline, ReportAttachmentInline]
 
 
 @admin.register(ReportChoice)
