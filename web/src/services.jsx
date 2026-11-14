@@ -1,4 +1,5 @@
 import React, { useContext, useState } from "react";
+import { Flag } from "lucide-react";
 import { api, downloadProtectedFile, list } from "./api";
 import {
   Ctx,
@@ -881,13 +882,16 @@ function Tutoring() {
   );
 }
 
-export function ReportForm({ source, id }) {
+export function ReportForm({ source, id, label = "신고하기" }) {
   return (
-    <details className="service-section">
-      <summary>신고하기</summary>
+    <details className="service-section report-form">
+      <summary>
+        <Flag size={16} aria-hidden="true" />
+        {label}
+      </summary>
       <ActionForm
         path="/report/create/"
-        submit="신고 접수"
+        submit="신고하기"
         transform={(f) => ({
           source,
           target_id: id,
@@ -901,7 +905,9 @@ export function ReportForm({ source, id }) {
             {[
               ["inappropriate_content", "부적절한 내용"],
               ["false_information", "허위 정보"],
-              ["abusive_language", "욕설·비방"],
+              ["abusive_language", "비속어/폭언"],
+              ["excessive_request", "불합리함/과도한 요구"],
+              ["unreported_class_completion", "수업 성사 미신고"],
               ["other", "기타"],
             ].map(([value, label]) => (
               <option value={value} key={value}>

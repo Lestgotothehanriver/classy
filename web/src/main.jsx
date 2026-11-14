@@ -8,6 +8,9 @@ import React, {
 import { createRoot } from "react-dom/client";
 import {
   BookOpen,
+  Ban,
+  MapPin,
+  UserRound,
   ArrowUpRight,
   ArrowRight,
   Search,
@@ -23,6 +26,7 @@ import {
   Menu,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   GraduationCap,
   ShieldCheck,
   SlidersHorizontal,
@@ -60,6 +64,7 @@ import {
   NoticePage,
   Catalog,
   Profile,
+  Avatar,
   endpoints,
   pageNames,
 } from "./design";
@@ -283,6 +288,10 @@ function App() {
     login: () => location.assign("/login"),
     detail: (kind, id, item) => {
       setToast("");
+      if (kind === "teachers") {
+        go(`teacher-profile/${id}`);
+        return;
+      }
       setModal({ type: "detail", kind, id, item });
     },
     refreshUser: () => api("/accounts/me/").then(setUser),
@@ -324,6 +333,12 @@ function App() {
         ) : page === "profile" ? (
           <Gate>
             <Profile onLogout={logout} />
+          </Gate>
+        ) : page === "teacher-profile" ? (
+          <Gate>
+            <TeacherProfilePage
+              id={Number(location.hash.slice(1).split("/")[1])}
+            />
           </Gate>
         ) : page === "notices" ? (
           <NoticePage />
@@ -469,11 +484,13 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
         kind === "lectures"
           ? "강의 상세"
           : kind === "teachers"
-            ? "선생님 소개"
+            ? "선생님 프로필"
             : "과외 모집 상세"
       }
       onClose={onClose}
       wide
+      className={isTeacher ? "teacher-profile-modal" : ""}
+      scrollable={isTeacher}
     >
       <State resource={resource}>
         {video ? (
@@ -765,6 +782,12 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
         ) : isTeacher ? (
           <>
             <TeacherProfile id={id} teacher={d} item={item} />
+            <ProfileSafetyActions
+              instructorId={id}
+              userId={d.user || item?.user}
+              teacherName={d.user_name || item?.user_name || "선생님"}
+              onBlocked={onClose}
+            />
             <Proposal kind={kind} id={id} onClose={onClose} />
           </>
         ) : (
@@ -789,18 +812,143 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
             <Proposal kind={kind} id={id} onClose={onClose} />
           </>
         )}
-        <ReportForm
-          source={
-            kind === "lectures"
-              ? "lecture"
-              : kind === "teachers"
-                ? "teacher_profile"
-                : "tutoring_post"
-          }
-          id={id}
-        />
+        {!isTeacher && (
+          <ReportForm
+            source={kind === "lectures" ? "lecture" : "tutoring_post"}
+            id={id}
+          />
+        )}
       </State>
     </Modal>
+  );
+}
+function TeacherProfilePage({ id }) {
+  const { go } = useContext(Ctx);
+  const resource = useLoad(
+    Number.isInteger(id) && id > 0 ? `/tutoring/instructors/${id}/` : null,
+    [id],
+  );
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return (
+      <Empty
+        title="선생님 프로필을 찾을 수 없어요"
+        text="목록에서 다시 선택해 주세요."
+      >
+        <Btn onClick={() => go("teachers")}>선생님 목록으로</Btn>
+      </Empty>
+    );
+  }
+
+  const teacher = resource.data || {};
+  const teacherName = teacher.user_name || "";
+  return (
+    <div className="teacher-profile-page">
+      <State resource={resource}>
+        <div className="teacher-profile-mobile-actions">
+          <Btn
+            className="small teacher-profile-mobile-list"
+            onClick={() => go("teachers")}
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+            선생님 목록으로
+          </Btn>
+          <ProfileSafetyActions
+            className="teacher-profile-mobile-safety-actions"
+            instructorId={id}
+            userId={teacher.user}
+            teacherName={teacherName || "선생님"}
+            onBlocked={() => go("teachers")}
+            reportLabel="신고"
+            blockLabel="차단"
+          />
+        </div>
+        <TeacherProfile id={id} teacher={teacher} />
+        <ProfileSafetyActions
+          className="teacher-profile-desktop-safety-actions"
+          instructorId={id}
+          userId={teacher.user}
+          teacherName={teacherName || "선생님"}
+          onBlocked={() => go("teachers")}
+        />
+        <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+      </State>
+    </div>
+  );
+}
+function ProfileSafetyActions({
+  className = "",
+  instructorId,
+  userId,
+  teacherName,
+  onBlocked,
+  reportLabel,
+  blockLabel,
+}) {
+  return (
+    <div className={`profile-safety-actions ${className}`.trim()}>
+      <ReportForm
+        source="teacher_profile"
+        id={instructorId}
+        label={reportLabel}
+      />
+      <BlockTeacherButton
+        userId={userId}
+        teacherName={teacherName}
+        onBlocked={onBlocked}
+        label={blockLabel}
+      />
+    </div>
+  );
+}
+function BlockTeacherButton({
+  userId,
+  teacherName,
+  onBlocked,
+  label = "차단하기",
+}) {
+  const { user, notify } = useContext(Ctx);
+  const [busy, setBusy] = useState(false);
+  const targetUserId = Number(userId);
+  const currentUserId = Number(user?.id);
+
+  if (
+    !Number.isInteger(targetUserId) ||
+    targetUserId <= 0 ||
+    targetUserId === currentUserId
+  ) {
+    return null;
+  }
+
+  async function blockTeacher() {
+    if (
+      !window.confirm(
+        `${teacherName} 선생님을 차단할까요? 차단한 선생님의 프로필과 강의를 더 이상 볼 수 없어요.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await api("/blocks/", {
+        method: "POST",
+        body: { blocked_user: targetUserId },
+      });
+      notify(`${teacherName} 선생님을 차단했어요.`);
+      onBlocked();
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Btn className="block-teacher-button" disabled={busy} onClick={blockTeacher}>
+      <Ban size={16} aria-hidden="true" />
+      {busy ? "차단 중…" : label}
+    </Btn>
   );
 }
 function Proposal({ kind, id, onClose }) {
@@ -843,7 +991,7 @@ function Proposal({ kind, id, onClose }) {
       {!open ? (
         <Btn className="primary" onClick={() => setOpen(true)}>
           <MessageCircle size={16} />
-          과외 상담 제안하기
+          이 선생님에게 과외 문의하기
         </Btn>
       ) : (
         <form className="form" onSubmit={submit}>
@@ -913,7 +1061,7 @@ function Proposal({ kind, id, onClose }) {
   );
 }
 function TeacherProfile({ id, teacher, item }) {
-  const { user, notify, detail } = useContext(Ctx);
+  const { user, notify, detail, subjects } = useContext(Ctx);
   const [tab, setTab] = useState("info");
   const info = useLoad(`/tutoring/instructors/${id}/info/`);
   const reviews = useLoad(`/tutoring/instructors/${id}/reviews/`);
@@ -956,6 +1104,30 @@ function TeacherProfile({ id, teacher, item }) {
         ? "대면"
         : method || "협의";
   const infoData = info.data || {};
+  const sexLabel =
+    profile.sex === "여" || profile.sex === "여성" || profile.sex === "F"
+      ? "여성"
+      : profile.sex === "남" || profile.sex === "남성" || profile.sex === "M"
+        ? "남성"
+        : profile.sex || "";
+  const personalInfo = [sexLabel, age != null ? `만 ${age}세` : ""].filter(
+    Boolean,
+  );
+  const locationLabel =
+    profile.region || textLabels(infoData.regions) || infoData.location || "";
+  const subjectLabels = (Array.isArray(profile.subjects)
+    ? profile.subjects
+    : []
+  )
+    .map((subject) => {
+      if (typeof subject === "object") return subject.label || subject.name;
+      if (typeof subject === "string" && !/^\d+$/.test(subject)) {
+        return subject;
+      }
+      return subjects.find((item) => item.number === Number(subject))?.name;
+    })
+    .filter(Boolean)
+    .join(", ");
   const reviewRows = list(reviews.data);
   const ratingAverage = (field) => {
     const scores = reviewRows
@@ -991,17 +1163,15 @@ function TeacherProfile({ id, teacher, item }) {
   return (
     <section className="teacher-profile-detail">
       <div className="teacher-profile-header">
-        {profile.profile_image ? (
-          <img src={profile.profile_image} alt="" className="avatar profile-avatar" />
-        ) : (
-          <span className="avatar profile-avatar">
-            {(profile.user_name || "선").slice(0, 1)}
-          </span>
-        )}
+        <Avatar
+          src={profile.profile_image}
+          name={profile.user_name || "선생님"}
+          size="profile-avatar"
+        />
         <div className="teacher-profile-identity">
           <h2>
             {profile.user_name || "선생님"}
-            {profile.is_certified && <ShieldCheck size={17} aria-label="인증된 선생님" />}
+            {profile.is_certified && <ShieldCheck size={17} className="certified" aria-label="인증된 선생님" />}
           </h2>
           <p>{[profile.university, profile.department, studentNumber].filter(Boolean).join(" · ")}</p>
         </div>
@@ -1017,12 +1187,38 @@ function TeacherProfile({ id, teacher, item }) {
           </button>
         )}
       </div>
-      <div className="teacher-profile-meta">
-        {[profile.sex, age != null ? `만 ${age}세` : "", profile.region]
-          .filter(Boolean)
-          .join(" · ") || "정보 미입력"}
+      <div className="teacher-profile-info">
+        {personalInfo.length > 0 && (
+          <div className="teacher-profile-info-item">
+            <UserRound size={15} aria-hidden="true" />
+            <span className="teacher-profile-personal-info">
+              {personalInfo.map((label, index) => (
+                <React.Fragment key={label}>
+                  {index > 0 && (
+                    <span
+                      className="teacher-profile-info-divider"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span>{label}</span>
+                </React.Fragment>
+              ))}
+            </span>
+          </div>
+        )}
+        {locationLabel && (
+          <div className="teacher-profile-info-item">
+            <MapPin size={15} aria-hidden="true" />
+            <span>{locationLabel}</span>
+          </div>
+        )}
+        {subjectLabels && (
+          <div className="teacher-profile-info-item teacher-profile-subjects">
+            <BookOpen size={15} aria-hidden="true" />
+            <span>{subjectLabels}</span>
+          </div>
+        )}
       </div>
-      <Subjects values={profile.subjects} />
       {profile.instruction && (
         <p className="teacher-profile-introduction">
           선생님 한 줄 소개: {profile.instruction}
@@ -1031,7 +1227,12 @@ function TeacherProfile({ id, teacher, item }) {
       <State resource={info}>
         {info.data && (
           <section className="teacher-profile-stats">
-            <div>
+            <div
+              className={
+                "teacher-profile-status" +
+                (infoData.is_tutoring ? " available" : "")
+              }
+            >
               <span>과외 상태</span>
               <strong>{infoData.is_tutoring ? "모집 중" : "구하지 않음"}</strong>
             </div>
@@ -1051,7 +1252,11 @@ function TeacherProfile({ id, teacher, item }) {
                 </div>
                 <div>
                   <span>클래씨 랭킹</span>
-                  <strong>{infoData.current_rank ? `${infoData.current_rank}위` : "-"}</strong>
+                  <strong>
+                    {Number(infoData.current_rank) > 0
+                      ? `${infoData.current_rank}위`
+                      : "랭킹 외"}
+                  </strong>
                 </div>
               </>
             )}

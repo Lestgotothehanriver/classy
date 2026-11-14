@@ -66,6 +66,7 @@ export const pageNames = {
   "tutoring-manage": "나의 과외 관리",
   support: "고객지원",
   notices: "공지사항",
+  "teacher-profile": "선생님 프로필",
 };
 
 const subjectCategories = [
@@ -272,7 +273,7 @@ export function AppIcon({ name, selected = false }) {
     />
   );
 }
-function Avatar({ src, name = "", size = "" }) {
+export function Avatar({ src, name = "", size = "" }) {
   return (
     <img
       className={"avatar " + size}
@@ -304,6 +305,7 @@ export function Shell({ page, activeRole, setActiveRole, children }) {
   const selected = (id) =>
     id === page ||
     (id === tutoring && ["teachers", "posts"].includes(page)) ||
+    (id === "teachers" && page === "teacher-profile") ||
     (id === "profile" && ["saved", "learning", "upload"].includes(page));
   return (
     <>

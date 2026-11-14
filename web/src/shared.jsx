@@ -447,7 +447,14 @@ export function Gate({ children }) {
     </Empty>
   );
 }
-export function Modal({ title, onClose, children, wide = false, className = "" }) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  wide = false,
+  className = "",
+  scrollable = false,
+}) {
   const { toast } = useContext(Ctx);
   const ref = useRef();
   useEffect(() => {
@@ -482,7 +489,7 @@ export function Modal({ title, onClose, children, wide = false, className = "" }
         if (e.target === ref.current) onClose();
       }}
     >
-      {content}
+      {scrollable ? <div className="modal-scroll">{content}</div> : content}
     </dialog>
   );
 }
