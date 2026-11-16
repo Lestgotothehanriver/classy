@@ -88,7 +88,7 @@ class RecentPaybackAccountView(APIView):
     def get(self, request):
         account = (
             StudentPaybackAccount.objects.select_related("registration__student")
-            .filter(registration__student__user=request.user)
+            .filter(registration__student=request.user)
             .order_by("-updated_at", "-pk")
             .first()
         )
