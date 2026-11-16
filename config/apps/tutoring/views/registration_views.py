@@ -81,7 +81,7 @@ class ChatRoomTutoringRegistrationView(APIView):
 
 
 class RecentPaybackAccountView(APIView):
-    """Returns the authenticated student's most recently saved payback account."""
+    """가장 최근 사용된 결제 계좌 정보를 반환합니다."""
 
     permission_classes = [permissions.IsAuthenticated]
 
