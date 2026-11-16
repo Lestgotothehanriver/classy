@@ -28,6 +28,7 @@ from .views import (
     StudentMyPostAPIView,
     InstructorDetailAPIView,
     ChatRoomTutoringRegistrationView,
+    RecentPaybackAccountView,
     CommissionPaymentView,
     MyTutoringRegistrationView,
     PaymentInfoView,
@@ -69,6 +70,11 @@ urlpatterns = [
         "resources/chatrooms/<int:chat_room_id>/",
         ChatRoomTutoringRegistrationView.as_view(),
         name="chatroom-tutoring-registration",
+    ),
+    path(
+        "payback-accounts/recent/",
+        RecentPaybackAccountView.as_view(),
+        name="recent-payback-account",
     ),
     path(
         "resources/chatrooms/<int:chat_room_id>/my-registration/",

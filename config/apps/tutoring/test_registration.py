@@ -1,5 +1,5 @@
 import tempfile
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest.mock import Mock, patch
 
 from django.contrib import admin
@@ -24,6 +24,7 @@ from config.apps.tutoring.registration_services import (
     _notify_after_commit,
     confirm_fee_payment as confirm_fee_payment_service,
     decrypt_account_number,
+    encrypt_account_number,
 )
 
 from .models import (
@@ -175,6 +176,57 @@ class TutoringRegistrationFlowTest(APITestCase):
         self.assertNotIn("virtualAccount", body["payment"])
         self.assertEqual(CommissionInvoice.objects.count(), 1)
         self.assertEqual(TutoringResource.objects.get().files.count(), 2)
+
+    def test_recent_payback_account_returns_the_students_latest_account_only(self):
+        first_response = self.student_client.put(
+            self.url,
+            self.student_payload(),
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, 200, first_response.data)
+
+        newer_post = TutoringPost.objects.create(
+            student=self.student,
+            title="영어",
+        )
+        newer_room = ChatRoom.objects.create(
+            student=self.student,
+            instructor=self.instructor,
+            post=newer_post,
+            initiated_by=self.student_user,
+        )
+        newer_registration = TutoringRegistration.objects.create(
+            student=self.student_user,
+            instructor=self.instructor_user,
+            chat_room=newer_room,
+            subject="영어",
+            start_date=date(2026, 8, 1),
+        )
+        StudentPaybackAccount.objects.create(
+            registration=newer_registration,
+            bank_code="카카오뱅크",
+            encrypted_account_number=encrypt_account_number("9876543210"),
+            account_holder="김클래시",
+        )
+
+        response = self.student_client.get("/tutoring/payback-accounts/recent/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            response.json(),
+            {
+                "paybackAccount": {
+                    "bankCode": "카카오뱅크",
+                    "accountNumber": "9876543210",
+                    "accountHolder": "김클래시",
+                }
+            },
+        )
+
+        instructor_response = self.instructor_client.get(
+            "/tutoring/payback-accounts/recent/"
+        )
+        self.assertEqual(instructor_response.status_code, 200)
+        self.assertEqual(instructor_response.json(), {"paybackAccount": None})
 
     def test_short_term_uses_seven_percent(self):
         response = self.instructor_client.put(

@@ -6,13 +6,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from config.apps.block.utils import get_blocked_user_ids
 
-from ..models import CommissionInvoice, TutoringRegistration, TutoringSubmission
+from ..models import (
+    CommissionInvoice,
+    StudentPaybackAccount,
+    TutoringRegistration,
+    TutoringSubmission,
+)
 from ..registration_serializers import MyRegistrationInputSerializer
 from ..registration_services import (
     RegistrationLockedError,
     RegistrationPermissionError,
     get_chat_room_for_user,
     save_my_registration,
+    decrypt_account_number,
     serialize_payment,
     serialize_registration,
 )
@@ -72,6 +78,34 @@ class ChatRoomTutoringRegistrationView(APIView):
         data = serialize_registration(registration, request.user, role)
         data["payment"] = serialize_payment(invoice)
         return Response(data)
+
+
+class RecentPaybackAccountView(APIView):
+    """Returns the authenticated student's most recently saved payback account."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        account = (
+            StudentPaybackAccount.objects.select_related("registration__student")
+            .filter(registration__student__user=request.user)
+            .order_by("-updated_at", "-pk")
+            .first()
+        )
+        if account is None:
+            return Response({"paybackAccount": None})
+
+        return Response(
+            {
+                "paybackAccount": {
+                    "bankCode": account.bank_code,
+                    "accountNumber": decrypt_account_number(
+                        account.encrypted_account_number
+                    ),
+                    "accountHolder": account.account_holder,
+                }
+            }
+        )
 
 
 class MyTutoringRegistrationView(APIView):

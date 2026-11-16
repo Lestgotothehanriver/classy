@@ -34,4 +34,5 @@ from .registration_views import (
     CommissionPaymentView,
     MyTutoringRegistrationView,
     PaymentInfoView,
+    RecentPaybackAccountView,
 )
