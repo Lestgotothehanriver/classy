@@ -503,6 +503,7 @@ export function Modal({
   wide = false,
   className = "",
   scrollable = false,
+  style,
 }) {
   const { toast } = useContext(Ctx);
   const ref = useRef();
@@ -533,6 +534,7 @@ export function Modal({
     <dialog
       ref={ref}
       className={surfaceClassName}
+      style={style}
       onCancel={(event) => {
         if (event.target !== ref.current) return;
         event.preventDefault();
@@ -546,6 +548,38 @@ export function Modal({
     </dialog>
   );
 }
+
+/**
+ * 신고하기 다이얼로그를 기준으로 만든 재사용 가능한 콘텐츠 모달입니다.
+ *
+ * [scrollable], [width], [height], [maxWidth], [maxHeight]로 화면별
+ * 스크롤 및 크기를 조정할 수 있습니다.
+ */
+export function CustomModal({
+  title,
+  onClose,
+  children,
+  className = "",
+  scrollable = true,
+  width = "min(440px, calc(100dvw - 24px))",
+  height = "fit-content",
+  maxWidth = "calc(100dvw - 24px)",
+  maxHeight = "calc(100dvh - 24px)",
+  style = {},
+}) {
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      className={["custom-modal", className].filter(Boolean).join(" ")}
+      scrollable={scrollable}
+      style={{ width, height, maxWidth, maxHeight, ...style }}
+    >
+      {children}
+    </Modal>
+  );
+}
+
 export function ConfirmDialog({
   title,
   description,

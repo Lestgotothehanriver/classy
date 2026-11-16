@@ -10,6 +10,7 @@ import {
   money,
   date,
   Modal,
+  CustomModal,
   Subjects,
   AcademicFields,
   BANKS,
@@ -968,10 +969,9 @@ export function ReportForm({ source, id, label = "신고하기" }) {
         {label}
       </Btn>
       {open && (
-        <Modal
+        <CustomModal
           title="신고하기"
           className="report-dialog"
-          scrollable
           onClose={closeReportDialog}
         >
           <ActionForm
@@ -1047,7 +1047,7 @@ export function ReportForm({ source, id, label = "신고하기" }) {
               ))}
             </section>
           </ActionForm>
-        </Modal>
+        </CustomModal>
       )}
     </>
   );

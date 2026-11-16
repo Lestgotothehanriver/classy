@@ -1348,7 +1348,7 @@ export function Catalog({ kind, mode }) {
         </nav>
         {!isMine && (
           <>
-            <h3>필터</h3>
+            <h2>필터</h2>
             <div className="side-filters" aria-label="필터 항목">
               {sidebarFilterTabs.map((label) => (
                 <button

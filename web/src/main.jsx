@@ -45,7 +45,11 @@ import { api, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from ".
 import { Auth } from "./auth";
 import { Studio } from "./studio";
 import { Services, ReportForm, StudentPostEditorPage } from "./services";
-import { Registration, registrationStatus } from "./contracts";
+import {
+  ClassInformationModal,
+  Registration,
+  registrationStatus,
+} from "./contracts";
 import "./redesign.css";
 import {
   Ctx,
@@ -2465,14 +2469,27 @@ function Chat({ initialRoomId }) {
         </div>
       </div>
       {registration && room && !isSupportRoom && (
-        <Registration
-          room={room}
-          onClose={() => {
-            setRegistration(false);
-            registrationResource.reload();
-          }}
-          onUpdated={registrationResource.reload}
-        />
+        registrationComplete ? (
+          <ClassInformationModal
+            resource={registrationData}
+            counterpartName={
+              room.opponent_info?.nickname || room.opponent_info?.user_name
+            }
+            onClose={() => {
+              setRegistration(false);
+              registrationResource.reload();
+            }}
+          />
+        ) : (
+          <Registration
+            room={room}
+            onClose={() => {
+              setRegistration(false);
+              registrationResource.reload();
+            }}
+            onUpdated={registrationResource.reload}
+          />
+        )
       )}
     </>
   );

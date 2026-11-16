@@ -64,10 +64,13 @@ const tutoringResource = {
   instructor: 2,
   student: 1,
   instructor_user_name: "테스트 선생님",
+  counterpart: { nickname: "테스트 선생님" },
+  subject: [{ label: "미적분 I" }],
   class_type: "정규 수업",
   start_date: "2026-10-01",
+  first_month_fee: 100000,
   fee_payment_status: "AWAITING_CONFIRMATION",
-  contract_status: "REGISTERED",
+  contract_status: "ACTIVE",
 };
 await page.route("**/api/**", async (route) => {
   const req = route.request(),
@@ -118,12 +121,20 @@ await page.route("**/api/**", async (route) => {
 });
 try {
   await page.goto("http://127.0.0.1:4173/#tutoring-manage");
-  await page.getByText("관리자 확인 중", { exact: true }).waitFor();
+  await page.getByText("성사 등록 완료", { exact: true }).waitFor();
   await page
     .getByRole("tab", { name: "성사 등록 진행 중", exact: true })
     .click();
-  await page.getByText("관리자 확인 중", { exact: true }).waitFor();
+  await page.getByText("진행 중인 성사 등록이 없습니다.", { exact: true }).waitFor();
   await page.getByRole("tab", { name: "전체", exact: true }).click();
+  await page.getByRole("button", { name: "수업 정보", exact: true }).click();
+  await page.getByText("테스트 선생님 선생님과의 수업", { exact: true }).waitFor();
+  await page.getByText("첫 수업 시작일", { exact: true }).waitFor();
+  await page.getByText("수업 유형", { exact: true }).waitFor();
+  await page.getByText("첫 달 수업료", { exact: true }).waitFor();
+  await page.getByText("성사 등록 여부", { exact: true }).waitFor();
+  assert.equal(await page.url(), "http://127.0.0.1:4173/#tutoring-manage");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /나의 모집글/ }).click();
   await page.getByText("학생 정보", { exact: true }).waitFor();
   await page.getByText("여 · 만 17세 · 고2 · 이과", { exact: true }).waitFor();
@@ -193,14 +204,16 @@ try {
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "수업 정보", exact: true }).waitFor();
   await page.getByRole("button", { name: "수업 정보", exact: true }).click();
+  await page.getByText("테스트 선생님 선생님과의 수업", { exact: true }).waitFor();
   await page.getByText("수업 과목", { exact: true }).waitFor();
   await page.getByText("미적분 I", { exact: true }).waitFor();
-  await page.getByText("수업 시작일", { exact: true }).waitFor();
+  await page.getByText("첫 수업 시작일", { exact: true }).waitFor();
   await page.getByText("2026.10.01", { exact: true }).waitFor();
-  await page.getByText("수업 형태", { exact: true }).waitFor();
+  await page.getByText("수업 유형", { exact: true }).waitFor();
   await page.getByText("정규 수업", { exact: true }).waitFor();
-  await page.getByText("총 수업료", { exact: true }).waitFor();
+  await page.getByText("첫 달 수업료", { exact: true }).waitFor();
   await page.getByText("100,000원", { exact: true }).waitFor();
+  await page.getByText("성사 등록 여부", { exact: true }).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "성사 등록 제출", exact: true }).count(),
     0,

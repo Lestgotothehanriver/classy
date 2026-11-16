@@ -852,7 +852,7 @@ textarea {
 }
 .catalog-aside h2 {
   font-size: 14px;
-  margin: 0 0 17px;
+  margin-top: 12px;
 }
 .catalog-aside nav {
   display: flex;
@@ -3482,6 +3482,19 @@ dialog.teacher-profile-modal {
   color: #1f2023;
   font-weight: 600;
 }
+.class-information-card {
+  padding: 20px;
+  border-radius: 10px;
+  background: var(--surface, #f7f8fa);
+}
+.class-information-card h3 {
+  margin: 0 0 18px;
+  color: #1f2023;
+  font-size: 18px;
+}
+.class-information-nickname {
+  color: var(--primary);
+}
 .detail-tabs {
   margin: 22px 0 10px;
 }
@@ -4587,18 +4600,23 @@ progress {
   font-size: 14px;
   justify-content: center;
 }
-.report-dialog {
-  width: min(440px, calc(100dvw - 24px));
-  max-width: calc(100dvw - 24px);
-  height: fit-content;
-  max-height: calc(100dvh - 24px);
+.custom-modal {
   min-width: 0;
   min-height: 0;
 }
-.report-dialog > .modal-scroll {
+.custom-modal > .modal-scroll {
   height: auto;
   max-height: calc(100dvh - 84px);
   overscroll-behavior: contain;
+}
+.custom-modal .modal-head {
+  min-height: 38px;
+}
+.custom-modal .modal-head h2 {
+  margin: 0;
+}
+.custom-modal .modal-head .icon-button {
+  align-self: center;
 }
 .report-dialog .service-section,
 .report-dialog .form,

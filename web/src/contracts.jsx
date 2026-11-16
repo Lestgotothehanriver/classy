@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import { BookOpen } from "lucide-react";
 import { api, list } from "./api";
-import { BANKS, Ctx, Modal, Btn, State, Empty, useLoad, money, date } from "./shared";
+import { BANKS, Ctx, Modal, CustomModal, Btn, State, Empty, useLoad, money, date } from "./shared";
 import { ActionForm } from "./services";
 
 export function registrationStatus(data = {}) {
@@ -47,15 +47,11 @@ export function Registration({ room, onClose, onUpdated }) {
     [error, setError] = useState("");
   const teacher = d.instructor?.id === user.id;
   const currentStatus = registrationStatus(d);
-  const submission = d.mySubmission || {};
-  const classType =
-    submission.classType === "SHORT_TERM" ? "단기 수업" : "정규 수업";
-  const startDate = d.startDate
-    ? String(d.startDate).replaceAll("-", ".")
-    : "날짜 미정";
-  const subject = Array.isArray(d.subject)
-    ? d.subject.join(", ")
-    : d.subject || "과목 미정";
+  const counterpartName =
+    room.opponent_info?.nickname ||
+    room.opponent_info?.user_name ||
+    (teacher ? d.student?.userName : d.instructor?.userName) ||
+    "상대방";
   const shouldPoll =
     (d.studentSubmitted || d.instructorSubmitted) &&
     !currentStatus.isComplete &&
@@ -119,32 +115,38 @@ export function Registration({ room, onClose, onUpdated }) {
       setBusy(false);
     }
   }
+  if (currentStatus.isComplete) {
+    return (
+      <ClassInformationModal
+        resource={d}
+        counterpartName={counterpartName}
+        onClose={onClose}
+      />
+    );
+  }
   return (
     <Modal
-      title={currentStatus.isComplete ? "수업 정보" : "과외 성사 등록"}
+      title="과외 성사 등록"
       onClose={onClose}
       wide
     >
       <State resource={resource}>
-        <p className="registration-summary">
+        {!currentStatus.isComplete && <p className="registration-summary">
           <span className={"registration-status " + currentStatus.tone}>
             {currentStatus.label}
           </span>{" "}
           · 학생{" "}
           {d.studentSubmitted ? "제출 완료" : "미제출"} · 선생님{" "}
           {d.instructorSubmitted ? "제출 완료" : "미제출"}
-        </p>
-        {shouldPoll && <p className="muted">상태를 자동으로 확인하고 있어요.</p>}
-        {currentStatus.isComplete && (
-          <p className="muted">성사 등록이 완료되어 수정할 수 없습니다.</p>
-        )}
-        {d.attributeValidationStatus === "MISMATCHED" && (
+        </p>}
+        {!currentStatus.isComplete && shouldPoll && <p className="muted">상태를 자동으로 확인하고 있어요.</p>}
+        {!currentStatus.isComplete && d.attributeValidationStatus === "MISMATCHED" && (
           <p className="error">
             서로 제출한 과목·시작일이 다릅니다. 상대방과 확인한 뒤 다시 제출해
             주세요.
           </p>
         )}
-        {d.payment && (
+        {!currentStatus.isComplete && d.payment && (
           <section className="info-panel">
             <h3>성사 수수료 안내</h3>
             <p>
@@ -155,33 +157,6 @@ export function Registration({ room, onClose, onUpdated }) {
               {currentStatus.label}
             </p>
             <small>입금 확인은 운영 검토 후 반영됩니다.</small>
-          </section>
-        )}
-        {currentStatus.isComplete && (
-          <section className="info-panel">
-            <h3>수업 정보</h3>
-            <dl className="class-info-list">
-              <div>
-                <dt>수업 과목</dt>
-                <dd>{subject}</dd>
-              </div>
-              <div>
-                <dt>수업 시작일</dt>
-                <dd>{startDate}</dd>
-              </div>
-              <div>
-                <dt>수업 형태</dt>
-                <dd>{classType}</dd>
-              </div>
-              <div>
-                <dt>총 수업료</dt>
-                <dd>
-                  {submission.firstMonthFee == null
-                    ? "협의"
-                    : `${money(submission.firstMonthFee)}원`}
-                </dd>
-              </div>
-            </dl>
           </section>
         )}
         {!currentStatus.isComplete && (
@@ -284,11 +259,88 @@ export function Registration({ room, onClose, onUpdated }) {
   );
 }
 
+/** 앱의 수업 정보 카드와 같은 항목을 웹 모달에서 표시한다. */
+function ClassInformationCard({ resource, counterpartName }) {
+  const classType =
+    resource.class_type === "단기 수업" ||
+    resource.class_type === "SHORT_TERM" ||
+    resource.classType === "SHORT_TERM" ||
+    resource.mySubmission?.classType === "SHORT_TERM"
+      ? "단기 수업"
+      : "정규 수업";
+  const counterpart =
+    counterpartName ||
+    resource.counterpart?.nickname ||
+    resource.instructor_user_name ||
+    resource.student_user_name ||
+    "상대방";
+  const subject = (Array.isArray(resource.subject)
+    ? resource.subject
+    : [resource.subject]
+  )
+    .map((item) => (typeof item === "object" ? item?.label || item?.name : item))
+    .filter(Boolean)
+    .join(", ") || "과목 미정";
+  const startDate = resource.start_date || resource.startDate
+    ? String(resource.start_date || resource.startDate).replaceAll("-", ".")
+    : "날짜 미정";
+  const feeLabel = classType === "단기 수업" ? "총 수업료" : "첫 달 수업료";
+  const fee =
+    resource.first_month_fee ??
+    resource.firstMonthFee ??
+    resource.mySubmission?.firstMonthFee;
+  const registration = registrationStatus(resource);
+
+  return (
+    <section className="class-information-card">
+      <h3>
+        <span className="class-information-nickname">{counterpart}</span>{" "}
+        선생님과의 수업
+      </h3>
+      <dl className="class-info-list">
+        <div>
+          <dt>수업 과목</dt>
+          <dd>{subject}</dd>
+        </div>
+        <div>
+          <dt>첫 수업 시작일</dt>
+          <dd>{startDate}</dd>
+        </div>
+        <div>
+          <dt>수업 유형</dt>
+          <dd>{classType}</dd>
+        </div>
+        <div>
+          <dt>{feeLabel}</dt>
+          <dd>{fee == null ? "협의" : `${money(fee)}원`}</dd>
+        </div>
+        <div>
+          <dt>성사 등록 여부</dt>
+          <dd>{registration.label}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+/** 앱의 수업 정보 카드와 같은 항목을 웹 모달에서 표시한다. */
+export function ClassInformationModal({ resource, counterpartName, onClose }) {
+  return (
+    <CustomModal title="수업 정보" onClose={onClose}>
+      <ClassInformationCard
+        resource={resource}
+        counterpartName={counterpartName}
+      />
+    </CustomModal>
+  );
+}
+
 export function ClassHistory() {
   const { user, notify, openChat } = useContext(Ctx),
     [page, setPage] = useState(1),
     [tab, setTab] = useState("all"),
-    [edit, setEdit] = useState(null);
+    [edit, setEdit] = useState(null),
+    [classInformation, setClassInformation] = useState(null);
   const r = useLoad(`/tutoring/resources/?role=${user.role}&page=${page}`),
     teacher = user.role === "instructor";
   const base =
@@ -372,7 +424,10 @@ export function ClassHistory() {
                 <div className="student-class-actions">
                   {studentStatus.completed ? (
                     <>
-                      <Btn className="primary" onClick={() => openChat(x.chat_room_id)}>
+                      <Btn
+                        className="primary"
+                        onClick={() => setClassInformation(x)}
+                      >
                         수업 정보
                       </Btn>
                       <Btn onClick={() => setEdit(x)}>
@@ -406,9 +461,12 @@ export function ClassHistory() {
                 <p className="muted">{x.my_review?.comment}</p>
               </div>
               {status.isComplete && (
-                <Btn onClick={() => setEdit(x)}>
-                  {x.my_review ? "후기 수정" : "후기 작성"}
-                </Btn>
+                <div className="actions">
+                  <Btn onClick={() => setClassInformation(x)}>수업 정보</Btn>
+                  <Btn onClick={() => setEdit(x)}>
+                    {x.my_review ? "후기 수정" : "후기 작성"}
+                  </Btn>
+                </div>
               )}
             </article>
           );
@@ -456,9 +514,9 @@ export function ClassHistory() {
             {(teacher
               ? [["rating", "만족도"]]
               : [
-                  ["professionalism", "전문성"],
-                  ["teaching_skill", "설명력"],
-                  ["punctuality", "시간 준수"],
+                  ["professionalism", "전문적이에요"],
+                  ["teaching_skill", "강의력이 좋아요"],
+                  ["punctuality", "시간을 잘 지켜요"],
                 ]
             ).map(([name, label]) => (
               <label key={name}>
@@ -501,6 +559,12 @@ export function ClassHistory() {
             </Btn>
           )}
         </Modal>
+      )}
+      {classInformation && (
+        <ClassInformationModal
+          resource={classInformation}
+          onClose={() => setClassInformation(null)}
+        />
       )}
     </section>
   );
