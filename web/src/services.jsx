@@ -897,7 +897,7 @@ function StudentPostEditorForm({ editing, subjects, returnDestination }) {
   );
 }
 
-export function ReportForm({ source, id, label = "신고하기" }) {
+export function ReportForm({ source, id, label = "신고하기", className = "" }) {
   const [open, setOpen] = useState(false);
   const [selectedReasons, setSelectedReasons] = useState([]);
   const [description, setDescription] = useState("");
@@ -962,7 +962,7 @@ export function ReportForm({ source, id, label = "신고하기" }) {
     <>
       <Btn
         type="button"
-        className="report-form"
+        className={`report-form ${className}`.trim()}
         onClick={() => setOpen(true)}
       >
         <Flag size={16} aria-hidden="true" />

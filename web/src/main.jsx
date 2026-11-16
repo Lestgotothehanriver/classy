@@ -22,7 +22,9 @@ import {
   ThumbsUp,
   MessageCircle,
   Heart,
+  Info,
   Bell,
+  BellOff,
   Settings,
   LogOut,
   X,
@@ -44,12 +46,9 @@ import {
 import { api, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
+import { ClassInformationModal, registrationStatus } from "./contracts";
 import { Services, ReportForm, StudentPostEditorPage } from "./services";
-import {
-  ClassInformationModal,
-  Registration,
-  registrationStatus,
-} from "./contracts";
+import { RegistrationPage } from "./registration-page";
 import "./redesign.css";
 import {
   Ctx,
@@ -79,6 +78,7 @@ import {
 } from "./design";
 import { getMobileStoreUrl } from "./app_download";
 import { LandingPage } from "./landing";
+import { getLatestClassResource } from "./tutoring-state";
 
 const chatNotificationTypes = new Set([
   "message",
@@ -210,7 +210,7 @@ function App() {
   };
   const openChat = (roomId) => {
     setPendingChatRoomId(roomId?.toString() || null);
-    go("chat");
+    go(roomId ? `chat/${roomId}` : "chat");
   };
 
   function openNotificationTarget(notification) {
@@ -343,12 +343,43 @@ function App() {
           setActiveRole={changeRole}
           fullBleed
         >
-          <Gate>
-            <StudentPostEditorPage
-              postId={route[1] || "new"}
-              returnTo={returnTo}
-            />
-          </Gate>
+          {!ready ? (
+            <div className="loading">
+              <LoaderCircle className="spin" />
+              계정을 확인하고 있어요
+            </div>
+          ) : (
+            <Gate>
+              <StudentPostEditorPage
+                postId={route[1] || "new"}
+                returnTo={returnTo}
+              />
+            </Gate>
+          )}
+        </Shell>
+      </Ctx.Provider>
+    );
+  }
+  if (page === "tutoring-registration") {
+    const route = location.hash.slice(1).split("/");
+    return (
+      <Ctx.Provider value={context}>
+        <Shell
+          page={page}
+          activeRole={activeRole}
+          setActiveRole={changeRole}
+          fullBleed
+        >
+          {!ready ? (
+            <div className="loading">
+              <LoaderCircle className="spin" />
+              계정을 확인하고 있어요
+            </div>
+          ) : (
+            <Gate>
+              <RegistrationPage roomId={route[1]} />
+            </Gate>
+          )}
         </Shell>
       </Ctx.Provider>
     );
@@ -389,7 +420,11 @@ function App() {
               description="진행 중인 상담과 수업 이야기를 확인하세요."
             />
             <Gate>
-              <Chat initialRoomId={pendingChatRoomId} />
+              <Chat
+                initialRoomId={
+                  location.hash.slice(1).split("/")[1] || pendingChatRoomId
+                }
+              />
             </Gate>
           </>
         ) : ["upload", "studio"].includes(page) ? (
@@ -704,7 +739,7 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
             )}
             {instructorPurchaseNotice && (
               <div className="confirm-box" role="alert">
-                <b>학생 계정으로 전환 후 강의를 구매해주세요.</b>
+                <b>학생 계정으로 전환 후 강의를 구매해 주세요.</b>
                 <div className="actions">
                   <Btn onClick={() => setInstructorPurchaseNotice(false)}>
                     확인
@@ -880,7 +915,7 @@ function TeacherProfilePage({ id }) {
       <State resource={resource}>
         <div className="teacher-profile-mobile-actions">
           <MobileBackAction
-            className="small teacher-profile-mobile-list"
+            className="teacher-profile-mobile-list"
             onClick={() => go("teachers")}
           >
             선생님 목록으로
@@ -932,20 +967,22 @@ function ProfileSafetyActions({
         id={instructorId}
         label={reportLabel}
       />
-      <BlockTeacherButton
+      <BlockUserButton
         userId={userId}
-        teacherName={teacherName}
+        targetName={teacherName}
         onBlocked={onBlocked}
         label={blockLabel}
       />
     </div>
   );
 }
-function BlockTeacherButton({
+function BlockUserButton({
   userId,
-  teacherName,
+  targetName,
+  targetLabel = "선생님",
   onBlocked,
   label = "차단하기",
+  className = "",
 }) {
   const { user, notify } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
@@ -969,7 +1006,7 @@ function BlockTeacherButton({
         body: { blocked_user: targetUserId },
       });
       setIsConfirmOpen(false);
-      notify(`${teacherName} 선생님을 차단했어요.`);
+      notify(`${targetName} ${targetLabel}을 차단했어요.`);
       onBlocked();
     } catch (error) {
       notify(error.message);
@@ -981,7 +1018,7 @@ function BlockTeacherButton({
   return (
     <>
       <Btn
-        className="block-teacher-button"
+        className={`compact-action-button block-teacher-button ${className}`.trim()}
         disabled={busy}
         onClick={() => setIsConfirmOpen(true)}
       >
@@ -990,8 +1027,12 @@ function BlockTeacherButton({
       </Btn>
       {isConfirmOpen && (
         <ConfirmDialog
-          title={`${teacherName} 선생님을 차단할까요?`}
-          description="차단한 선생님의 프로필과 강의를 더 이상 볼 수 없어요.(차단한 선생님은 마이페이지에서 수정할 수 있어요.)"
+          title={`${targetName} ${targetLabel}을 차단할까요?`}
+          description={
+            targetLabel === "선생님"
+              ? "차단한 선생님의 프로필과 강의를 더 이상 볼 수 없어요.(차단한 선생님은 마이페이지에서 수정할 수 있어요.)"
+              : "차단한 학생의 프로필과 모집 공고를 더 이상 볼 수 없어요."
+          }
           cancelLabel="취소"
           confirmLabel="차단하기"
           busy={busy}
@@ -2056,7 +2097,10 @@ function toSupportRoom(conversation) {
     id: `support:${conversation.id}`,
     is_support: true,
     title: conversation.title || "클래씨 공식 계정",
-    opponent_info: { user_name: conversation.title || "클래씨 공식 계정" },
+    opponent_info: {
+      user_name: conversation.title || "클래씨 공식 계정",
+      profile_image: conversation.profile_image || "",
+    },
     last_message: conversation.last_message
       ? { text: conversation.last_message.content }
       : null,
@@ -2083,40 +2127,46 @@ function toSupportChatDetail(conversation) {
 }
 
 function Chat({ initialRoomId }) {
-  const { user, notify } = useContext(Ctx);
-  const rooms = useLoad("/chatrooms/?role=" + user.role);
+  const { user, notify, go } = useContext(Ctx);
+  const [likedOnly, setLikedOnly] = useState(false);
+  const rooms = useLoad(
+    `/chatrooms/?role=${user.role}${likedOnly ? "&liked=true" : ""}`,
+    [user.role, likedOnly],
+  );
   const supportRooms = useLoad(
     "/support/conversations/?role=" + user.role,
     [user.role],
   );
+  const classResources = useLoad(`/tutoring/resources/?role=${user.role}`, [user.role]);
   const [selected, setSelected] = useState(null),
     [room, setRoom] = useState(null),
     [error, setError] = useState(""),
     [text, setText] = useState(""),
-    [busy, setBusy] = useState(false);
+    [classInformation, setClassInformation] = useState(null),
+    [failedText, setFailedText] = useState(""),
+    [busy, setBusy] = useState(false),
+    [updatingAction, setUpdatingAction] = useState("");
   const isSupportRoom = isSupportRoomId(selected);
   const selectedSupportConversationId = isSupportRoom
     ? supportConversationId(selected)
     : null;
   const chatRooms = [
-    ...list(rooms.data),
+    ...list(rooms.data).sort((left, right) => Number(right.is_liked) - Number(left.is_liked)),
     ...list(supportRooms.data).map(toSupportRoom),
   ];
-  const registrationResource = useLoad(
-    selected && !isSupportRoom ? `/tutoring/resources/chatrooms/${selected}/` : null,
-    [selected],
-    { keepDataOnReload: true },
-  );
-  const registrationData =
-    Number(registrationResource.data?.chatRoomId) === selected
-      ? registrationResource.data
+  const currentClassResource =
+    selected && !isSupportRoom
+      ? getLatestClassResource(list(classResources.data), selected)
       : null;
-  const registrationComplete = registrationData
-    ? registrationStatus(registrationData).isComplete
-    : false;
+  const registrationComplete = Boolean(
+    currentClassResource && registrationStatus(currentClassResource).isComplete,
+  );
+  const canSend = Boolean(
+    room &&
+      (isSupportRoom || room.is_accepted || Number(room.initiated_by) !== Number(user.id)),
+  );
   const end = useRef();
   const lastRead = useRef("");
-  const [registration, setRegistration] = useState(false);
   useEffect(() => {
     if (!initialRoomId) return;
     const targetRoom = chatRooms.find(
@@ -2125,9 +2175,18 @@ function Chat({ initialRoomId }) {
     if (!targetRoom) return;
 
     setSelected(targetRoom.id);
-    setText("");
-    setRegistration(false);
   }, [initialRoomId, rooms.data, supportRooms.data]);
+  useEffect(() => {
+    if (!selected) return;
+    setText(sessionStorage.getItem(`classy_chat_draft_${selected}`) || "");
+    setFailedText("");
+  }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const key = `classy_chat_draft_${selected}`;
+    if (text.trim()) sessionStorage.setItem(key, text);
+    else sessionStorage.removeItem(key);
+  }, [selected, text]);
   useEffect(() => {
     if (!selected) return;
     let alive = true,
@@ -2197,16 +2256,16 @@ function Chat({ initialRoomId }) {
     };
   }, [selected, user.role]);
   useEffect(() => {
-    if (!selected || registration) return undefined;
-    const timer = window.setInterval(() => registrationResource.reload(), 10000);
+    if (!selected || isSupportRoom || registrationComplete) return undefined;
+    const timer = window.setInterval(() => classResources.reload(), 10000);
     return () => window.clearInterval(timer);
-  }, [selected, registration]);
+  }, [selected, isSupportRoom, registrationComplete]);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
   }, [room?.messages?.length]);
   async function send(e) {
     e.preventDefault();
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || !canSend) return;
     setBusy(true);
     try {
       if (isSupportRoom) {
@@ -2227,12 +2286,19 @@ function Chat({ initialRoomId }) {
           method: "POST",
           body: { text: text.trim() },
         });
-        setRoom((r) => ({ ...r, messages: [...(r.messages || []), m] }));
+        setRoom((current) => ({
+          ...current,
+          messages: (current.messages || []).some((message) => message.id === m.id)
+            ? current.messages
+            : [...(current.messages || []), m],
+        }));
       }
       setText("");
+      setFailedText("");
       rooms.reload();
       supportRooms.reload();
     } catch (e) {
+      setFailedText(text.trim());
       notify(e.message);
     } finally {
       setBusy(false);
@@ -2242,34 +2308,39 @@ function Chat({ initialRoomId }) {
     <>
       <div className="chat-layout">
         <div className="room-list">
-          <h3>나의 대화</h3>
+          <div className="room-list-head">
+            <h3>나의 대화</h3>
+            <Btn className="small" onClick={() => setLikedOnly((value) => !value)}>
+              {likedOnly ? "전체" : "찜"}
+            </Btn>
+          </div>
           <State resource={rooms}>
             {chatRooms.map((r) => (
+              (() => {
+                const roomName =
+                  r.opponent_info?.nickname ||
+                  r.opponent_info?.user_name ||
+                  r.title ||
+                  "대화";
+                return (
               <button
                 key={r.id}
                 className={selected === r.id ? "selected" : ""}
                 onClick={() => {
                   setSelected(r.id);
-                  setText("");
-                  setRegistration(false);
                 }}
               >
-                <span className="avatar">
-                  <MessageCircle size={18} />
-                </span>
+                <Avatar src={r.opponent_info?.profile_image} name={roomName} />
                 <span>
-                  <b>
-                    {r.opponent_info?.nickname ||
-                      r.opponent_info?.user_name ||
-                      r.title ||
-                      "대화"}
-                  </b>
+                  <b>{roomName}</b>
                   <small>
                     {r.last_message?.text || "대화를 시작해 보세요"}
                   </small>
                 </span>
                 {r.not_read_count > 0 && <em>{r.not_read_count}</em>}
               </button>
+                );
+              })()
             ))}
             {!chatRooms.length && (
               <p className="muted room-empty">아직 시작한 대화가 없어요.</p>
@@ -2294,77 +2365,130 @@ function Chat({ initialRoomId }) {
                 </b>
                 {!isSupportRoom && <div className="actions">
                   <Btn
-                    disabled={!room || registrationResource.loading}
-                    onClick={() => setRegistration(true)}
+                    className={registrationComplete ? "compact-action-button" : ""}
+                    disabled={!room || classResources.loading}
+                    onClick={() => {
+                      if (registrationComplete) {
+                        setClassInformation(currentClassResource);
+                        return;
+                      }
+                      history.replaceState(null, "", `#chat/${selected}`);
+                      go(`tutoring-registration/${selected}`);
+                    }}
                   >
+                    {registrationComplete && <Info size={16} aria-hidden="true" />}
                     {registrationComplete ? "수업 정보" : "성사 등록"}
                   </Btn>
                   <Btn
-                    disabled={!room}
+                    className="compact-action-button chat-action-primary"
+                    disabled={!room || updatingAction === "like"}
                     onClick={async () => {
+                      const previous = Boolean(room?.is_liked);
+                      const optimisticValue = !previous;
+                      setRoom((current) =>
+                        current ? { ...current, is_liked: optimisticValue } : current,
+                      );
+                      setUpdatingAction("like");
                       try {
                         const d = await api(`/chatrooms/${selected}/like/`, {
                           method: "POST",
                           body: {},
                         });
+                        const isLiked = d.is_liked ?? optimisticValue;
+                        setRoom((current) =>
+                          current
+                            ? { ...current, is_liked: isLiked }
+                            : current,
+                        );
                         notify(
-                          d.is_liked
-                            ? "대화를 즐겨찾기에 추가했습니다."
-                            : "즐겨찾기를 해제했습니다.",
+                          isLiked
+                            ? "대화를 찜했습니다."
+                            : "찜을 해제했습니다.",
                         );
                         rooms.reload();
                       } catch (e) {
+                        setRoom((current) =>
+                          current ? { ...current, is_liked: previous } : current,
+                        );
                         notify(e.message);
+                      } finally {
+                        setUpdatingAction("");
                       }
                     }}
                   >
-                    즐겨찾기
+                    <Star
+                      size={16}
+                      fill={room?.is_liked ? "currentColor" : "none"}
+                      aria-hidden="true"
+                    />
+                    {room?.is_liked ? "찜 해제" : "찜"}
                   </Btn>
                   <Btn
-                    disabled={!room?.opponent_info?.user_id}
+                    className="compact-action-button chat-action-warning"
+                    disabled={!room || updatingAction === "mute"}
                     onClick={async () => {
-                      if (
-                        !window.confirm(
-                          "상대방을 차단할까요? 차단 관리는 계정 관리에서 할 수 있습니다.",
-                        )
-                      )
-                        return;
-                      try {
-                        await api("/blocks/", {
-                          method: "POST",
-                          body: { blocked_user: room.opponent_info.user_id },
-                        });
-                        setSelected(null);
-                        rooms.reload();
-                        notify("상대방을 차단했습니다.");
-                      } catch (e) {
-                        notify(e.message);
-                      }
-                    }}
-                  >
-                    차단
-                  </Btn>
-                  <Btn
-                    disabled={!room}
-                    onClick={async () => {
+                      const previous = Boolean(room?.is_muted);
+                      const optimisticValue = !previous;
+                      setRoom((current) =>
+                        current ? { ...current, is_muted: optimisticValue } : current,
+                      );
+                      setUpdatingAction("mute");
                       try {
                         const d = await api(`/chatrooms/${selected}/mute/`, {
                           method: "POST",
                         });
+                        const isMuted = d.is_muted ?? optimisticValue;
+                        setRoom((current) =>
+                          current
+                            ? { ...current, is_muted: isMuted }
+                            : current,
+                        );
                         notify(
-                          d.is_muted
+                          isMuted
                             ? "대화 알림을 껐습니다."
                             : "대화 알림을 켰습니다.",
                         );
                         rooms.reload();
                       } catch (e) {
+                        setRoom((current) =>
+                          current ? { ...current, is_muted: previous } : current,
+                        );
                         notify(e.message);
+                      } finally {
+                        setUpdatingAction("");
                       }
                     }}
                   >
-                    알림 설정
+                    {room?.is_muted ? (
+                      <Bell size={16} aria-hidden="true" />
+                    ) : (
+                      <BellOff size={16} aria-hidden="true" />
+                    )}
+                    {room?.is_muted ? "알림 켜기" : "알림 끄기"}
                   </Btn>
+                  <ReportForm
+                    source="chat"
+                    id={selected}
+                    label="신고"
+                    className="compact-action-button chat-action-danger"
+                  />
+                  <BlockUserButton
+                    userId={room?.opponent_info?.user_id}
+                    targetName={
+                      room?.opponent_info?.nickname ||
+                      room?.opponent_info?.user_name ||
+                      "상대방"
+                    }
+                    targetLabel={user.role === "instructor" ? "학생" : "선생님"}
+                    label="차단"
+                    className="chat-action-danger"
+                    onBlocked={() => {
+                      setSelected(null);
+                      rooms.reload();
+                    }}
+                  />
                   <Btn
+                    className="compact-action-button chat-action-danger"
                     disabled={!room}
                     onClick={async () => {
                       if (
@@ -2384,6 +2508,7 @@ function Chat({ initialRoomId }) {
                       }
                     }}
                   >
+                    <LogOut size={16} aria-hidden="true" />
                     나가기
                   </Btn>
                 </div>}
@@ -2391,6 +2516,11 @@ function Chat({ initialRoomId }) {
               {error && (
                 <p className="error" role="alert">
                   {error}
+                </p>
+              )}
+              {room && !canSend && !isSupportRoom && (
+                <p className="chat-acceptance-notice" role="status">
+                  상대방이 수락한 뒤 메시지를 보낼 수 있어요.
                 </p>
               )}
               <div className="messages">
@@ -2424,16 +2554,6 @@ function Chat({ initialRoomId }) {
                         {m.action.label || "고객센터 바로가기"}
                       </a>
                     )}
-                    {m.images?.map((img) => (
-                      <a
-                        href={img.image}
-                        key={img.id}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <img src={img.image} alt="대화 첨부 이미지" />
-                      </a>
-                    ))}
                     <time>
                       {m.created_at
                         ? new Date(m.created_at).toLocaleTimeString("ko-KR", {
@@ -2449,47 +2569,46 @@ function Chat({ initialRoomId }) {
               <form onSubmit={send} className="message-form">
                 <input
                   aria-label="메시지"
-                  placeholder="메시지를 입력하세요"
+                  placeholder={canSend ? "메시지를 입력하세요" : "상대방이 수락한 뒤 메시지를 보낼 수 있어요."}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   maxLength={5000}
-                  disabled={!room}
+                  disabled={!room || !canSend}
                 />
                 <Btn
                   className="primary"
-                  disabled={busy || !text.trim() || !room}
+                  disabled={busy || !text.trim() || !canSend}
                   aria-label="메시지 보내기"
                 >
                   <Send size={18} />
                 </Btn>
               </form>
-              {!isSupportRoom && <ReportForm source="chat" id={selected} />}
+              {failedText && (
+                <button
+                  type="button"
+                  className="text-button chat-retry"
+                  onClick={() => {
+                    setText(failedText);
+                    setFailedText("");
+                  }}
+                >
+                  전송에 실패했어요. 다시 작성하기
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
-      {registration && room && !isSupportRoom && (
-        registrationComplete ? (
-          <ClassInformationModal
-            resource={registrationData}
-            counterpartName={
-              room.opponent_info?.nickname || room.opponent_info?.user_name
-            }
-            onClose={() => {
-              setRegistration(false);
-              registrationResource.reload();
-            }}
-          />
-        ) : (
-          <Registration
-            room={room}
-            onClose={() => {
-              setRegistration(false);
-              registrationResource.reload();
-            }}
-            onUpdated={registrationResource.reload}
-          />
-        )
+      {classInformation && (
+        <ClassInformationModal
+          resource={classInformation}
+          counterpartName={
+            room?.opponent_info?.nickname ||
+            room?.opponent_info?.user_name ||
+            "상대방"
+          }
+          onClose={() => setClassInformation(null)}
+        />
       )}
     </>
   );

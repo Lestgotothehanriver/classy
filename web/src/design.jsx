@@ -65,6 +65,7 @@ export const pageNames = {
   account: "계정 관리",
   "tutoring-manage": "과외 관리",
   "tutoring-post": "모집 공고 작성",
+  "tutoring-registration": "성사 등록",
   support: "고객센터",
   notices: "공지사항",
   "teacher-profile": "선생님 프로필",

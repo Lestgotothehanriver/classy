@@ -44,7 +44,16 @@ const room = {
   instructor: 2,
   student: 1,
   opponent_info: { user_id: 2, user_name: "테스트 선생님" },
-  messages: [],
+  messages: [
+    {
+      id: 1,
+      sender: 2,
+      sender_nickname: "테스트 선생님",
+      text: "안녕하세요.",
+      created_at: "2026-10-01T09:00:00+09:00",
+      images: [{ id: 1, image: "https://example.test/legacy-chat-image.png" }],
+    },
+  ],
 };
 let registrationComplete = false;
 const completedRegistration = {
@@ -52,6 +61,7 @@ const completedRegistration = {
   subject: "미적분 I",
   startDate: "2026-10-01",
   contractStatus: "ACTIVE",
+  payment: { status: "PAID" },
   studentSubmitted: true,
   instructorSubmitted: true,
   mySubmission: {
@@ -69,7 +79,7 @@ const tutoringResource = {
   class_type: "정규 수업",
   start_date: "2026-10-01",
   first_month_fee: 100000,
-  fee_payment_status: "AWAITING_CONFIRMATION",
+  fee_payment_status: "PAID",
   contract_status: "ACTIVE",
 };
 await page.route("**/api/**", async (route) => {
@@ -104,15 +114,21 @@ await page.route("**/api/**", async (route) => {
   else if (p === "/tutoring/resources/") d = [tutoringResource];
   else if (p === "/chatrooms/") d = [room];
   else if (p === "/chatrooms/4/") d = room;
-  else if (p === "/tutoring/resources/chatrooms/4/")
-    d = registrationComplete
-      ? completedRegistration
-      : {
-          chatRoomId: 4,
-          student: { id: 1 },
-          instructor: { id: 2 },
-          contractStatus: "COLLECTING",
-        };
+  else if (p === "/tutoring/resources/chatrooms/4/") {
+    if (req.method() === "PUT") {
+      registrationComplete = true;
+      d = { registration: completedRegistration, payment: null };
+    } else {
+      d = registrationComplete
+        ? completedRegistration
+        : {
+            chatRoomId: 4,
+            student: { id: 1 },
+            instructor: { id: 2 },
+            contractStatus: "COLLECTING",
+          };
+    }
+  }
   await route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -180,19 +196,45 @@ try {
   );
   await page.goto("http://127.0.0.1:4173/#chat");
   await page.getByRole("button", { name: /테스트 선생님/ }).click();
+  await page.getByText("안녕하세요.", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByAltText("대화 첨부 이미지").count(),
+    0,
+    "web chat does not render removed image attachments",
+  );
   await page.getByRole("button", { name: "성사 등록", exact: true }).click();
-  await page.getByLabel("과목 (최대 3개)").selectOption("36");
+  await page.getByRole("heading", { name: "성사 등록", exact: true }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+    false,
+    "registration page overflow",
+  );
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.getByRole("button", { name: "과목 선택", exact: true }).click();
+  await page.getByRole("button", { name: "미적분 I", exact: true }).click();
+  await page.getByRole("button", { name: "선택 완료", exact: true }).click();
   await page.getByLabel("수업 시작일").fill("2026-10-01");
+  await page.getByLabel("수업 유형").selectOption("REGULAR");
   await page.getByLabel("첫 달 수업료 (원)").fill("100000");
+  await page.getByLabel("은행").selectOption("국민은행");
+  await page.getByLabel("계좌번호").fill("123456789");
+  await page.getByLabel("예금주명", { exact: true }).fill("테스트");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const registrationCta = page.getByRole("button", {
+    name: "성사 등록하고 페이백 받기",
+    exact: true,
+  });
+  const ctaBox = await registrationCta.boundingBox();
+  assert.ok(
+    ctaBox && ctaBox.y + ctaBox.height <= 844 - 68,
+    "registration CTA remains above the mobile app bar",
+  );
   await page
-    .getByLabel("페이백 은행")
-    .selectOption("국민은행");
-  await page.getByLabel("페이백 계좌번호").fill("123456789");
-  await page.getByLabel("예금주", { exact: true }).fill("테스트");
-  await page
-    .getByRole("button", { name: "성사 등록 제출", exact: true })
+    .getByRole("button", { name: "성사 등록하고 페이백 받기", exact: true })
     .click();
-  await page.getByText("과외 성사 등록을 제출했습니다.").first().waitFor();
+  await page.getByText("수업 성사를 축하드려요!", { exact: true }).waitFor();
   const registration = writes.find(
     (x) => x.path === "/tutoring/resources/chatrooms/4/my-registration/",
   );
@@ -200,8 +242,9 @@ try {
   assert.deepEqual(registration.body.subjectIds, [36]);
   assert.equal(registration.body.paybackAccount.bankCode, "국민은행");
   assert.equal(registration.body.firstMonthFee, 100000);
-  registrationComplete = true;
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await page.goto("http://127.0.0.1:4173/#chat");
+  await page.getByRole("button", { name: /테스트 선생님/ }).click();
   await page.getByRole("button", { name: "수업 정보", exact: true }).waitFor();
   await page.getByRole("button", { name: "수업 정보", exact: true }).click();
   await page.getByText("테스트 선생님 선생님과의 수업", { exact: true }).waitFor();

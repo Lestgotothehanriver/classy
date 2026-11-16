@@ -441,7 +441,7 @@ export function FilePicker({
 /** 모바일 전용 목록 복귀 CTA를 모든 전용 상세·작성 화면에서 공유한다. */
 export function MobileBackAction({ children, className = "", ...props }) {
   return (
-    <Btn className={`mobile-back-action ${className}`} {...props}>
+    <Btn className={`mobile-page-action mobile-back-action ${className}`} {...props}>
       <ChevronLeft size={16} aria-hidden="true" />
       {children}
     </Btn>

@@ -1,41 +1,25 @@
 import React, { useContext, useEffect, useState } from "react";
-import { BookOpen } from "lucide-react";
+import {
+  BadgeCheck,
+  Banknote,
+  BookOpen,
+  CalendarDays,
+  Clock3,
+  Search,
+} from "lucide-react";
 import { api, list } from "./api";
-import { BANKS, Ctx, Modal, CustomModal, Btn, State, Empty, useLoad, money, date } from "./shared";
+import { BANKS, Ctx, CustomModal, Btn, State, Empty, useLoad, money, date } from "./shared";
 import { ActionForm } from "./services";
+import { SubjectPicker } from "./studio";
+import { getRegistrationFlow, getRegistrationStatus } from "./tutoring-state";
+
+function formatTuitionInput(value) {
+  const digits = String(value).replace(/\D/g, "");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 
 export function registrationStatus(data = {}) {
-  const contractStatus = String(
-    data.contractStatus ?? data.contract_status ?? "",
-  ).toUpperCase();
-  const paymentStatus = String(
-    data.payment?.status ??
-      data.feePaymentStatus ??
-      data.fee_payment_status ??
-      data.paymentStatus ??
-      data.payment_status ??
-      "",
-  ).toUpperCase();
-
-  if (["FAILED", "REJECTED", "DECLINED"].includes(paymentStatus)) {
-    return { label: "입금 확인 반려", tone: "rejected", isComplete: false };
-  }
-  if (contractStatus === "ACTIVE") {
-    return { label: "성사 등록 완료", tone: "complete", isComplete: true };
-  }
-  if (
-    contractStatus === "REGISTERED" ||
-    [
-      "PAID",
-      "AWAITING_PAYMENT",
-      "AWAITING_CONFIRMATION",
-      "PENDING",
-      "SUBMITTED",
-    ].includes(paymentStatus)
-  ) {
-    return { label: "관리자 확인 중", tone: "pending", isComplete: false };
-  }
-  return { label: "입금 확인 전", tone: "pending", isComplete: false };
+  return getRegistrationStatus(data);
 }
 
 export function Registration({ room, onClose, onUpdated }) {
@@ -44,7 +28,11 @@ export function Registration({ room, onClose, onUpdated }) {
   const resource = useLoad(base, [], { keepDataOnReload: true }),
     d = resource.data || {},
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [classType, setClassType] = useState("REGULAR"),
+    [tuition, setTuition] = useState(""),
+    [selectedSubjectIds, setSelectedSubjectIds] = useState([]),
+    [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
   const teacher = d.instructor?.id === user.id;
   const currentStatus = registrationStatus(d);
   const counterpartName =
@@ -61,6 +49,15 @@ export function Registration({ room, onClose, onUpdated }) {
     const timer = window.setInterval(() => resource.reload(), 10000);
     return () => window.clearInterval(timer);
   }, [base, shouldPoll]);
+  useEffect(() => {
+    if (d.mySubmission?.classType) setClassType(d.mySubmission.classType);
+  }, [d.mySubmission?.classType]);
+  useEffect(() => {
+    if (d.mySubmission?.firstMonthFee != null)
+      setTuition(formatTuitionInput(d.mySubmission.firstMonthFee));
+  }, [d.mySubmission?.firstMonthFee]);
+  const tuitionLabel =
+    classType === "SHORT_TERM" ? "총 수업료" : "첫 달 수업료";
   async function submit(e) {
     e.preventDefault();
     if (currentStatus.isComplete) {
@@ -68,7 +65,11 @@ export function Registration({ room, onClose, onUpdated }) {
       return;
     }
     const f = new FormData(e.currentTarget),
-      ids = f.getAll("subjectIds").map(Number);
+      ids = selectedSubjectIds;
+    if (!ids.length) {
+      setError("과목을 하나 이상 선택해 주세요.");
+      return;
+    }
     if (ids.length > 3) {
       setError("과목은 최대 3개입니다.");
       return;
@@ -86,7 +87,7 @@ export function Registration({ room, onClose, onUpdated }) {
       subjectIds: ids,
       startDate: f.get("startDate"),
       classType: f.get("classType"),
-      firstMonthFee: Number(f.get("firstMonthFee")),
+      firstMonthFee: Number(String(f.get("firstMonthFee") || "").replaceAll(",", "")),
     };
     if (!teacher)
       body.paybackAccount = {
@@ -125,10 +126,10 @@ export function Registration({ room, onClose, onUpdated }) {
     );
   }
   return (
-    <Modal
+    <>
+    <CustomModal
       title="과외 성사 등록"
       onClose={onClose}
-      wide
     >
       <State resource={resource}>
         {!currentStatus.isComplete && <p className="registration-summary">
@@ -163,16 +164,6 @@ export function Registration({ room, onClose, onUpdated }) {
           <form className="form" onSubmit={submit}>
             <fieldset className="form-fields" disabled={busy}>
             <label>
-              과목 (최대 3개)
-              <select name="subjectIds" multiple size={5} required>
-                {subjects.map((s) => (
-                  <option key={s.number} value={s.number}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               수업 시작일
               <input
                 key={d.startDate}
@@ -186,21 +177,65 @@ export function Registration({ room, onClose, onUpdated }) {
               수업 유형
               <select
                 name="classType"
-                defaultValue={d.mySubmission?.classType || "REGULAR"}
+                value={classType}
+                onChange={(event) => setClassType(event.target.value)}
               >
                 <option value="REGULAR">정규 수업</option>
                 <option value="SHORT_TERM">단기 수업</option>
               </select>
             </label>
+            <div className="subject-field">
+              <span>과목 (최대 3개)</span>
+              <button
+                type="button"
+                className="subject-picker-trigger"
+                aria-label="과목 선택"
+                onClick={() => setIsSubjectPickerOpen(true)}
+              >
+                <span>
+                  {selectedSubjectIds.length
+                    ? `${selectedSubjectIds.length}개 과목 선택됨`
+                    : "관련된 과목을 선택해주세요."}
+                </span>
+                <Search size={24} aria-hidden="true" />
+              </button>
+            </div>
+            {selectedSubjectIds.length > 0 && (
+              <div className="subject-chips" aria-label="선택된 과목">
+                {selectedSubjectIds.map((subjectId) => {
+                  const subject = subjects.find((item) => item.number === subjectId);
+                  if (!subject) return null;
+                  return (
+                    <button
+                      type="button"
+                      key={subject.number}
+                      onClick={() =>
+                        setSelectedSubjectIds((ids) =>
+                          ids.filter((id) => id !== subject.number),
+                        )
+                      }
+                      aria-label={`${subject.name} 선택 취소`}
+                    >
+                      {subject.name} <span aria-hidden="true">×</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <label>
-              첫 달 수업료 (원)
-              <input
-                name="firstMonthFee"
-                type="number"
-                min="1"
-                required
-                defaultValue={d.mySubmission?.firstMonthFee}
-              />
+              {tuitionLabel}
+              <span className="tuition-input">
+                <input
+                  name="firstMonthFee"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9,]+"
+                  required
+                  value={tuition}
+                  onChange={(event) => setTuition(formatTuitionInput(event.target.value))}
+                />
+                <span className="tuition-input-suffix" aria-hidden="true">(원)</span>
+              </span>
             </label>
             {teacher ? (
               <label>
@@ -238,7 +273,7 @@ export function Registration({ room, onClose, onUpdated }) {
                   />
                 </label>
                 <label>
-                  예금주
+                  예금주명
                   <input name="accountHolder" required />
                 </label>
               </>
@@ -255,12 +290,21 @@ export function Registration({ room, onClose, onUpdated }) {
           </form>
         )}
       </State>
-    </Modal>
+    </CustomModal>
+    {isSubjectPickerOpen && (
+      <SubjectPicker
+        subjects={subjects}
+        selectedIds={selectedSubjectIds}
+        onChange={setSelectedSubjectIds}
+        onClose={() => setIsSubjectPickerOpen(false)}
+      />
+    )}
+    </>
   );
 }
 
 /** 앱의 수업 정보 카드와 같은 항목을 웹 모달에서 표시한다. */
-function ClassInformationCard({ resource, counterpartName }) {
+export function ClassInformationCard({ resource, counterpartName }) {
   const classType =
     resource.class_type === "단기 수업" ||
     resource.class_type === "SHORT_TERM" ||
@@ -271,6 +315,10 @@ function ClassInformationCard({ resource, counterpartName }) {
   const counterpart =
     counterpartName ||
     resource.counterpart?.nickname ||
+    resource.counterpart?.userName ||
+    resource.counterpart?.user_name ||
+    resource.instructor?.userName ||
+    resource.student?.userName ||
     resource.instructor_user_name ||
     resource.student_user_name ||
     "상대방";
@@ -295,31 +343,69 @@ function ClassInformationCard({ resource, counterpartName }) {
     <section className="class-information-card">
       <h3>
         <span className="class-information-nickname">{counterpart}</span>{" "}
-        선생님과의 수업
+        님과의 수업
       </h3>
       <dl className="class-info-list">
-        <div>
-          <dt>수업 과목</dt>
-          <dd>{subject}</dd>
-        </div>
-        <div>
-          <dt>첫 수업 시작일</dt>
-          <dd>{startDate}</dd>
-        </div>
-        <div>
-          <dt>수업 유형</dt>
-          <dd>{classType}</dd>
-        </div>
-        <div>
-          <dt>{feeLabel}</dt>
-          <dd>{fee == null ? "협의" : `${money(fee)}원`}</dd>
-        </div>
-        <div>
-          <dt>성사 등록 여부</dt>
-          <dd>{registration.label}</dd>
-        </div>
+        <ClassInformationRow icon={BookOpen} label="수업 과목" value={subject} />
+        <ClassInformationRow
+          icon={CalendarDays}
+          label="첫 수업 시작일"
+          value={startDate}
+        />
+        <ClassInformationRow icon={Clock3} label="수업 유형" value={classType} />
+        <ClassInformationRow
+          icon={Banknote}
+          label={feeLabel}
+          value={fee == null ? "협의" : `${money(fee)}원`}
+        />
+        <ClassInformationRow
+          icon={BadgeCheck}
+          label="성사 등록 여부"
+          value={registration.label}
+        />
       </dl>
     </section>
+  );
+}
+
+/** 수업 정보 카드의 아이콘·레이블·값 행입니다. */
+function ClassInformationRow({ icon: Icon, label, value }) {
+  return (
+    <div>
+      <dt>
+        <Icon
+          className="class-information-icon"
+          size={18}
+          aria-hidden="true"
+        />
+        {label}
+      </dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+/** 리뷰 본문의 글자 수와 최대 500자 제한을 함께 표시한다. */
+function ReviewCommentField({ defaultValue = "" }) {
+  const [value, setValue] = useState(defaultValue);
+  const characterCount = Array.from(value).length;
+
+  return (
+    <label className="review-comment-field">
+      <span className="review-comment-label">
+        상세 리뷰
+        <small>({characterCount}/500)</small>
+      </span>
+      <textarea
+        name="comment"
+        required
+        maxLength={500}
+        rows={2}
+        value={value}
+        placeholder="이 선생님과의 수업에 대해 이야기해 주세요."
+        onChange={(event) => setValue(event.target.value)}
+      />
+    </label>
   );
 }
 
@@ -336,7 +422,7 @@ export function ClassInformationModal({ resource, counterpartName, onClose }) {
 }
 
 export function ClassHistory() {
-  const { user, notify, openChat } = useContext(Ctx),
+  const { user, go } = useContext(Ctx),
     [page, setPage] = useState(1),
     [tab, setTab] = useState("all"),
     [edit, setEdit] = useState(null),
@@ -345,7 +431,9 @@ export function ClassHistory() {
     teacher = user.role === "instructor";
   const base =
     "/tutoring/reviews/" + (teacher ? "student" : "instructor") + "/";
-  const resources = list(r.data);
+  const resources = list(r.data).filter(
+    (resource) => !getRegistrationFlow(resource, { isTeacher: teacher }).isCancelled,
+  );
   const visibleResources =
     tab === "progress"
       ? resources.filter((resource) => {
@@ -354,7 +442,7 @@ export function ClassHistory() {
         })
       : resources;
   const classStatus = (resource) => {
-    const completed = String(resource.contract_status || "").toUpperCase() === "ACTIVE";
+    const completed = registrationStatus(resource).isComplete;
     return {
       completed,
       label: completed
@@ -381,11 +469,13 @@ export function ClassHistory() {
     ].join(".");
   };
   const processingMessage = (resource) => {
-    if (registrationStatus(resource).tone === "rejected") {
+    const flow = getRegistrationFlow(resource, { isTeacher: teacher });
+    if (flow.isRejected) {
       return resource.rejection_reason || "입력한 수업 정보가 일치하지 않아 자동 반려되었어요. 다시 등록해 주세요.";
     }
-    if (!resource.my_submission_finalized) return "성사 등록을 완료해 주세요.";
-    if (!resource.is_instructor_confirmed) return "선생님의 성사 등록을 기다리고 있어요.";
+    if (!flow.mineFinalized) return "성사 등록을 완료해 주세요.";
+    if (flow.waitingForCounterparty)
+      return teacher ? "학생의 성사 등록을 기다리고 있어요." : "선생님의 성사 등록을 기다리고 있어요.";
     return "수수료 입금 확인을 기다리고 있어요.";
   };
   return (
@@ -435,7 +525,11 @@ export function ClassHistory() {
                       </Btn>
                     </>
                   ) : (
-                    <Btn className="primary full" onClick={() => openChat(x.chat_room_id)}>
+                    <Btn
+                      className="primary full"
+                      disabled={!x.chat_room_id}
+                      onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
+                    >
                       {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
                     </Btn>
                   )}
@@ -450,7 +544,7 @@ export function ClassHistory() {
                   {x.counterpart?.nickname ||
                     x.student_user_name ||
                     x.instructor_user_name ||
-                    "과외 수업"}
+                    "학생"} 학생과의 수업
                 </b>
                 <p>
                   {date(x.start_date)} · {x.class_type || "협의 중"}
@@ -458,15 +552,25 @@ export function ClassHistory() {
                 <span className={"registration-status " + status.tone}>
                   {status.label}
                 </span>
+                {!status.isComplete && <p className="muted">{processingMessage(x)}</p>}
                 <p className="muted">{x.my_review?.comment}</p>
               </div>
               {status.isComplete && (
                 <div className="actions">
                   <Btn onClick={() => setClassInformation(x)}>수업 정보</Btn>
                   <Btn onClick={() => setEdit(x)}>
-                    {x.my_review ? "후기 수정" : "후기 작성"}
+                    {x.my_review ? "리뷰 수정" : "리뷰 작성"}
                   </Btn>
                 </div>
+              )}
+              {!status.isComplete && (
+                <Btn
+                  className="primary"
+                  disabled={!x.chat_room_id}
+                  onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
+                >
+                  {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
+                </Btn>
               )}
             </article>
           );
@@ -488,11 +592,14 @@ export function ClassHistory() {
         </div>
       </State>
       {edit && (
-        <Modal title="수업 후기" onClose={() => setEdit(null)}>
+        <CustomModal
+          title={edit.my_review ? "리뷰 수정" : "리뷰 작성"}
+          onClose={() => setEdit(null)}
+        >
           <ActionForm
             path={base + (edit.my_review ? edit.my_review.id + "/" : "")}
             method={edit.my_review ? "PATCH" : "POST"}
-            submit="후기 저장"
+            submit={edit.my_review ? "리뷰 수정" : "리뷰 작성"}
             transform={(f) => {
               const d = Object.fromEntries(f);
               for (const key of teacher
@@ -530,35 +637,17 @@ export function ClassHistory() {
                 </select>
               </label>
             ))}
-            <label>
-              후기
-              <textarea
-                name="comment"
-                required
-                maxLength={500}
-                defaultValue={edit.my_review?.comment}
-              />
-            </label>
+            <ReviewCommentField
+              key={edit.my_review?.id || "new"}
+              defaultValue={edit.my_review?.comment}
+            />
+            <p className="review-guidance">
+              {teacher
+                ? "이 학생의 수업에 대한 리뷰를 남겨주세요.\n리뷰는 수업이 성사 된 후 언제든지 작성 가능하며, 작성하신 리뷰는\n90일 이내에 수정할 수 있습니다.\n\n타인의 권리를 침해하거나 부적절한 내용이 포함된 경우,\n운영 정책에 따라 삭제 및 제재가 가해질 수 있습니다."
+                : "이 선생님과의 수업에 대한 리뷰를 남겨주세요.\n리뷰는 수업이 성사 된 후 언제든지 작성 가능하며, 작성하신 리뷰는\n90일 이내에 수정할 수 있습니다.\n\n타인의 권리를 침해하거나 부적절한 내용이 포함된 경우,\n운영 정책에 따라 삭제 및 제재가 가해질 수 있습니다."}
+            </p>
           </ActionForm>
-          {edit.my_review && (
-            <Btn
-              onClick={async () => {
-                if (!window.confirm("후기를 삭제할까요?")) return;
-                try {
-                  await api(base + edit.my_review.id + "/", {
-                    method: "DELETE",
-                  });
-                  setEdit(null);
-                  r.reload();
-                } catch (e) {
-                  notify(e.message);
-                }
-              }}
-            >
-              후기 삭제
-            </Btn>
-          )}
-        </Modal>
+        </CustomModal>
       )}
       {classInformation && (
         <ClassInformationModal
