@@ -84,7 +84,7 @@ function StudentSubjectField({ subjects, values }) {
   );
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   return (
-    <>
+    <div className="chip-form-field">
       <div className="subject-field">
         <PostFieldLabel required>수업 과목</PostFieldLabel>
         <button
@@ -128,7 +128,7 @@ function StudentSubjectField({ subjects, values }) {
           onClose={() => setIsPickerOpen(false)}
         />
       )}
-    </>
+    </div>
   );
 }
 

@@ -617,6 +617,7 @@ function UploadForm({ onComplete, onBusy }) {
           />
           <small>{draft.title.length}/200</small>
         </label>
+        <div className="chip-form-field">
         <div className="subject-field">
           <span>관련 과목</span>
           <button
@@ -652,6 +653,7 @@ function UploadForm({ onComplete, onBusy }) {
             })}
           </div>
         )}
+        </div>
         <label className="price-slider-field">
           가격
           <input

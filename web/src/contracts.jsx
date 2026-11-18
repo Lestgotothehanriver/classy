@@ -8,7 +8,7 @@ import {
   Search,
 } from "lucide-react";
 import { api, list } from "./api";
-import { BANKS, Ctx, CustomModal, Btn, State, Empty, useLoad, money, date } from "./shared";
+import { BANKS, Ctx, CustomModal, Btn, State, Empty, FieldLabel, useLoad, money, date } from "./shared";
 import { ActionForm } from "./services";
 import { SubjectPicker } from "./studio";
 import { getRegistrationFlow, getRegistrationStatus } from "./tutoring-state";
@@ -184,6 +184,7 @@ export function Registration({ room, onClose, onUpdated }) {
                 <option value="SHORT_TERM">단기 수업</option>
               </select>
             </label>
+            <div className="chip-form-field">
             <div className="subject-field">
               <span>과목 (최대 3개)</span>
               <button
@@ -222,6 +223,7 @@ export function Registration({ room, onClose, onUpdated }) {
                 })}
               </div>
             )}
+            </div>
             <label>
               {tuitionLabel}
               <span className="tuition-input">
@@ -385,15 +387,15 @@ function ClassInformationRow({ icon: Icon, label, value }) {
   );
 }
 
-/** 리뷰 본문의 글자 수와 최대 500자 제한을 함께 표시한다. */
-function ReviewCommentField({ defaultValue = "" }) {
+/** 리뷰 대상 역할에 맞는 안내 문구와 함께 본문 글자 수를 표시합니다. */
+function ReviewCommentField({ defaultValue = "", isTeacher }) {
   const [value, setValue] = useState(defaultValue);
   const characterCount = Array.from(value).length;
 
   return (
     <label className="review-comment-field">
       <span className="review-comment-label">
-        상세 리뷰
+        <FieldLabel required>상세 리뷰</FieldLabel>
         <small>({characterCount}/500)</small>
       </span>
       <textarea
@@ -402,7 +404,11 @@ function ReviewCommentField({ defaultValue = "" }) {
         maxLength={500}
         rows={2}
         value={value}
-        placeholder="이 선생님과의 수업에 대해 이야기해 주세요."
+        placeholder={
+          isTeacher
+            ? "이 학생과의 수업에 대해 이야기해 주세요."
+            : "이 선생님과의 수업에 대해 이야기해 주세요."
+        }
         onChange={(event) => setValue(event.target.value)}
       />
     </label>
@@ -479,8 +485,7 @@ export function ClassHistory() {
     return "수수료 입금 확인을 기다리고 있어요.";
   };
   return (
-    <section className={"service-section class-history " + (teacher ? "" : "student-class-history")}>
-      {teacher && <h2>나의 과외</h2>}
+    <section className="service-section class-history">
       <div className="registration-controls">
         <label className="tutoring-status-filter">
           <span>수업/과외 상태</span>
@@ -489,99 +494,60 @@ export function ClassHistory() {
             <option value="progress">성사 등록 진행 중</option>
           </select>
         </label>
-        {teacher && <Btn type="button" onClick={r.reload}>새로고침</Btn>}
       </div>
       <State resource={r}>
         {visibleResources.map((x) => {
           const status = registrationStatus(x);
           const studentStatus = classStatus(x);
-          if (!teacher) {
-            const counterpart = x.counterpart?.nickname || x.instructor_user_name || "선생님";
-            return (
-              <article key={x.id} className="student-class-card">
-                <div className="student-class-card-head">
-                  <b>{counterpart} 선생님과의 수업</b>
-                  <span className={studentStatus.completed ? "complete" : "progress"}>
-                    {studentStatus.label}
-                  </span>
-                </div>
-                <p className="student-class-subject">
-                  <BookOpen size={16} aria-hidden="true" />
-                  {subjectLabel(x)}
-                </p>
-                {createdDate(x.created_at) && <small>{createdDate(x.created_at)}</small>}
-                {!studentStatus.completed && <p className="student-class-progress">{processingMessage(x)}</p>}
-                <div className="student-class-actions">
-                  {studentStatus.completed ? (
-                    <>
-                      <Btn
-                        className="primary"
-                        onClick={() => setClassInformation(x)}
-                      >
-                        수업 정보
-                      </Btn>
-                      <Btn onClick={() => setEdit(x)}>
-                        {x.my_review ? "리뷰 수정" : "리뷰 작성"}
-                      </Btn>
-                    </>
-                  ) : (
-                    <Btn
-                      className="primary full"
-                      disabled={!x.chat_room_id}
-                      onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
-                    >
-                      {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
-                    </Btn>
-                  )}
-                </div>
-              </article>
-            );
-          }
+          const counterpart = teacher
+            ? x.counterpart?.nickname || x.student_user_name || "상대방"
+            : x.counterpart?.nickname || x.instructor_user_name || "상대방";
+          const counterpartRole = teacher ? "학생" : "선생님";
           return (
-            <article key={x.id} className="history-row">
-              <div>
-                <b>
-                  {x.counterpart?.nickname ||
-                    x.student_user_name ||
-                    x.instructor_user_name ||
-                    "학생"} 학생과의 수업
-                </b>
-                <p>
-                  {date(x.start_date)} · {x.class_type || "협의 중"}
-                </p>
-                <span className={"registration-status " + status.tone}>
-                  {status.label}
+            <article key={x.id} className="student-class-card">
+              <div className="student-class-card-head">
+                <b>{counterpart} {counterpartRole}과의 수업</b>
+                <span className={studentStatus.completed ? "complete" : "progress"}>
+                  {studentStatus.label}
                 </span>
-                {!status.isComplete && <p className="muted">{processingMessage(x)}</p>}
-                <p className="muted">{x.my_review?.comment}</p>
               </div>
-              {status.isComplete && (
-                <div className="actions">
-                  <Btn onClick={() => setClassInformation(x)}>수업 정보</Btn>
-                  <Btn onClick={() => setEdit(x)}>
-                    {x.my_review ? "리뷰 수정" : "리뷰 작성"}
+              <p className="student-class-subject">
+                <BookOpen size={16} aria-hidden="true" />
+                {subjectLabel(x)}
+              </p>
+              {createdDate(x.created_at) && <small>{createdDate(x.created_at)}</small>}
+              {!studentStatus.completed && <p className="student-class-progress">{processingMessage(x)}</p>}
+              <div className="student-class-actions">
+                {studentStatus.completed ? (
+                  <>
+                    <Btn
+                      className="primary"
+                      onClick={() => setClassInformation(x)}
+                    >
+                      수업 정보
+                    </Btn>
+                    <Btn onClick={() => setEdit(x)}>
+                      {x.my_review ? "리뷰 수정" : "리뷰 작성"}
+                    </Btn>
+                  </>
+                ) : (
+                  <Btn
+                    className="primary full"
+                    disabled={!x.chat_room_id}
+                    onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
+                  >
+                    {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
                   </Btn>
-                </div>
-              )}
-              {!status.isComplete && (
-                <Btn
-                  className="primary"
-                  disabled={!x.chat_room_id}
-                  onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
-                >
-                  {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
-                </Btn>
-              )}
+                )}
+              </div>
             </article>
           );
         })}
         {!visibleResources.length && (
-          <p className={teacher ? "muted" : "student-class-empty"}>
+          <p className="student-class-empty">
             {tab === "progress"
-              ? "진행 중인 성사 등록이 없습니다."
-              : teacher
-                ? "성사 등록은 상담 채팅방에서 시작할 수 있습니다."
-                : "수업 내역이 없습니다."}
+              ? "진행 중인 성사 등록이 없어요."
+              : "수업/과외 내역이 없어요."}
           </p>
         )}
         <div className="actions">
@@ -619,7 +585,7 @@ export function ClassHistory() {
             }}
           >
             {(teacher
-              ? [["rating", "만족도"]]
+              ? [["rating", "수업 후기를 남겨주세요 (1~5점)"]]
               : [
                   ["professionalism", "전문적이에요"],
                   ["teaching_skill", "강의력이 좋아요"],
@@ -640,6 +606,7 @@ export function ClassHistory() {
             <ReviewCommentField
               key={edit.my_review?.id || "new"}
               defaultValue={edit.my_review?.comment}
+              isTeacher={teacher}
             />
             <p className="review-guidance">
               {teacher

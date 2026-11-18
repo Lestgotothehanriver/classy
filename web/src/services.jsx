@@ -18,9 +18,8 @@ import {
   MobileBackAction,
 } from "./shared";
 import { PageHeading, pageNames } from "./design";
-import regions from "./regions.json";
 import { ClassHistory } from "./contracts";
-import { StudentPostFormFields, toStudentPostPayload, toSubjectNumbers } from "./student-post-form";
+import { StudentPostFormFields, toStudentPostPayload } from "./student-post-form";
 
 export function ActionForm({
   title,
@@ -601,17 +600,14 @@ function Tutoring() {
   const resource = useLoad(
     teacher ? "/tutoring/instructor-info/mine/" : "/tutoring/my-posts/",
   );
-  const [editing, setEditing] = useState(null),
-    [postTab, setPostTab] = useState("active"),
-    [studentTab, setStudentTab] = useState("posts");
+  const [postTab, setPostTab] = useState("active"),
+    [managementTab, setManagementTab] = useState("posts");
   const rows = teacher
     ? resource.data
       ? [resource.data]
       : []
     : list(resource.data);
-  const base = teacher
-    ? "/tutoring/instructor-info/"
-    : "/tutoring/posts/write/";
+  const base = "/tutoring/posts/write/";
   const visibleRows = teacher
     ? rows
     : rows.filter((post) =>
@@ -639,37 +635,35 @@ function Tutoring() {
           </p>
         </section>
       )}
-      {!teacher && (
-        <div
-          className="tutoring-manage-tabs"
-          role="tablist"
-          aria-label="과외 관리 메뉴"
+      <div
+        className="tutoring-manage-tabs"
+        role="tablist"
+        aria-label="과외 관리 메뉴"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={managementTab === "posts"}
+          className={managementTab === "posts" ? "active" : ""}
+          onClick={() => setManagementTab("posts")}
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={studentTab === "posts"}
-            className={studentTab === "posts" ? "active" : ""}
-            onClick={() => setStudentTab("posts")}
-          >
-            내 모집 공고
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={studentTab === "classes"}
-            className={studentTab === "classes" ? "active" : ""}
-            onClick={() => setStudentTab("classes")}
-          >
-            내 수업/과외
-          </button>
-        </div>
-      )}
-      {(teacher || studentTab === "posts") && (
+          {teacher ? "내 과외 프로필" : "내 모집 공고"}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={managementTab === "classes"}
+          className={managementTab === "classes" ? "active" : ""}
+          onClick={() => setManagementTab("classes")}
+        >
+          내 수업/과외
+        </button>
+      </div>
+      {managementTab === "posts" && (
         <State resource={resource}>
       <section className="service-section">
         <div className="section-title">
-          {teacher && <h2>나의 과외 소개</h2>}
+          {teacher && <h2>내 과외 프로필</h2>}
           {!teacher && (
             <label className="tutoring-status-filter">
               <span>모집 공고 상태</span>
@@ -682,8 +676,12 @@ function Tutoring() {
               </select>
             </label>
           )}
-          <Btn onClick={() => teacher ? setEditing(rows[0] || {}) : go("tutoring-post/new")}>
-            {teacher ? "소개 작성·수정" : "새 모집 공고 등록"}
+          <Btn onClick={() => teacher ? go("tutoring-profile") : go("tutoring-post/new")}>
+            {teacher
+              ? rows.length
+                ? "수정"
+                : "과외 프로필 만들기"
+              : "새 모집 공고 등록"}
           </Btn>
         </div>
         {visibleRows.map((x) => teacher ? (
@@ -698,22 +696,6 @@ function Tutoring() {
                 {x.schedule} · {money(x.cost)}원
               </p>
             </button>
-            <div className="actions">
-              <Btn onClick={() => go(`tutoring-post/${x.id}`)}>수정</Btn>
-              <Btn
-                onClick={async () => {
-                  if (!window.confirm("이 글을 삭제할까요?")) return;
-                  try {
-                    await api(base + x.id + "/", { method: "DELETE" });
-                    resource.reload();
-                  } catch (e) {
-                    notify(e.message);
-                  }
-                }}
-              >
-                삭제
-              </Btn>
-            </div>
           </article>
         ) : (
           <article className="student-post-management-card" key={x.id}>
@@ -768,74 +750,18 @@ function Tutoring() {
           </article>
         ))}
         {!visibleRows.length && (
-          <p className={teacher ? "muted" : "student-post-management-empty"}>
+          <p className={teacher ? "tutoring-management-empty" : "student-post-management-empty"}>
             {teacher
-              ? "작성한 글이 없습니다."
+              ? "아직 과외 프로필이 없어요."
               : postTab === "active"
-                ? "모집 중인 공고가 없습니다."
-                : "마감된 공고가 없습니다."}
+                ? "모집 중인 공고가 없어요."
+                : "마감된 공고가 없어요."}
           </p>
         )}
       </section>
-      {editing && teacher && (
-        <ActionForm
-          key={editing.id || "new"}
-          title={teacher ? "과외 소개" : null}
-          path={base + (editing.id ? editing.id + "/" : "")}
-          method={editing.id ? "PATCH" : "POST"}
-          onDone={() => {
-            setEditing(null);
-            resource.reload();
-          }}
-          transform={(f) => {
-            if (teacher) {
-              const d = Object.fromEntries(f);
-              d.subjects = f.getAll("subjects").map(Number);
-              d.regions = f.getAll("regions").map(Number);
-              d.cost = Number(d.cost);
-              return d;
-            }
-            return toStudentPostPayload(f);
-          }}
-        >
-          <>
-              <label>
-                과목
-                <select
-                  name="subjects"
-                  multiple
-                  size={5}
-                  defaultValue={toSubjectNumbers(editing.subjects || [], subjects)}
-                  required
-                >
-                  {subjects.map((subject) => <option key={subject.number} value={subject.number}>{subject.name}</option>)}
-                </select>
-              </label>
-              <label>
-                활동 지역
-                <select
-                  name="regions"
-                  multiple
-                  size={5}
-                  defaultValue={(editing.regions || []).map((region) => String(region.number || region.id || regions.find((item) => item[1] === (region.label || region))?.[0] || region))}
-                >
-                  {regions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
-                </select>
-              </label>
-              <label>수업 방식<select name="method" defaultValue={editing.method || "대면"}><option>대면</option><option>비대면</option><option value="대면,비대면">모두 가능</option></select></label>
-              <label>과외비 (원)<input type="number" name="cost" min="0" step="1000" defaultValue={editing.cost || 0} required /></label>
-              <label>수업 가능 시간<input name="schedule" defaultValue={editing.schedule} maxLength={255} required /></label>
-              <label>활동 지역<input name="location" defaultValue={editing.location} maxLength={255} /></label>
-              <label>기타 소개<textarea name="etc" defaultValue={editing.etc} maxLength={255} /></label>
-            </>
-          <Btn type="button" onClick={() => setEditing(null)}>
-            취소
-          </Btn>
-        </ActionForm>
-      )}
         </State>
       )}
-      {(teacher || studentTab === "classes") && <ClassHistory />}
+      {managementTab === "classes" && <ClassHistory />}
     </>
   );
 }

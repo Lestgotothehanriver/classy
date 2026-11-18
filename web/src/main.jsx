@@ -49,6 +49,7 @@ import { Studio } from "./studio";
 import { ClassInformationModal, registrationStatus } from "./contracts";
 import { Services, ReportForm, StudentPostEditorPage } from "./services";
 import { RegistrationPage } from "./registration-page";
+import { TutoringProfilePage } from "./tutoring-profile-page";
 import "./redesign.css";
 import {
   Ctx,
@@ -378,6 +379,29 @@ function App() {
           ) : (
             <Gate>
               <RegistrationPage roomId={route[1]} />
+            </Gate>
+          )}
+        </Shell>
+      </Ctx.Provider>
+    );
+  }
+  if (page === "tutoring-profile") {
+    return (
+      <Ctx.Provider value={context}>
+        <Shell
+          page={page}
+          activeRole={activeRole}
+          setActiveRole={changeRole}
+          fullBleed
+        >
+          {!ready ? (
+            <div className="loading">
+              <LoaderCircle className="spin" />
+              정보를 확인하고 있어요.
+            </div>
+          ) : (
+            <Gate>
+              <TutoringProfilePage />
             </Gate>
           )}
         </Shell>

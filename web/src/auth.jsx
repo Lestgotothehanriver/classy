@@ -447,6 +447,7 @@ export function Auth({ initial = "login" }) {
                 </label>
               </div>
               <RegionFields required showRequiredLabel />
+              <div className="chip-form-field">
               <div className="subject-field">
                 <FieldLabel required>
                   {role === "instructor" ? "전문 수업 과목" : "관심 과목"}
@@ -489,6 +490,7 @@ export function Auth({ initial = "login" }) {
                   })}
                 </div>
               )}
+              </div>
               {role === "instructor" && (
                 <>
                   <AcademicFields showRequiredLabel schoolSearch />

@@ -476,6 +476,7 @@ export function RegistrationPage({ roomId }) {
                 </select>
                 <small> 4주 미안 수업인 경우 단기 수업을, 4주 이상 수업인 경우 정규 수업을 선택해주세요.</small>
               </label>
+              <div className="chip-form-field">
               <div className="subject-field">
                 <FieldLabel required>수업 과목</FieldLabel>
                 <button type="button" className="subject-picker-trigger" aria-label="과목 선택" onClick={() => setSubjectPickerOpen(true)}>
@@ -487,6 +488,7 @@ export function RegistrationPage({ roomId }) {
                 const subject = subjects.find((item) => item.number === id);
                 return subject ? <button type="button" key={id} onClick={() => setSubjectIds((current) => current.filter((item) => item !== id))}>{subject.name} <span aria-hidden="true">×</span></button> : null;
               })}</div>}
+              </div>
               <label className="registration-tuition-field">
                 <FieldLabel required>{tuitionLabel}</FieldLabel>
                 <span className="tuition-input"><input inputMode="numeric" value={tuition} onChange={(event) => setTuition(formatTuition(event.target.value))} placeholder={`${tuitionLabel}를 입력해주세요.`} required /><span className="tuition-input-suffix">(원)</span></span>

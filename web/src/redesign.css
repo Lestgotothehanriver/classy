@@ -3297,10 +3297,7 @@ dialog.teacher-profile-modal {
   color: #111;
   font-weight: 600;
 }
-.student-class-history {
-  padding-top: 0;
-}
-.student-class-history .registration-controls {
+.class-history .registration-controls {
   margin-bottom: 12px;
 }
 .tutoring-status-filter {
@@ -3474,6 +3471,13 @@ dialog.teacher-profile-modal {
   font-size: 12px;
 }
 .student-post-management-empty {
+  margin: 0;
+  padding: 48px 20px 60px;
+  color: #727883;
+  font-size: 14px;
+  text-align: center;
+}
+.tutoring-management-empty {
   margin: 0;
   padding: 48px 20px 60px;
   color: #727883;
@@ -4115,7 +4119,10 @@ dialog.teacher-profile-modal {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: -8px;
+}
+.chip-form-field {
+  display: grid;
+  gap: 10px;
 }
 .subject-chips button,
 .filter-chip {
@@ -4679,16 +4686,16 @@ progress {
   font-size: 12px;
 }
 .teacher-profile-compact-safety-actions > .report-form:is(:hover, :active):not(:disabled) {
-  border-color: var(--primary);
-  background: #fff;
-  color: var(--primary);
+  border-color: #d75f5f;
+  background: #fff2f3;
+  color: #c52936;
 }
 .teacher-profile-compact-safety-actions > .report-form:is(:hover, :active):not(:disabled) svg {
-  color: var(--primary);
+  color: #c52936;
 }
 .teacher-profile-compact-safety-actions .block-teacher-button:is(:hover, :active):not(:disabled) {
   border-color: #d75f5f;
-  background: #fff;
+  background: #fff2f3;
   color: #c52936;
 }
 .teacher-profile-compact-safety-actions .block-teacher-button:is(:hover, :active):not(:disabled) svg {
@@ -4783,6 +4790,64 @@ progress {
 .registration-form,
 .registration-result {
   margin-top: 0;
+}
+.tutoring-profile-page .form-fields {
+  gap: 28px;
+}
+.tutoring-profile-intro {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tutoring-profile-intro h2 {
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(20px, 1.7vw, 24px);
+  line-height: 1.4;
+}
+.tutoring-profile-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.tutoring-method-field,
+.tutoring-region-field {
+  display: grid;
+  gap: 10px;
+}
+.tutoring-method-field > small {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tutoring-method-options,
+.tutoring-region-add {
+  display: flex;
+  gap: 8px;
+}
+.tutoring-method-options > button {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid #dfe0e2;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.tutoring-method-options > button.selected {
+  border-color: var(--primary);
+  background: var(--tint);
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+.tutoring-region-add select {
+  flex: 1;
+  min-width: 0;
+}
+.tutoring-region-add .btn {
+  flex: 0 0 auto;
 }
 .registration-form .form-fields > h2,
 .registration-payment-intro h2,
@@ -5129,7 +5194,7 @@ progress {
     margin-left: auto;
   }
   .teacher-profile-mobile-safety-actions > .report-form {
-    order: 2;
+    order: 1;
     width: fit-content;
     height: 32px;
     min-height: 32px;
@@ -5139,7 +5204,7 @@ progress {
     font-size: 12px;
   }
   .teacher-profile-mobile-safety-actions .block-teacher-button {
-    order: 1;
+    order: 2;
     height: 32px;
     min-height: 32px;
     padding: 6px 10px;
