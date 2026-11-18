@@ -1,5 +1,5 @@
 import React, { useContext, useRef, useState } from "react";
-import { BookOpen, Eye, Flag, ImagePlus, X } from "lucide-react";
+import { BookOpen, ChevronDown, Eye, Flag, ImagePlus, PauseCircle, PenLine, PlayCircle, Star, X } from "lucide-react";
 import { api, downloadProtectedFile, list } from "./api";
 import {
   Ctx,
@@ -17,7 +17,7 @@ import {
   FilePicker,
   MobileBackAction,
 } from "./shared";
-import { PageHeading, pageNames } from "./design";
+import { Avatar, PageHeading, pageNames } from "./design";
 import { ClassHistory } from "./contracts";
 import { StudentPostFormFields, toStudentPostPayload } from "./student-post-form";
 
@@ -594,14 +594,50 @@ function TicketThread({ ticket, resource, onClose, onUpdated }) {
   return <Modal title={`문의 #${ticket.id} · ${ticket.status_label || SUPPORT_STATUS_LABEL[ticket.status]}`} onClose={onClose}><div className="chat-messages">{ticket.messages?.map((message) => <article className="chat-message" key={message.id}><b>{message.sender_name || message.sender_kind}</b><p>{message.content}</p>{message.attachments?.map((attachment) => <button type="button" className="text-button" key={attachment.id} onClick={async () => { try { await downloadProtectedFile(`/support/tickets/${ticket.id}/attachments/${attachment.id}/`, attachment.filename); } catch (error) { notify(error.message); } }}>첨부: {attachment.filename}</button>)}<small>{date(message.created_at)}</small></article>)}</div>{closed ? <p className="muted">종결된 문의는 읽기 전용입니다.</p> : <form className="form" onSubmit={async (event) => { event.preventDefault(); if (!content.trim()) return; setBusy(true); try { await api(`/support/tickets/${ticket.id}/messages/`, { method: "POST", body: new FormData(event.currentTarget) }); setContent(""); onUpdated(); notify("답변을 등록했습니다."); } catch (error) { notify(error.message); } finally { setBusy(false); } }}><label>추가 답변<textarea name="content" value={content} onChange={(event) => setContent(event.target.value)} required /></label><label>첨부 파일 (선택, 최대 5개)<input name="files" type="file" multiple /></label><Btn className="primary" disabled={busy}>{busy ? "등록 중…" : "답변 등록"}</Btn></form>}</Modal>;
 }
 
+/** 과외 리뷰의 항목별 점수와 비율을 표시한다. */
+function TutoringReviewRatingGauge({ label, rating }) {
+  const normalizedRating = Math.min(5, Math.max(0, Number(rating) || 0));
+  const displayRating = Number.isInteger(normalizedRating)
+    ? String(normalizedRating)
+    : normalizedRating.toFixed(1);
+
+  return (
+    <div className="teacher-rating-gauge">
+      <div>
+        <span>{label}</span>
+        <span><b>{displayRating}</b>/5</span>
+      </div>
+      <span className="teacher-rating-gauge-track" aria-hidden="true">
+        <span style={{ width: `${(normalizedRating / 5) * 100}%` }} />
+      </span>
+    </div>
+  );
+}
+
 function Tutoring() {
-  const { user, subjects, notify, detail, go } = useContext(Ctx),
+  const { user, subjects, notify, go, openPostDetail } = useContext(Ctx),
     teacher = user.role === "instructor";
   const resource = useLoad(
     teacher ? "/tutoring/instructor-info/mine/" : "/tutoring/my-posts/",
   );
+  const tutoringStatus = useLoad(
+    teacher && resource.data?.instructor
+      ? `/tutoring/instructors/${resource.data.instructor}/info/`
+      : null,
+    [teacher, resource.data?.instructor],
+    { keepDataOnReload: true },
+  );
   const [postTab, setPostTab] = useState("active"),
-    [managementTab, setManagementTab] = useState("posts");
+    [managementTab, setManagementTab] = useState("posts"),
+    [teacherProfileTab, setTeacherProfileTab] = useState("info"),
+    [isTutoringStatusExpanded, setIsTutoringStatusExpanded] = useState(true),
+    [tutoringStatusBusy, setTutoringStatusBusy] = useState(false);
+  const tutoringReviews = useLoad(
+    teacher && teacherProfileTab === "reviews" && resource.data?.instructor
+      ? `/tutoring/instructors/${resource.data.instructor}/reviews/`
+      : null,
+    [teacher, teacherProfileTab, resource.data?.instructor],
+  );
   const rows = teacher
     ? resource.data
       ? [resource.data]
@@ -624,6 +660,54 @@ function Tutoring() {
     const visible = labels.slice(0, 3).join(", ");
     return labels.length > 3 ? `${visible} 외 ${labels.length - 3}` : visible;
   };
+  const isTutoring = Boolean(tutoringStatus.data?.is_tutoring);
+  const isTutoringStatusReady = !tutoringStatus.loading && !tutoringStatus.error;
+  const tutoringStats = tutoringStatus.data || {};
+  const averageRating = Number(tutoringStats.avg_rating);
+  const tutoringReviewRows = list(tutoringReviews.data);
+  const methodLabel = (method) =>
+    method === "ONLINE" || method === "비대면"
+      ? "비대면"
+      : method === "OFFLINE" || method === "대면"
+        ? "대면"
+        : method || "협의";
+  const reviewAverage = (key) => {
+    const scores = tutoringReviewRows.map((review) => Number(review[key])).filter(Number.isFinite);
+    return scores.length ? scores.reduce((total, score) => total + score, 0) / scores.length : 0;
+  };
+  const professionalism = reviewAverage("professionalism");
+  const teachingSkill = reviewAverage("teaching_skill");
+  const punctuality = reviewAverage("punctuality");
+  const totalReviewRating = tutoringReviewRows.length
+    ? (professionalism + teachingSkill + punctuality) / 3
+    : 0;
+  const formatRating = (rating) =>
+    Number.isInteger(rating) ? String(rating) : rating.toFixed(1);
+  const classTypeLabel = (classType) => {
+    if (!classType) return "";
+    return classType === "단기 수업" || classType === "SHORT_TERM"
+      ? "단기 수업"
+      : "정규 수업";
+  };
+
+  async function toggleTutoringStatus() {
+    if (tutoringStatusBusy) return;
+    const next = !isTutoring;
+    setTutoringStatusBusy(true);
+    try {
+      await api("/accounts/signup/instructor/", {
+        method: "PUT",
+        body: { is_tutoring: next },
+      });
+      notify(next ? "과외 모집이 재개되었습니다." : "과외 모집이 중지되었습니다.");
+      tutoringStatus.reload();
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setTutoringStatusBusy(false);
+    }
+  }
+
   return (
     <>
       {!teacher && (
@@ -677,32 +761,15 @@ function Tutoring() {
             </label>
           )}
           <Btn onClick={() => teacher ? go("tutoring-profile") : go("tutoring-post/new")}>
-            {teacher
-              ? rows.length
-                ? "수정"
-                : "과외 프로필 만들기"
-              : "새 모집 공고 등록"}
+            {teacher && rows.length ? <><PenLine size={18} aria-hidden="true" /> 수정</> : teacher ? "과외 프로필 만들기" : "새 모집 공고 등록"}
           </Btn>
         </div>
-        {visibleRows.map((x) => teacher ? (
-          <article className="history-row" key={x.id}>
-            <button
-              type="button"
-              className="post-management-card"
-              onClick={() => detail("teachers", x.id, x)}
-            >
-              <b>{x.title || "과외 소개"}</b>
-              <p className="muted">
-                {x.schedule} · {money(x.cost)}원
-              </p>
-            </button>
-          </article>
-        ) : (
+        {!teacher && visibleRows.map((x) => (
           <article className="student-post-management-card" key={x.id}>
             <button
               type="button"
               className="student-post-management-open"
-              onClick={() => detail("posts", x.id, x)}
+              onClick={() => openPostDetail(x)}
             >
               <b>{x.title || "과외 모집 공고"}</b>
               <span className="student-post-management-subject">
@@ -757,6 +824,95 @@ function Tutoring() {
                 ? "모집 중인 공고가 없어요."
                 : "마감된 공고가 없어요."}
           </p>
+        )}
+        {teacher && rows.length > 0 && (
+          <>
+            <div className="registration-tabs detail-tabs tutoring-management-profile-tabs" role="tablist" aria-label="내 과외 프로필 상세">
+              <button type="button" role="tab" aria-selected={teacherProfileTab === "info"} className={teacherProfileTab === "info" ? "active" : ""} onClick={() => setTeacherProfileTab("info")}>과외 정보</button>
+              <button type="button" role="tab" aria-selected={teacherProfileTab === "reviews"} className={teacherProfileTab === "reviews" ? "active" : ""} onClick={() => setTeacherProfileTab("reviews")}>과외 리뷰</button>
+            </div>
+            {teacherProfileTab === "info" ? (
+              <State resource={tutoringStatus}>
+                <dl className="class-info-list post-detail-list tutoring-management-info-list">
+                  <div><dt>수업 과목</dt><dd>{postSubjectLabel(tutoringStats.subjects) || "협의"}</dd></div>
+                  <div><dt>수업 일정</dt><dd>{tutoringStats.schedule || "일정 협의 필요"}</dd></div>
+                  <div><dt>수업료</dt><dd>{tutoringStats.cost_display || tutoringStats.cost || "협의 후 결정"}</dd></div>
+                  <div><dt>수업 방식</dt><dd>{methodLabel(tutoringStats.method)}</dd></div>
+                  <div><dt>수업 가능 지역</dt><dd>{postSubjectLabel(tutoringStats.regions) || tutoringStats.location || "협의"}</dd></div>
+                  {tutoringStats.etc && <div><dt>상세</dt><dd>{tutoringStats.etc}</dd></div>}
+                </dl>
+              </State>
+            ) : (
+              <State resource={tutoringReviews}>
+                {tutoringReviewRows.length ? (
+                  <>
+                    <section className="teacher-review-summary tutoring-management-review-summary">
+                      <div className="teacher-review-total">
+                        <Star size={24} fill="currentColor" aria-hidden="true" />
+                        <b>{formatRating(totalReviewRating)}<span> /5</span></b>
+                        <small>리뷰 {tutoringReviewRows.length}개</small>
+                      </div>
+                      <div className="teacher-review-summary-gauges">
+                        <TutoringReviewRatingGauge label="전문적이에요" rating={professionalism} />
+                        <TutoringReviewRatingGauge label="강의력이 좋아요" rating={teachingSkill} />
+                        <TutoringReviewRatingGauge label="시간을 잘 지켜요" rating={punctuality} />
+                      </div>
+                    </section>
+                    <div className="teacher-review-list tutoring-management-review-list">
+                      {tutoringReviewRows.map((review) => (
+                        <article className="teacher-review-card tutoring-management-review-card" key={review.id}>
+                          <div className="teacher-review-author tutoring-management-review-head">
+                            <Avatar src={review.student_profile_image} name={review.student_label || "학생"} />
+                            <div className="teacher-review-identity">
+                              <div>
+                                <b>{review.student_label || "학생"}</b>
+                                {classTypeLabel(review.class_type) && <span>{classTypeLabel(review.class_type)}</span>}
+                              </div>
+                              <small>{date(review.created_at)}</small>
+                            </div>
+                          </div>
+                          {postSubjectLabel(review.subjects) && <p className="teacher-review-subjects tutoring-management-review-subjects"><BookOpen size={14} aria-hidden="true" />{postSubjectLabel(review.subjects)}</p>}
+                          {review.comment && <p className="teacher-review-comment tutoring-management-review-comment">{review.comment}</p>}
+                          <div className="teacher-review-scores tutoring-management-review-scores">
+                            <TutoringReviewRatingGauge label="전문적이에요" rating={review.professionalism} />
+                            <TutoringReviewRatingGauge label="강의력이 좋아요" rating={review.teaching_skill} />
+                            <TutoringReviewRatingGauge label="시간을 잘 지켜요" rating={review.punctuality} />
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : <p className="tutoring-management-empty">아직 리뷰가 없어요.</p>}
+              </State>
+            )}
+            {teacherProfileTab === "info" && <div className="tutoring-profile-status-card">
+              <div className="tutoring-profile-status-row">
+                <span>과외 상태</span>
+                <div>
+                  <strong className={isTutoring ? "available" : "inactive"}>
+                    {isTutoringStatusReady ? isTutoring ? "모집 중" : "구하지 않음" : "상태 확인 중"}
+                  </strong>
+                  <button type="button" className="tutoring-profile-status-toggle" aria-expanded={isTutoringStatusExpanded} aria-label={isTutoringStatusExpanded ? "과외 상태 접기" : "과외 상태 펼치기"} onClick={() => setIsTutoringStatusExpanded((expanded) => !expanded)}>
+                    <ChevronDown size={20} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              {isTutoringStatusExpanded && <>
+                {isTutoringStatusReady && (
+                  <div className="tutoring-profile-status-details">
+                    <div><span>클래씨에서 과외 구한 건 수</span><strong>{tutoringStats.tutoring_count ? `${tutoringStats.tutoring_count}건` : "-"}</strong></div>
+                    <div><span>평균 수업료</span><strong>{tutoringStats.average_cost == null ? "-" : `${money(tutoringStats.average_cost)}원`}</strong></div>
+                    <div><span>과외 리뷰 평점</span><strong>{tutoringStats.review_count > 0 && Number.isFinite(averageRating) ? averageRating.toFixed(1) : "-"}</strong></div>
+                    <div><span>클래씨 랭킹</span><strong>{tutoringStats.current_rank == null ? "랭킹 외" : `${tutoringStats.current_rank}위`}</strong></div>
+                  </div>
+                )}
+              </>}
+              <Btn type="button" className="tutoring-profile-status-action" disabled={tutoringStatusBusy || !isTutoringStatusReady} onClick={toggleTutoringStatus}>
+                {isTutoring ? <PauseCircle size={18} aria-hidden="true" /> : <PlayCircle size={18} aria-hidden="true" />}
+                {tutoringStatusBusy ? "처리 중…" : isTutoring ? "과외 모집 중지" : "과외 모집 재개"}
+              </Btn>
+            </div>}
+          </>
         )}
       </section>
         </State>

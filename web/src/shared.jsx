@@ -20,7 +20,24 @@ import { api } from "./api";
 import regions from "./regions.json";
 export const Ctx = createContext();
 export const money = (n) => Number(n || 0).toLocaleString("ko-KR");
-export const date = (d) => (d ? new Date(d).toLocaleDateString("ko-KR") : "");
+/** 한국 시간 기준 날짜를 앱과 같은 yyyy.MM.dd 형식으로 표시한다. */
+export const date = (d) => {
+  if (!d) return "";
+  const value = new Date(d);
+  if (Number.isNaN(value.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value: part }) => [type, part]),
+  );
+  return `${values.year}.${values.month}.${values.day}`;
+};
 
 /** 입력 필드 제목과 필수 여부를 함께 표시한다. */
 export function FieldLabel({ children, required = false }) {
@@ -300,6 +317,7 @@ export function RegionFields({
   value = "",
   required = false,
   showRequiredLabel = false,
+  onChange,
 }) {
   const initial = regions.find(([, region]) => region === value)?.[1] || value;
   const [province, ...districtParts] = String(initial || "").split(" ");
@@ -314,6 +332,10 @@ export function RegionFields({
   const selectedRegion = [selectedProvince, selectedDistrict]
     .filter(Boolean)
     .join(" ");
+
+  useEffect(() => {
+    onChange?.(selectedRegion);
+  }, [onChange, selectedRegion]);
 
   return (
     <label>

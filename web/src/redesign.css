@@ -1886,6 +1886,103 @@ dialog.teacher-profile-modal {
 .info-panel .form-note {
   font-size: 12px;
 }
+.proposal-status-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 8px;
+}
+.proposal-status-actions .primary:only-child {
+  grid-column: 1 / -1;
+}
+.proposal-complete-button:disabled {
+  border-color: var(--line);
+  background: #eceef0;
+  color: #727883;
+  opacity: 1;
+}
+.proposal-write-heading {
+  display: flex;
+  align-items: center;
+  color: #40434a;
+  font-size: 14px;
+  font-weight: 600;
+}
+.proposal-saved-button {
+  width: 100%;
+  min-height: 36px;
+  margin: 8px 0 10px;
+  padding: 6px 10px;
+  border-color: var(--line);
+  background: #fff;
+  color: #40434a;
+  font-size: 12px;
+  font-weight: 500;
+}
+.proposal-saved-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.proposal-saved-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f4f5f6;
+}
+.proposal-saved-list article p {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  margin: 0;
+  color: #40434a;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.proposal-saved-list article p.expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+.proposal-saved-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.proposal-saved-list small {
+  color: #9399a3;
+  font-size: 12px;
+}
+.proposal-saved-list .btn {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.proposal-saved-list .proposal-saved-detail {
+  min-height: auto;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #727883;
+}
+.proposal-saved-list .primary {
+  width: 100%;
+  margin-top: 2px;
+}
+.proposal-message-counter {
+  display: block;
+  margin-top: 6px;
+  color: #9399a3;
+  font-size: 12px;
+  text-align: right;
+}
+.proposal-message-counter.valid {
+  color: var(--primary);
+}
 .comments {
   border-top: 1px solid var(--line);
   padding-top: 24px;
@@ -3484,6 +3581,105 @@ dialog.teacher-profile-modal {
   font-size: 14px;
   text-align: center;
 }
+.tutoring-profile-status-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #f7f7ff;
+}
+.tutoring-management-profile-tabs {
+  margin-top: 24px;
+}
+.tutoring-management-info-list {
+  margin-top: 8px;
+}
+.tutoring-profile-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #40434a;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.tutoring-profile-status-row > span {
+  color: #1f2023;
+  font-weight: 400;
+}
+.tutoring-profile-status-row > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tutoring-profile-status-row strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.tutoring-profile-status-row strong.available {
+  color: var(--primary);
+}
+.tutoring-profile-status-row strong.inactive {
+  color: #727883;
+}
+.tutoring-profile-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #727883;
+  cursor: pointer;
+}
+.tutoring-profile-status-toggle[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+.tutoring-profile-status-toggle:hover {
+  background: rgba(94, 96, 205, 0.1);
+  color: var(--primary);
+}
+.tutoring-profile-status-details {
+  display: grid;
+  gap: 12px;
+}
+.tutoring-profile-status-details > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #40434a;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.tutoring-profile-status-details > div > span {
+  color: #1f2023;
+  font-weight: 400;
+}
+.tutoring-profile-status-details > div > strong {
+  color: #727883;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+}
+.tutoring-profile-status-action {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #c9cbef;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--primary-dark);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tutoring-profile-status-action:not(:disabled):hover {
+  border-color: var(--primary);
+  background: #f1f1ff;
+}
 .registration-status {
   display: inline-flex;
   align-items: center;
@@ -4571,6 +4767,86 @@ progress {
   max-width: 1148px;
   margin: 0 auto;
 }
+.teacher-profile-page .teacher-profile-header .profile-avatar,
+.tutoring-post-page .tutoring-post-header .profile-avatar {
+  width: 64px;
+  height: 64px;
+}
+.tutoring-post-detail {
+  padding: 4px 0 32px;
+}
+.tutoring-post-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.tutoring-post-header .profile-avatar {
+  flex: 0 0 auto;
+}
+.tutoring-post-identity {
+  min-width: 0;
+  flex: 1;
+}
+.tutoring-post-identity > h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.tutoring-post-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.tutoring-post-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.tutoring-post-meta > i {
+  width: 1px;
+  height: 10px;
+  background: var(--line);
+}
+.tutoring-post-summary {
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 12px;
+}
+.tutoring-post-page .detail-tabs {
+  justify-content: center;
+  gap: 0;
+  margin-top: 24px;
+}
+.tutoring-post-page .detail-tabs button {
+  flex: 1 1 0;
+  padding-block: 11px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+.tutoring-post-page .detail-tabs button.active {
+  border-bottom-color: #111;
+  color: #111;
+}
+.tutoring-post-page .post-detail-list {
+  margin-top: 8px;
+}
+.tutoring-post-review-list,
+.tutoring-post-tab-empty {
+  margin-top: 8px;
+}
+.tutoring-post-tab-empty {
+  padding: 60px 20px;
+  color: var(--muted);
+  text-align: center;
+}
 .teacher-profile-page-layout {
   display: grid;
   grid-template-columns: minmax(0, 820px) 280px;
@@ -4793,6 +5069,22 @@ progress {
 }
 .tutoring-profile-page .form-fields {
   gap: 28px;
+}
+.tutoring-profile-base-field {
+  display: grid;
+  gap: 8px;
+}
+.tutoring-profile-page .form-field-label,
+.tutoring-profile-page .subject-field {
+  color: #5f646d;
+  font-size: var(--auth-label-size);
+  font-weight: 400;
+  line-height: 1.5;
+}
+.tutoring-profile-divider {
+  height: 5px;
+  margin: 4px 0;
+  background: #f1f2f4;
 }
 .tutoring-profile-intro {
   display: grid;
@@ -5202,6 +5494,14 @@ progress {
     border: 1px solid #dfe0e2;
     border-radius: 6px;
     font-size: 12px;
+  }
+  .teacher-profile-mobile-safety-actions > .report-form:is(:hover, :active):not(:disabled) {
+    border-color: #d75f5f;
+    background: #fff2f3;
+    color: #c52936;
+  }
+  .teacher-profile-mobile-safety-actions > .report-form:is(:hover, :active):not(:disabled) svg {
+    color: #c52936;
   }
   .teacher-profile-mobile-safety-actions .block-teacher-button {
     order: 2;

@@ -145,7 +145,10 @@ export async function api(path, options = {}) {
   if (!res.ok) {
     if (res.status === 401 && token)
       window.dispatchEvent(new Event("classy:expired"));
-    throw new Error(errorText(data));
+    const error = new Error(errorText(data));
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }

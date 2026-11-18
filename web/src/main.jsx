@@ -119,6 +119,7 @@ function App() {
   const [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
   const [pendingChatRoomId, setPendingChatRoomId] = useState(null);
+  const [postListItem, setPostListItem] = useState(null);
   const pageRef = useRef(page);
   pageRef.current = page;
   const subjects = useLoad("/accounts/subjects/");
@@ -213,6 +214,10 @@ function App() {
     setPendingChatRoomId(roomId?.toString() || null);
     go(roomId ? `chat/${roomId}` : "chat");
   };
+  const openPostDetail = (item) => {
+    setPostListItem(item || null);
+    go(`tutoring-post-detail/${item.id}`);
+  };
 
   function openNotificationTarget(notification) {
     const targetRole = notification?.role;
@@ -295,11 +300,16 @@ function App() {
     notify,
     go,
     openChat,
+    openPostDetail,
     login: () => location.assign("/login"),
     detail: (kind, id, item) => {
       setToast("");
       if (kind === "teachers") {
         go(`teacher-profile/${id}`);
+        return;
+      }
+      if (kind === "posts") {
+        openPostDetail(item || { id });
         return;
       }
       setModal({ type: "detail", kind, id, item });
@@ -426,6 +436,13 @@ function App() {
           <Gate>
             <TeacherProfilePage
               id={Number(location.hash.slice(1).split("/")[1])}
+            />
+          </Gate>
+        ) : page === "tutoring-post-detail" ? (
+          <Gate>
+            <TutoringPostPage
+              id={Number(location.hash.slice(1).split("/")[1])}
+              listItem={postListItem}
             />
           </Gate>
         ) : page === "notices" ? (
@@ -975,6 +992,274 @@ function TeacherProfilePage({ id }) {
     </div>
   );
 }
+
+/** 학생의 과외 모집 공고를 프로필 화면과 같은 독립 상세 페이지로 표시합니다. */
+function TutoringPostPage({ id, listItem }) {
+  const { go, user } = useContext(Ctx);
+  const resource = useLoad(
+    Number.isInteger(id) && id > 0 ? `/tutoring/posts/${id}/` : null,
+    [id],
+  );
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return (
+      <Empty
+        title="과외 공고를 찾을 수 없어요"
+        text="목록에서 다시 선택해 주세요."
+      >
+        <Btn onClick={() => go("posts")}>과외 공고 목록으로</Btn>
+      </Empty>
+    );
+  }
+
+  const post = resource.data || {};
+  const isOwnPost = Number(post.student?.user) === Number(user?.id);
+  const profileImage =
+    Number(listItem?.id) === id
+      ? listItem.student_profile_image
+      : isOwnPost
+        ? user?.profile_image
+        : null;
+  const studentName =
+    Number(listItem?.id) === id
+      ? listItem.student_name
+      : isOwnPost
+        ? user?.nickname
+        : "학생";
+  return (
+    <div className="teacher-profile-page tutoring-post-page">
+      <State resource={resource}>
+        <div className="teacher-profile-mobile-actions tutoring-post-mobile-actions">
+          <MobileBackAction
+            className="teacher-profile-mobile-list"
+            onClick={() => go("posts")}
+          >
+            과외 공고 목록으로
+          </MobileBackAction>
+          <TutoringPostSafetyActions
+            className="teacher-profile-mobile-safety-actions"
+            post={post}
+            studentName={studentName}
+          />
+        </div>
+        <div className="teacher-profile-page-layout">
+          <main className="teacher-profile-page-content">
+            <TutoringPostDetail
+              post={post}
+              profileImage={profileImage}
+              studentName={studentName}
+              isOwnPost={isOwnPost}
+            />
+          </main>
+          <aside className="teacher-profile-sidebar" aria-label="과외 공고 작업">
+            <Proposal kind="posts" id={id} onClose={() => go("posts")} />
+            <TutoringPostSafetyActions
+              className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
+              post={post}
+              studentName={studentName}
+            />
+          </aside>
+        </div>
+      </State>
+    </div>
+  );
+}
+
+/** 과외 공고의 기본 정보와 학생 후기를 표시합니다. */
+function TutoringPostDetail({ post, profileImage, studentName, isOwnPost }) {
+  const [tab, setTab] = useState("info");
+  const reviews = useLoad(
+    tab === "reviews" && post.student?.id
+      ? `/tutoring/students/${post.student.id}/reviews/`
+      : null,
+    [tab, post.student?.id],
+  );
+  const sexLabel =
+    post.sex === "여" || post.sex === "여성" || post.sex === "F"
+      ? "여성"
+      : post.sex === "남" || post.sex === "남성" || post.sex === "M"
+        ? "남성"
+        : post.sex || "";
+  const personalInfo = [sexLabel, post.age != null ? `만 ${post.age}세` : ""]
+    .filter(Boolean);
+  const studentInfo = [sexLabel, post.grade, post.field]
+    .filter(Boolean)
+    .join(" · ");
+  const textLabels = (values) =>
+    (Array.isArray(values) ? values : [])
+      .map((value) =>
+        typeof value === "object" ? value.label || value.name : value,
+      )
+      .filter(Boolean)
+      .join(", ");
+  const createdAt = post.created_at ? new Date(post.created_at) : null;
+  const createdDate =
+    createdAt && !Number.isNaN(createdAt.valueOf())
+      ? `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}-${String(createdAt.getDate()).padStart(2, "0")}`
+      : "";
+
+  return (
+    <section className="tutoring-post-detail">
+      <header className="tutoring-post-header">
+        <Avatar
+          src={profileImage}
+          name="학생"
+          size="profile-avatar"
+        />
+        <div className="tutoring-post-identity">
+          <h2>{studentName || "학생"}</h2>
+          <div className="tutoring-post-meta">
+            {createdDate && <span>{createdDate}</span>}
+            {createdDate && <i aria-hidden="true" />}
+            <span>
+              <Eye size={14} aria-hidden="true" />
+              조회수 {post.view_count || 0}회
+            </span>
+          </div>
+        </div>
+        {isOwnPost && (
+          <span className={`post-status ${post.is_active === false ? "closed" : "active"}`}>
+            {post.is_active === false ? "모집 마감" : "모집 중"}
+          </span>
+        )}
+      </header>
+      <div className="teacher-profile-info tutoring-post-summary">
+        {personalInfo.length > 0 && (
+          <div className="teacher-profile-info-item">
+            <UserRound size={15} aria-hidden="true" />
+            <span className="teacher-profile-personal-info">
+              {personalInfo.map((label, index) => (
+                <React.Fragment key={label}>
+                  {index > 0 && (
+                    <span
+                      className="teacher-profile-info-divider"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span>{label}</span>
+                </React.Fragment>
+              ))}
+            </span>
+          </div>
+        )}
+        {textLabels(post.regions) && (
+          <div className="teacher-profile-info-item">
+            <MapPin size={15} aria-hidden="true" />
+            <span>{textLabels(post.regions)}</span>
+          </div>
+        )}
+        {textLabels(post.subjects) && (
+          <div className="teacher-profile-info-item teacher-profile-subjects">
+            <BookOpen size={15} aria-hidden="true" />
+            <span>{textLabels(post.subjects)}</span>
+          </div>
+        )}
+      </div>
+      <div className="registration-tabs detail-tabs" role="tablist" aria-label="학생 모집 공고 상세">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "info"}
+          className={tab === "info" ? "active" : ""}
+          onClick={() => setTab("info")}
+        >
+          과외 공고
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "reviews"}
+          className={tab === "reviews" ? "active" : ""}
+          onClick={() => setTab("reviews")}
+        >
+          과외 리뷰
+        </button>
+      </div>
+      {tab === "info" ? (
+        <dl className="class-info-list post-detail-list">
+          <div>
+            <dt>공고 제목</dt>
+            <dd>{post.title || "제목 없음"}</dd>
+          </div>
+          <div>
+            <dt>학생 정보</dt>
+            <dd>{studentInfo || "정보 미입력"}</dd>
+          </div>
+          <div>
+            <dt>수업 과목</dt>
+            <dd>{textLabels(post.subjects) || "협의"}</dd>
+          </div>
+          <div>
+            <dt>수업 방식</dt>
+            <dd>{post.method || "상담 후 결정"}</dd>
+          </div>
+          <div>
+            <dt>수업료</dt>
+            <dd>{post.cost ? `${money(post.cost)}원` : "협의"}</dd>
+          </div>
+          <div>
+            <dt>수업 일정</dt>
+            <dd>{post.schedule || "협의 가능"}</dd>
+          </div>
+          {post.situation && (
+            <div>
+              <dt>학생 상황</dt>
+              <dd>{post.situation}</dd>
+            </div>
+          )}
+          {post.etc && (
+            <div>
+              <dt>기타 요청</dt>
+              <dd>{post.etc}</dd>
+            </div>
+          )}
+        </dl>
+      ) : (
+        <State resource={reviews}>
+          {list(reviews.data).length ? (
+            <div className="review-list tutoring-post-review-list">
+              {list(reviews.data).map((review) => (
+                <article className="comment" key={review.id}>
+                  <b>
+                    {review.instructor_nickname || review.instructor_label || "선생님"}
+                    {review.rating ? ` · ${review.rating}점` : ""}
+                  </b>
+                  <p>{review.comment}</p>
+                  {review.created_at && (
+                    <small className="muted">{date(review.created_at)}</small>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="tutoring-post-tab-empty">등록된 과외 리뷰가 없습니다.</p>
+          )}
+        </State>
+      )}
+    </section>
+  );
+}
+
+/** 공고 상세 페이지에서 신고 및 학생 차단 동작을 제공합니다. */
+function TutoringPostSafetyActions({ post, studentName = "학생", className = "" }) {
+  const { user, go } = useContext(Ctx);
+  const studentUserId = Number(post.student?.user);
+
+  if (!studentUserId || studentUserId === Number(user?.id)) return null;
+
+  return (
+    <div className={`profile-safety-actions ${className}`.trim()}>
+      <ReportForm source="tutoring_post" id={post.id} label="신고" />
+      <BlockUserButton
+        userId={studentUserId}
+        targetName={studentName}
+        targetLabel="학생"
+        label="차단"
+        onBlocked={() => go("posts")}
+      />
+    </div>
+  );
+}
 function ProfileSafetyActions({
   className = "",
   instructorId,
@@ -1071,44 +1356,162 @@ function Proposal({ kind, id, onClose }) {
   const { user, notify, go } = useContext(Ctx);
   const eligible =
     kind === "teachers" ? user.role === "student" : user.role === "instructor";
+  const isStudentPostProposal = kind === "posts";
   const posts = useLoad(
     eligible && kind === "teachers" ? "/tutoring/my-posts/" : null,
   );
+  const proposals = useLoad(
+    eligible && isStudentPostProposal ? "/tutoring/proposals/" : null,
+    [eligible, isStudentPostProposal],
+  );
+  const chatRooms = useLoad(
+    eligible && isStudentPostProposal ? "/chatrooms/?role=instructor" : null,
+    [eligible, isStudentPostProposal],
+  );
   const [busy, setBusy] = useState(false),
-    [open, setOpen] = useState(false);
+    [open, setOpen] = useState(false),
+    [checkingProfile, setCheckingProfile] = useState(false),
+    [message, setMessage] = useState(""),
+    [sentRoomId, setSentRoomId] = useState(null),
+    [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false),
+    [isVerificationDialogOpen, setIsVerificationDialogOpen] = useState(false),
+    [isConfirmOpen, setIsConfirmOpen] = useState(false),
+    [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false),
+    [isSavedProposalsOpen, setIsSavedProposalsOpen] = useState(false),
+    [expandedSavedProposalId, setExpandedSavedProposalId] = useState(null);
   const hasActivePosts = list(posts.data).some((post) => post.is_active !== false);
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    const f = new FormData(e.currentTarget);
+  const proposalRows = list(proposals.data);
+  const currentProposal = proposalRows.find(
+    (proposal) => Number(proposal.tutoring_post) === Number(id),
+  );
+  const currentRoom = list(chatRooms.data).find(
+    (room) => Number(room.post) === Number(id),
+  );
+  const proposalRoomId = sentRoomId || currentRoom?.id;
+  const proposalAccepted = Boolean(currentRoom?.is_accepted);
+  const canSubmitStudentProposal = message.trim().length >= 10;
+
+  async function openProposal() {
+    if (kind === "teachers") {
+      setOpen(true);
+      return;
+    }
+
+    setCheckingProfile(true);
     try {
-      const body =
-        kind === "teachers"
-          ? { instructor_id: id, post_id: Number(f.get("post_id")) }
-          : { post_id: id, message: f.get("message") };
-      await api(
+      const [profile, verification] = await Promise.all([
+        api("/tutoring/instructor-info/mine/"),
+        api("/pending/"),
+      ]);
+      if (!profile) {
+        setIsProfileDialogOpen(true);
+      } else if (verification?.status !== "VERIFIED") {
+        setIsVerificationDialogOpen(true);
+      } else {
+        setOpen(true);
+      }
+    } catch (error) {
+      notify(error.message || "제안 가능 상태를 확인하지 못했어요.");
+    } finally {
+      setCheckingProfile(false);
+    }
+  }
+
+  async function sendProposal(body) {
+    setBusy(true);
+    try {
+      const result = await api(
         kind === "teachers"
           ? "/tutoring/propose-to-instructor/"
           : "/tutoring/propose-to-student/",
         { method: "POST", body },
       );
       notify("과외 제안을 보냈습니다. 채팅에서 확인해 주세요.");
-      onClose();
-      go("chat");
-    } catch (e) {
-      notify(e.message);
+      if (isStudentPostProposal) {
+        setSentRoomId(result.room_id);
+        proposals.reload();
+        chatRooms.reload();
+        go(`chat/${result.room_id}`);
+      } else {
+        onClose();
+        go("chat");
+      }
+    } catch (error) {
+      if (error.data?.code === "tutoring_profile_required") {
+        setIsProfileDialogOpen(true);
+      } else if (error.data?.code === "academic_verification_required") {
+        setIsVerificationDialogOpen(true);
+      } else {
+        notify(error.message);
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (kind === "teachers") {
+      const form = new FormData(event.currentTarget);
+      await sendProposal({ instructor_id: id, post_id: Number(form.get("post_id")) });
+      return;
+    }
+    if (canSubmitStudentProposal) setIsConfirmOpen(true);
+  }
+
+  async function cancelProposal() {
+    setBusy(true);
+    try {
+      await api("/tutoring/propose-to-student/", {
+        method: "DELETE",
+        body: { post_id: id },
+      });
+      setSentRoomId(null);
+      setIsCancelConfirmOpen(false);
+      proposals.reload();
+      chatRooms.reload();
+      notify("과외 제안이 취소되었습니다.");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!eligible) return null;
   return (
     <div className="info-panel">
-      <h3>지금 과외 상담을 시작해보세요.</h3>
-      {!open ? (
-        <Btn className="primary" onClick={() => setOpen(true)}>
+      <h3>
+        {kind === "teachers"
+          ? "지금 과외 상담을 시작해보세요."
+          : "지금 과외 제안을 보내보세요."}
+      </h3>
+      {isStudentPostProposal && (currentProposal || sentRoomId) ? (
+        <div className="proposal-status-actions">
+          {proposalAccepted && proposalRoomId ? (
+            <Btn className="primary" onClick={() => go(`chat/${proposalRoomId}`)}>
+              <MessageCircle size={16} aria-hidden="true" />
+              채팅방으로 이동
+            </Btn>
+          ) : (
+            <>
+              <Btn type="button" disabled={busy} onClick={() => setIsCancelConfirmOpen(true)}>
+                {busy ? "처리 중…" : "제안 취소"}
+              </Btn>
+              <Btn type="button" disabled className="proposal-complete-button">
+                과외 제안 완료
+              </Btn>
+            </>
+          )}
+        </div>
+      ) : !open ? (
+        <Btn className="primary" disabled={checkingProfile} onClick={openProposal}>
           <MessageCircle size={16} />
-          이 선생님에게 과외 문의하기
+          {checkingProfile
+            ? "확인 중…"
+            : kind === "teachers"
+            ? "이 선생님에게 과외 문의하기"
+            : "이 학생에게 과외 제안 보내기"}
         </Btn>
       ) : (
         <form className="form" onSubmit={submit}>
@@ -1142,16 +1545,47 @@ function Proposal({ kind, id, onClose }) {
               )}
             </State>
           ) : (
-            <label>
-              학생에게 전할 소개
-              <textarea
-                name="message"
-                rows={3}
-                required
-                maxLength={3000}
-                placeholder="어떤 수업을 함께할 수 있는지 알려주세요."
-              />
-            </label>
+            <>
+              <div className="proposal-write-heading">
+                <span>제안서 작성</span>
+              </div>
+              <Btn type="button" className="proposal-saved-button" onClick={() => setIsSavedProposalsOpen((value) => !value)}>
+                이전 제안서 불러오기
+              </Btn>
+              {isSavedProposalsOpen && (
+                <State resource={proposals}>
+                  <div className="proposal-saved-list">
+                    {proposalRows.length ? proposalRows.map((proposal) => {
+                      const isExpanded = expandedSavedProposalId === proposal.id;
+                      return (
+                        <article key={proposal.id}>
+                          <p className={isExpanded ? "expanded" : ""}>{proposal.message}</p>
+                          <div className="proposal-saved-meta">
+                            <small>{date(proposal.created_at)}</small>
+                            <Btn type="button" className="proposal-saved-detail" onClick={() => setExpandedSavedProposalId(isExpanded ? null : proposal.id)}>
+                              {isExpanded ? "닫기" : "상세보기"}
+                            </Btn>
+                          </div>
+                          {isExpanded && <Btn type="button" className="primary" onClick={() => { setMessage(proposal.message || ""); setIsSavedProposalsOpen(false); setExpandedSavedProposalId(null); }}>이 제안서 사용하기</Btn>}
+                        </article>
+                      );
+                    }) : <p className="muted">저장된 제안서가 없어요.</p>}
+                  </div>
+                </State>
+              )}
+              <label>
+                <textarea
+                  name="message"
+                  rows={7}
+                  required
+                  value={message}
+                  maxLength={3000}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="학생에게 전달될 과외 제안서를 작성해 주세요. 간단한 자기소개와 수업 소개, 커리큘럼, 가능 일정 등을 구체적으로 적어주세요. 최소 10자 이상 입력해야 합니다."
+                />
+                <span className={`proposal-message-counter ${canSubmitStudentProposal ? "valid" : ""}`}>{message.length}/3000</span>
+              </label>
+            </>
           )}
           <p className="form-note">
             제안을 보내면 상대방에게 알림이 전달되고 상담 채팅방이 만들어집니다.
@@ -1175,13 +1609,65 @@ function Proposal({ kind, id, onClose }) {
               className="primary"
               disabled={
                 busy ||
-                (kind === "teachers" && !hasActivePosts)
+                (kind === "teachers" && !hasActivePosts) ||
+                (isStudentPostProposal && !canSubmitStudentProposal)
               }
             >
-              제안 보내기
+              {busy ? "전송 중…" : "제안 보내기"}
             </Btn>
           </div>
         </form>
+      )}
+      {isProfileDialogOpen && (
+        <ConfirmDialog
+          title="아직 과외 프로필이 없어요"
+          description="과외 제안을 보내시려면 먼저 선생님의 과외 프로필을 만들어 주세요."
+          cancelLabel="닫기"
+          confirmLabel="프로필 만들기"
+          onCancel={() => setIsProfileDialogOpen(false)}
+          onConfirm={() => {
+            setIsProfileDialogOpen(false);
+            go("tutoring-profile");
+          }}
+        />
+      )}
+      {isVerificationDialogOpen && (
+        <ConfirmDialog
+          title="학력 인증이 필요해요"
+          description="아직 학력 인증이 완료되지 않았어요. 과외 제안을 보내려면 학력 인증이 완료되어야 해요."
+          cancelLabel="닫기"
+          confirmLabel="인증하러 가기"
+          onCancel={() => setIsVerificationDialogOpen(false)}
+          onConfirm={() => {
+            setIsVerificationDialogOpen(false);
+            go("verification");
+          }}
+        />
+      )}
+      {isConfirmOpen && (
+        <ConfirmDialog
+          title="제안서를 전송할까요?"
+          description="제안서를 보낸 뒤에는 수정할 수 없으며, 상대방이 답장을 보내기 전까지 메시지를 보낼 수 없습니다."
+          cancelLabel="취소"
+          confirmLabel="전송"
+          busy={busy}
+          onCancel={() => setIsConfirmOpen(false)}
+          onConfirm={() => {
+            setIsConfirmOpen(false);
+            sendProposal({ post_id: id, message: message.trim() });
+          }}
+        />
+      )}
+      {isCancelConfirmOpen && (
+        <ConfirmDialog
+          title="보낸 과외 제안을 취소할까요?"
+          description="학생이 답장하기 전까지 제안을 취소할 수 있습니다."
+          cancelLabel="아니오"
+          confirmLabel="예"
+          busy={busy}
+          onCancel={() => setIsCancelConfirmOpen(false)}
+          onConfirm={cancelProposal}
+        />
       )}
     </div>
   );
@@ -1309,15 +1795,6 @@ function TeacherProfile({ id, teacher, item }) {
   const formatRating = (rating) => {
     const value = Number(rating) || 0;
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
-  };
-  const reviewDate = (value) => {
-    const reviewCreatedAt = new Date(value);
-    if (Number.isNaN(reviewCreatedAt.valueOf())) return "";
-    return [
-      reviewCreatedAt.getFullYear(),
-      String(reviewCreatedAt.getMonth() + 1).padStart(2, "0"),
-      String(reviewCreatedAt.getDate()).padStart(2, "0"),
-    ].join(".");
   };
   const studentNumber = profile.student_number
     ? `${String(profile.student_number).slice(2)}학번`
@@ -1657,7 +2134,7 @@ function TeacherProfile({ id, teacher, item }) {
                           <b>{review.student_label || "학생"}</b>
                           {review.class_type && <span>{review.class_type}</span>}
                         </div>
-                        {reviewDate(review.created_at) && <small>{reviewDate(review.created_at)}</small>}
+                        {date(review.created_at) && <small>{date(review.created_at)}</small>}
                       </div>
                     </div>
                     {reviewSubjects(review.subjects) && (

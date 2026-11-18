@@ -1,9 +1,9 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { api } from "./api";
 import regions from "./regions.json";
 import { SubjectPicker } from "./studio";
-import { Btn, Ctx, FieldLabel, MobileBackAction, useLoad } from "./shared";
+import { Btn, Ctx, FieldLabel, MobileBackAction, RegionFields, useLoad } from "./shared";
 
 function toIds(values, findByLabel) {
   return (Array.isArray(values) ? values : [])
@@ -21,25 +21,61 @@ function selectedMethod(method) {
     .filter(Boolean);
 }
 
+function hasUnresolvedSubjects(values, subjects) {
+  return (Array.isArray(values) ? values : []).some(
+    (value) =>
+      typeof value === "string" &&
+      !Number.isFinite(Number(value)) &&
+      !subjects.some((item) => item.name === value),
+  );
+}
+
+function profileBirthDateMax() {
+  const today = new Date();
+  today.setFullYear(today.getFullYear() - 14);
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
 /** 선생님의 과외 프로필을 생성하거나 수정하는 독립 페이지입니다. */
 export function TutoringProfilePage() {
-  const { go, notify, subjects } = useContext(Ctx);
+  const { go, notify, refreshUser, subjects } = useContext(Ctx);
   const resource = useLoad("/tutoring/instructor-info/mine/");
   const profile = resource.data || null;
+  const baseResource = useLoad(
+    profile ? "/accounts/me/" : null,
+    [profile?.id],
+  );
+  const baseProfile = baseResource.data || null;
   const [subjectIds, setSubjectIds] = useState([]);
   const [regionIds, setRegionIds] = useState([]);
   const [schedule, setSchedule] = useState("");
   const [cost, setCost] = useState("");
   const [methods, setMethods] = useState([]);
   const [extra, setExtra] = useState("");
+  const [sex, setSex] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [homeRegion, setHomeRegion] = useState("");
+  const [specialtySubjectIds, setSpecialtySubjectIds] = useState([]);
+  const [instruction, setInstruction] = useState("");
   const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
+  const [specialtySubjectPickerOpen, setSpecialtySubjectPickerOpen] = useState(false);
   const [regionProvince, setRegionProvince] = useState("");
   const [regionDistrict, setRegionDistrict] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const populatedProfileId = useRef(null);
+  const populatedBaseProfileId = useRef(null);
 
   useEffect(() => {
-    if (!profile) return;
+    if (
+      !profile ||
+      populatedProfileId.current === profile.id ||
+      hasUnresolvedSubjects(profile.subjects, subjects)
+    )
+      return;
+    populatedProfileId.current = profile.id;
     setSubjectIds(toIds(
       profile.subjects,
       (value) => subjects.find((item) => item.name === value)?.number,
@@ -52,15 +88,41 @@ export function TutoringProfilePage() {
     setCost(profile.cost || "");
     setMethods(selectedMethod(profile.method));
     setExtra(profile.etc || "");
-  }, [profile?.id, subjects]);
+  }, [profile, subjects]);
+
+  useEffect(() => {
+    if (
+      !profile ||
+      !baseProfile ||
+      populatedBaseProfileId.current === baseProfile.id ||
+      hasUnresolvedSubjects(baseProfile.subjects, subjects)
+    )
+      return;
+    populatedBaseProfileId.current = baseProfile.id;
+    setSex(baseProfile.sex || "");
+    setBirthDate(baseProfile.birth_date || "");
+    setHomeRegion(baseProfile.region || "");
+    setSpecialtySubjectIds(toIds(
+      baseProfile.subjects,
+      (value) => subjects.find((item) => item.name === value)?.number,
+    ));
+    setInstruction(baseProfile.instruction || "");
+  }, [baseProfile, profile, subjects]);
 
   const isEditing = Boolean(profile?.id);
-  const isValid =
+  const tutoringIsValid =
     subjectIds.length > 0 &&
     schedule.trim() &&
     cost.trim() &&
     methods.length > 0 &&
     regionIds.length > 0;
+  const baseIsValid =
+    sex &&
+    birthDate &&
+    homeRegion &&
+    specialtySubjectIds.length > 0 &&
+    instruction.trim();
+  const isValid = tutoringIsValid && (!isEditing || baseIsValid);
 
   function toggleMethod(method) {
     setMethods((current) =>
@@ -98,6 +160,18 @@ export function TutoringProfilePage() {
       etc: extra.trim(),
     };
     try {
+      if (isEditing) {
+        await api("/accounts/signup/instructor/", {
+          method: "PATCH",
+          body: {
+            sex,
+            birth_date: birthDate,
+            region: homeRegion,
+            instruction: instruction.trim(),
+            instructorsubject: specialtySubjectIds,
+          },
+        });
+      }
       await api(
         isEditing
           ? `/tutoring/instructor-info/${profile.id}/`
@@ -107,6 +181,7 @@ export function TutoringProfilePage() {
           body: isEditing ? body : { ...body, is_tutoring: true },
         },
       );
+      await refreshUser();
       notify(isEditing ? "프로필이 수정되었습니다." : "프로필이 등록되었습니다.");
       go("tutoring-manage");
     } catch (submitError) {
@@ -116,15 +191,15 @@ export function TutoringProfilePage() {
     }
   }
 
-  if (resource.loading)
+  if (resource.loading || (isEditing && baseResource.loading))
     return <div className="loading">프로필 정보를 불러오는 중이에요.</div>;
-  if (resource.error)
+  if (resource.error || (isEditing && baseResource.error))
     return (
       <main className="form-page registration-page tutoring-profile-page">
         <div className="form-page-content registration-page-content">
           <div className="form-page-body registration-page-body">
-            <p className="error" role="alert">{resource.error}</p>
-            <Btn onClick={resource.reload}>다시 시도</Btn>
+            <p className="error" role="alert">{resource.error || baseResource.error}</p>
+            <Btn onClick={resource.error ? resource.reload : baseResource.reload}>다시 시도</Btn>
           </div>
         </div>
       </main>
@@ -143,10 +218,85 @@ export function TutoringProfilePage() {
 
           <form className="form registration-form" onSubmit={submit}>
             <fieldset className="form-fields" disabled={busy}>
-              <section className="tutoring-profile-intro">
-                <h2>과외를 시작하시겠어요?</h2>
-                <p>프로필을 작성해주시면 과외 제안을 보낼 수 있어요.</p>
-              </section>
+              {!isEditing && (
+                <section className="tutoring-profile-intro">
+                  <h2>과외를 시작하시겠어요?</h2>
+                  <p>프로필을 작성해주시면 과외 제안을 보낼 수 있어요.</p>
+                </section>
+              )}
+
+              {isEditing && (
+                <>
+                  <div className="tutoring-profile-base-field">
+                    <div className="form-columns">
+                      <label>
+                        <FieldLabel required>성별</FieldLabel>
+                        <select name="sex" value={sex} onChange={(event) => setSex(event.target.value)} required>
+                          <option value="" disabled>성별 선택</option>
+                          <option>남성</option>
+                          <option>여성</option>
+                        </select>
+                      </label>
+                      <label>
+                        <FieldLabel required>생년월일</FieldLabel>
+                        <span className={`date-field${birthDate ? " has-value" : ""}`}>
+                          <input
+                            className="birth-date-input"
+                            name="birth_date"
+                            type="date"
+                            value={birthDate}
+                            onChange={(event) => setBirthDate(event.target.value)}
+                            required
+                            min={`${profileBirthDateMax().slice(0, 4) - 100}-01-01`}
+                            max={profileBirthDateMax()}
+                            data-placeholder="생년월일 선택"
+                          />
+                          <span className="date-placeholder" aria-hidden="true">생년월일 선택</span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="tutoring-profile-base-field">
+                    <RegionFields
+                      key={baseProfile?.id || "profile-region"}
+                      label="거주 지역"
+                      value={baseProfile?.region || ""}
+                      required
+                      showRequiredLabel
+                      onChange={setHomeRegion}
+                    />
+                  </div>
+
+                  <div className="chip-form-field">
+                    <div className="subject-field">
+                      <FieldLabel required>전문 수업 과목</FieldLabel>
+                      <button type="button" className="subject-picker-trigger" onClick={() => setSpecialtySubjectPickerOpen(true)}>
+                        <span>{specialtySubjectIds.length ? `${specialtySubjectIds.length}/3개 과목 선택됨` : "전문 수업 과목을 선택해주세요."}</span>
+                        <Search size={24} aria-hidden="true" />
+                      </button>
+                    </div>
+                    {specialtySubjectIds.length > 0 && (
+                      <div className="subject-chips" aria-label="선택된 전문 수업 과목">
+                        {specialtySubjectIds.map((id) => {
+                          const subject = subjects.find((item) => Number(item.number) === id);
+                          return subject ? <button type="button" key={id} onClick={() => setSpecialtySubjectIds((current) => current.filter((value) => value !== id))}>{subject.name} <X size={14} aria-hidden="true" /></button> : null;
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <label className="tutoring-profile-base-field">
+                    <span className="post-form-label">
+                      <FieldLabel required>한 줄 소개</FieldLabel>
+                      <small>{instruction.length}/300</small>
+                    </span>
+                    <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={5} maxLength={300} placeholder="자기소개를 입력해주세요." required />
+                  </label>
+
+                  <div className="tutoring-profile-divider" aria-hidden="true" />
+                </>
+              )}
 
               <div className="chip-form-field">
               <div className="subject-field">
@@ -231,6 +381,7 @@ export function TutoringProfilePage() {
         </div>
       </div>
       {subjectPickerOpen && <SubjectPicker subjects={subjects} selectedIds={subjectIds} onChange={setSubjectIds} onClose={() => setSubjectPickerOpen(false)} />}
+      {specialtySubjectPickerOpen && <SubjectPicker subjects={subjects} selectedIds={specialtySubjectIds} onChange={setSpecialtySubjectIds} onClose={() => setSpecialtySubjectPickerOpen(false)} maxSelections={3} />}
     </main>
   );
 }

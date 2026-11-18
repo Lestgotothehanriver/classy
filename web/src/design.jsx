@@ -30,6 +30,7 @@ import {
   Modal,
   Subjects,
   money,
+  date,
   RegionFields,
 } from "./shared";
 import { api, list } from "./api";
@@ -65,6 +66,7 @@ export const pageNames = {
   account: "계정 관리",
   "tutoring-manage": "과외 관리",
   "tutoring-post": "모집 공고 작성",
+  "tutoring-post-detail": "과외 공고",
   "tutoring-registration": "성사 등록",
   "tutoring-profile": "과외 프로필",
   support: "고객센터",
@@ -307,7 +309,7 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
   } catch {}
   const selected = (id) =>
     id === page ||
-    (id === tutoring && ["teachers", "posts"].includes(page)) ||
+    (id === tutoring && ["teachers", "posts", "tutoring-post-detail"].includes(page)) ||
     (id === "teachers" && page === "teacher-profile") ||
     (id === "profile" && [
       "profile",
@@ -599,9 +601,7 @@ export function HomePage() {
                   {(promotion.lecture_settlement_fee_rate_bps / 100).toFixed(1)}%
                 </span>
                 {" · "}
-                {new Date(promotion.ends_at).toLocaleDateString("ko-KR", {
-                  timeZone: "Asia/Seoul",
-                })}
+                {date(promotion.ends_at)}
                 까지
               </p>
             </section>
@@ -1068,7 +1068,7 @@ export function NoticePage() {
             <section className="notice-detail-page">
               <button className="text-button" onClick={closeDetail}>← 목록으로</button>
               <h2>{detail.data.title}</h2>
-              <time>{new Date(detail.data.publish_at).toLocaleDateString("ko-KR")}</time>
+              <time>{date(detail.data.publish_at)}</time>
               {(detail.data.home_banner_image || detail.data.banner_image) && <img src={detail.data.home_banner_image || detail.data.banner_image} alt="" />}
               <p>{detail.data.content}</p>
             </section>
@@ -1092,7 +1092,7 @@ export function NoticePage() {
                   onClick={() => select(notice.id)}
                 >
                   <span><strong>{notice.title}</strong><small>{notice.summary}</small></span>
-                  <time>{new Date(notice.publish_at).toLocaleDateString("ko-KR")}</time>
+                  <time>{date(notice.publish_at)}</time>
                 </button>
               ))
             ) : <Empty title="등록된 공지사항이 없어요" />}
