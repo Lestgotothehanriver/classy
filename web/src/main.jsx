@@ -1378,9 +1378,14 @@ function Proposal({ kind, id, onClose }) {
     [isConfirmOpen, setIsConfirmOpen] = useState(false),
     [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false),
     [isSavedProposalsOpen, setIsSavedProposalsOpen] = useState(false),
-    [expandedSavedProposalId, setExpandedSavedProposalId] = useState(null);
+    [savedProposalOrder, setSavedProposalOrder] = useState("newest"),
+    [savedProposalDetail, setSavedProposalDetail] = useState(null);
   const hasActivePosts = list(posts.data).some((post) => post.is_active !== false);
   const proposalRows = list(proposals.data);
+  const sortedProposalRows = [...proposalRows].sort((left, right) => {
+    const difference = new Date(right.created_at) - new Date(left.created_at);
+    return savedProposalOrder === "newest" ? difference : -difference;
+  });
   const currentProposal = proposalRows.find(
     (proposal) => Number(proposal.tutoring_post) === Number(id),
   );
@@ -1546,33 +1551,9 @@ function Proposal({ kind, id, onClose }) {
             </State>
           ) : (
             <>
-              <div className="proposal-write-heading">
-                <span>제안서 작성</span>
-              </div>
-              <Btn type="button" className="proposal-saved-button" onClick={() => setIsSavedProposalsOpen((value) => !value)}>
+              <Btn type="button" className="proposal-saved-button" onClick={() => setIsSavedProposalsOpen(true)}>
                 이전 제안서 불러오기
               </Btn>
-              {isSavedProposalsOpen && (
-                <State resource={proposals}>
-                  <div className="proposal-saved-list">
-                    {proposalRows.length ? proposalRows.map((proposal) => {
-                      const isExpanded = expandedSavedProposalId === proposal.id;
-                      return (
-                        <article key={proposal.id}>
-                          <p className={isExpanded ? "expanded" : ""}>{proposal.message}</p>
-                          <div className="proposal-saved-meta">
-                            <small>{date(proposal.created_at)}</small>
-                            <Btn type="button" className="proposal-saved-detail" onClick={() => setExpandedSavedProposalId(isExpanded ? null : proposal.id)}>
-                              {isExpanded ? "닫기" : "상세보기"}
-                            </Btn>
-                          </div>
-                          {isExpanded && <Btn type="button" className="primary" onClick={() => { setMessage(proposal.message || ""); setIsSavedProposalsOpen(false); setExpandedSavedProposalId(null); }}>이 제안서 사용하기</Btn>}
-                        </article>
-                      );
-                    }) : <p className="muted">저장된 제안서가 없어요.</p>}
-                  </div>
-                </State>
-              )}
               <label>
                 <textarea
                   name="message"
@@ -1617,6 +1598,91 @@ function Proposal({ kind, id, onClose }) {
             </Btn>
           </div>
         </form>
+      )}
+      {isSavedProposalsOpen && (
+        <Modal
+          title="이전 제안서 불러오기"
+          onClose={() => setIsSavedProposalsOpen(false)}
+          className="proposal-saved-modal"
+          scrollable
+        >
+          <State resource={proposals}>
+            <div className="proposal-saved-toolbar">
+              <select
+                aria-label="제안서 정렬"
+                value={savedProposalOrder}
+                onChange={(event) => setSavedProposalOrder(event.target.value)}
+              >
+                <option value="newest">최신순</option>
+                <option value="oldest">오래된순</option>
+              </select>
+            </div>
+            <div className="proposal-saved-list">
+              {sortedProposalRows.length ? sortedProposalRows.map((proposal) => (
+                <article key={proposal.id}>
+                  <p>{proposal.message}</p>
+                  <div className="proposal-saved-meta">
+                    <small>{date(proposal.created_at)}</small>
+                  </div>
+                  <Btn
+                    type="button"
+                    className="primary proposal-saved-use"
+                    onClick={() => {
+                      setMessage(proposal.message || "");
+                      setIsSavedProposalsOpen(false);
+                    }}
+                  >
+                    선택
+                  </Btn>
+                  <Btn
+                    type="button"
+                    className="proposal-saved-detail"
+                    onClick={() => {
+                      setIsSavedProposalsOpen(false);
+                      setSavedProposalDetail(proposal);
+                    }}
+                  >
+                    상세보기
+                  </Btn>
+                </article>
+              )) : <p className="muted">저장된 제안서가 없어요.</p>}
+            </div>
+          </State>
+        </Modal>
+      )}
+      {savedProposalDetail && (
+        <Modal
+          title="과외 제안서 상세"
+          onClose={() => setSavedProposalDetail(null)}
+          className="proposal-saved-detail-modal"
+          scrollable
+        >
+          <article className="proposal-saved-detail-content">
+            <small>{date(savedProposalDetail.created_at)}</small>
+            <p>{savedProposalDetail.message}</p>
+            <div className="proposal-saved-detail-actions">
+              <Btn
+                type="button"
+                onClick={() => {
+                  setSavedProposalDetail(null);
+                  setIsSavedProposalsOpen(true);
+                }}
+              >
+                뒤로가기
+              </Btn>
+              <Btn
+                type="button"
+                className="primary"
+                onClick={() => {
+                  setMessage(savedProposalDetail.message || "");
+                  setSavedProposalDetail(null);
+                }}
+              >
+                선택
+              </Btn>
+            </div>
+          </article>
+        </Modal>
       )}
       {isProfileDialogOpen && (
         <ConfirmDialog
