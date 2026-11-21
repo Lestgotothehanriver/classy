@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useRef,
+  useCallback,
   createContext,
   useContext,
 } from "react";
@@ -42,12 +43,15 @@ import {
   Check,
   Upload,
   Leaf,
+  MoreVertical,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { api, list, sendSupportMessageViaWebSocket, subscribeWebSocket } from "./api";
 import { Auth } from "./auth";
 import { Studio } from "./studio";
 import { ClassInformationModal, registrationStatus } from "./contracts";
-import { Services, ReportForm, StudentPostEditorPage } from "./services";
+import { Services, ReportForm, StudentPostEditorPage, VerificationPage } from "./services";
 import { RegistrationPage } from "./registration-page";
 import { TutoringProfilePage } from "./tutoring-profile-page";
 import "./redesign.css";
@@ -55,6 +59,8 @@ import {
   Ctx,
   money,
   date,
+  formatLectureCount,
+  formatLectureTimeAgo,
   formatVideoDuration,
   useLoad,
   Btn,
@@ -257,16 +263,10 @@ function App() {
       const lectureId = notification?.data?.lecture_id?.toString();
       if (!lectureId) return false;
       setToast("");
-      setModal({
-        type: "detail",
-        kind: "lectures",
-        id: lectureId,
-        item: null,
-        initialExpandedCommentId:
-          notification?.data?.parent_comment_id?.toString() ||
-          notification?.data?.comment_id?.toString() ||
-          null,
-      });
+      const commentId =
+        notification?.data?.parent_comment_id?.toString() ||
+        notification?.data?.comment_id?.toString();
+      go(commentId ? `lecture/${lectureId}/comment/${commentId}` : `lecture/${lectureId}`);
       return true;
     }
 
@@ -312,7 +312,7 @@ function App() {
         openPostDetail(item || { id });
         return;
       }
-      setModal({ type: "detail", kind, id, item });
+      go(`lecture/${id}`);
     },
     refreshUser: () => api("/accounts/me/").then(setUser),
     unreadNotificationCount,
@@ -418,6 +418,29 @@ function App() {
       </Ctx.Provider>
     );
   }
+  if (page === "verification") {
+    return (
+      <Ctx.Provider value={context}>
+        <Shell
+          page={page}
+          activeRole={activeRole}
+          setActiveRole={changeRole}
+          fullBleed
+        >
+          {!ready ? (
+            <div className="loading">
+              <LoaderCircle className="spin" />
+              정보를 확인하고 있어요.
+            </div>
+          ) : (
+            <Gate>
+              <VerificationPage />
+            </Gate>
+          )}
+        </Shell>
+      </Ctx.Provider>
+    );
+  }
   return (
     <Ctx.Provider value={context}>
       <Shell page={page} activeRole={activeRole} setActiveRole={changeRole}>
@@ -436,6 +459,17 @@ function App() {
           <Gate>
             <TeacherProfilePage
               id={Number(location.hash.slice(1).split("/")[1])}
+            />
+          </Gate>
+        ) : page === "lecture" ? (
+          <Gate>
+            <LecturePage
+              id={Number(location.hash.slice(1).split("/")[1])}
+              initialExpandedCommentId={
+                location.hash.slice(1).split("/")[2] === "comment"
+                  ? location.hash.slice(1).split("/")[3]
+                  : null
+              }
             />
           </Gate>
         ) : page === "tutoring-post-detail" ? (
@@ -475,7 +509,6 @@ function App() {
         ) : [
             "cash",
             "settlement",
-            "verification",
             "account",
             "tutoring-manage",
             "support",
@@ -691,11 +724,11 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
                   })
                 }
               >
-                <Heart
+                <ThumbsUp
                   size={17}
                   fill={(liked ?? d.is_liked) ? "currentColor" : "none"}
                 />
-                찜하기
+                추천
               </Btn>
               <Btn
                 className="primary"
@@ -931,6 +964,331 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
     </Modal>
   );
 }
+/** 앱 강의 플레이어 상세 구조를 웹의 전용 페이지로 옮긴 화면이다. */
+function LecturePage({ id, initialExpandedCommentId }) {
+  const { go, notify, refreshUser, user } = useContext(Ctx);
+  const resource = useLoad(
+    Number.isInteger(id) && id > 0 ? `/lectures/${id}/` : null,
+    [id],
+  );
+  const [busy, setBusy] = useState(false);
+  const [video, setVideo] = useState("");
+  const [liked, setLiked] = useState(null);
+  const [rented, setRented] = useState(false);
+  const [rentConfirm, setRentConfirm] = useState(false);
+  const [instructorPurchaseNotice, setInstructorPurchaseNotice] = useState(false);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return (
+      <Empty
+        title="강의를 찾을 수 없어요"
+        text="강의 목록에서 다시 선택해 주세요."
+      >
+        <Btn onClick={() => go("lectures")}>강의 목록으로</Btn>
+      </Empty>
+    );
+  }
+
+  const detail = resource.data || {};
+  const lecture = detail.lecture_info || {};
+  const instructor = lecture.instructor || {};
+  const rentalStatus = rented ? "valid" : detail.rental_status;
+  const isRented = ["active", "valid"].includes(rentalStatus);
+  const isPaid = Number(lecture.price) > 0;
+  const isLiked = liked ?? Boolean(lecture.is_liked);
+  const likeCount = Math.max(
+    0,
+    Number(lecture.like_count || 0) +
+      (liked == null || isLiked === Boolean(lecture.is_liked)
+        ? 0
+        : isLiked
+          ? 1
+          : -1),
+  );
+  const academicInfo = [
+    instructor.university,
+    [
+      instructor.department,
+      instructor.student_number ? `${instructor.student_number}학번` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  ].filter(Boolean);
+  const recommended = list(detail.recommended).filter(
+    (item) => Number(item.id) !== id,
+  );
+
+  async function action(work) {
+    setBusy(true);
+    try {
+      await work();
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function play(path) {
+    action(async () => {
+      const response = await api(`/lectures/${id}/${path}/`);
+      setVideo(response.video);
+    });
+  }
+
+  function toggleLike() {
+    action(async () => {
+      const response = await api(`/lectures/${id}/like/`, { method: "POST" });
+      setLiked(response.is_liked ?? !isLiked);
+    });
+  }
+
+  async function rentLecture() {
+    await action(async () => {
+      if (user?.role === "instructor") {
+        setRentConfirm(false);
+        setInstructorPurchaseNotice(true);
+        return;
+      }
+      await api("/cash/rentals/", {
+        method: "POST",
+        body: { lecture_id: id },
+      });
+      setRented(true);
+      setRentConfirm(false);
+      await refreshUser();
+      notify("강의를 대여했습니다.");
+    });
+  }
+
+  return (
+    <div className="lecture-detail-page">
+      <State resource={resource}>
+        <div className="lecture-detail-mobile-actions">
+          <MobileBackAction onClick={() => go("lectures")}>
+            강의 목록으로
+          </MobileBackAction>
+        </div>
+        <div className="lecture-detail-page-layout">
+          <main className="lecture-detail-main">
+            <section className="lecture-video-stage" aria-label="강의 영상">
+              {video ? (
+                <video
+                  className="video"
+                  controls
+                  controlsList="nodownload"
+                  autoPlay
+                  src={video}
+                  onError={() =>
+                    notify("영상 재생에 실패했습니다. 네트워크 상태를 확인해 주세요.")
+                  }
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="lecture-video-poster"
+                  disabled={busy}
+                  onClick={() => play("stream")}
+                  aria-label={`${lecture.title || "강의"} 재생`}
+                >
+                  {lecture.thumbnail ? (
+                    <img src={lecture.thumbnail} alt="" />
+                  ) : (
+                    <span className="lecture-video-placeholder" aria-hidden="true" />
+                  )}
+                  <span className="lecture-video-play" aria-hidden="true">
+                    <Play size={28} fill="currentColor" />
+                  </span>
+                </button>
+              )}
+            </section>
+
+            <section className="lecture-detail-metadata">
+              <Subjects values={lecture.subjects} />
+              <div className="lecture-detail-title-row">
+                <h1>{lecture.title || "강의"}</h1>
+                {isRented && <span className="lecture-rental-badge">대여 중</span>}
+              </div>
+              <div className="lecture-detail-meta" aria-label="강의 메타 정보">
+                <span>
+                  <Eye size={15} aria-hidden="true" />
+                  {formatLectureCount(lecture.view_count)}회
+                </span>
+                <span>
+                  <ThumbsUp size={15} aria-hidden="true" />
+                  {formatLectureCount(likeCount)}
+                </span>
+                {lecture.created_at && (
+                  <span>{formatLectureTimeAgo(lecture.created_at)}</span>
+                )}
+              </div>
+            </section>
+
+            {instructor.id && (
+              <button
+                type="button"
+                className="lecture-instructor"
+                onClick={() => go(`teacher-profile/${instructor.id}`)}
+              >
+                <Avatar
+                  src={instructor.profile_image}
+                  name={instructor.user_name || "선생님"}
+                />
+                <span className="lecture-instructor-copy">
+                  <strong>{instructor.user_name || "선생님"}</strong>
+                  {academicInfo.length > 0 && (
+                    <small>{academicInfo.join(" · ")}</small>
+                  )}
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            )}
+
+            <section className="lecture-comments-inline" aria-label="댓글">
+              <h2>댓글 {formatLectureCount(lecture.comment_count)}개</h2>
+              <Comments
+                id={id}
+                initialExpandedCommentId={initialExpandedCommentId}
+                hideTitle
+                composerFirst
+                sheetStyle
+                onCommentsChanged={resource.reload}
+              />
+            </section>
+          </main>
+
+          <aside className="lecture-detail-sidebar" aria-label="강의 수강 및 추천">
+            <section className="lecture-purchase-panel">
+              <dl className="lecture-facts">
+                <div>
+                  <dt>수강료</dt>
+                  <dd>{isPaid ? `${money(lecture.price)} 캐시` : "무료"}</dd>
+                </div>
+                <div>
+                  <dt>대여 기간</dt>
+                  <dd>{lecture.rental_period || 30}일</dd>
+                </div>
+                <div>
+                  <dt>강의 길이</dt>
+                  <dd>{formatVideoDuration(lecture.video_duration) || "확인 중"}</dd>
+                </div>
+              </dl>
+              <Btn
+                className="primary lecture-play-button"
+                disabled={busy}
+                onClick={() => play("stream")}
+              >
+                <Play size={16} />
+                강의 재생
+              </Btn>
+              <div className="lecture-detail-actions">
+                <Btn
+                  className={`lecture-recommend-button${isLiked ? " is-recommended" : ""}`}
+                  disabled={busy}
+                  aria-pressed={isLiked}
+                  onClick={toggleLike}
+                >
+                  <ThumbsUp size={17} fill={isLiked ? "currentColor" : "none"} />
+                  추천
+                </Btn>
+                <ReportForm
+                  source="lecture"
+                  id={id}
+                  label="신고"
+                  className="lecture-report-button"
+                />
+              </div>
+              {isPaid && !isRented && (
+                <Btn
+                  className="lecture-rent-button"
+                  disabled={busy}
+                  onClick={() =>
+                    user?.role === "instructor"
+                      ? setInstructorPurchaseNotice(true)
+                      : setRentConfirm(true)
+                  }
+                >
+                  캐시로 대여
+                </Btn>
+              )}
+              {detail.sample_preview && isPaid && (
+                <Btn
+                  className="lecture-preview-button"
+                  disabled={busy}
+                  onClick={() => play("preview")}
+                >
+                  무료 미리보기 재생
+                </Btn>
+              )}
+              {rentConfirm && (
+                <div className="confirm-box">
+                  <b>
+                    {money(lecture.price)} 캐시로 {lecture.rental_period || 30}일 대여할까요?
+                  </b>
+                  <p>
+                    보유 캐시: {money(user?.cash)} 캐시. 대여하면 캐시가 차감됩니다.
+                  </p>
+                  <div className="actions">
+                    <Btn disabled={busy} onClick={() => setRentConfirm(false)}>
+                      취소
+                    </Btn>
+                    <Btn disabled={busy} className="primary" onClick={rentLecture}>
+                      대여 확정
+                    </Btn>
+                  </div>
+                </div>
+              )}
+              {instructorPurchaseNotice && (
+                <div className="confirm-box" role="alert">
+                  <b>학생 계정으로 전환 후 강의를 구매해 주세요.</b>
+                  <div className="actions">
+                    <Btn onClick={() => setInstructorPurchaseNotice(false)}>확인</Btn>
+                  </div>
+                </div>
+              )}
+              <p className="form-note">
+                보유 캐시는 기존 계정과 연동됩니다. 마이페이지의 캐시 관리에서
+                캐시 잔액과 이용 내역을 확인하세요.
+              </p>
+            </section>
+
+            <section className="lecture-recommendations">
+              <h2>다른 강의 찾아보기</h2>
+              {recommended.length ? (
+                <div className="lecture-recommendation-list">
+                  {recommended.slice(0, 4).map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className="lecture-recommendation"
+                      onClick={() => go(`lecture/${item.id}`)}
+                    >
+                      {item.thumbnail ? (
+                        <img src={item.thumbnail} alt="" />
+                      ) : (
+                        <span className="lecture-recommendation-placeholder">
+                          <Play size={18} aria-hidden="true" />
+                        </span>
+                      )}
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>{item.instructor?.user_name || "선생님"}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="lecture-recommendation-empty">조회된 강의가 없어요</p>
+              )}
+            </section>
+
+          </aside>
+        </div>
+      </State>
+    </div>
+  );
+}
+
 function TeacherProfilePage({ id }) {
   const { go } = useContext(Ctx);
   const resource = useLoad(
@@ -1363,10 +1721,12 @@ function Proposal({ kind, id, onClose }) {
   const proposals = useLoad(
     eligible && isStudentPostProposal ? "/tutoring/proposals/" : null,
     [eligible, isStudentPostProposal],
+    { keepDataOnReload: true },
   );
   const chatRooms = useLoad(
     eligible && isStudentPostProposal ? "/chatrooms/?role=instructor" : null,
     [eligible, isStudentPostProposal],
+    { keepDataOnReload: true },
   );
   const [busy, setBusy] = useState(false),
     [open, setOpen] = useState(false),
@@ -1376,7 +1736,6 @@ function Proposal({ kind, id, onClose }) {
     [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false),
     [isVerificationDialogOpen, setIsVerificationDialogOpen] = useState(false),
     [isConfirmOpen, setIsConfirmOpen] = useState(false),
-    [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false),
     [isSavedProposalsOpen, setIsSavedProposalsOpen] = useState(false),
     [savedProposalOrder, setSavedProposalOrder] = useState("newest"),
     [savedProposalDetail, setSavedProposalDetail] = useState(null);
@@ -1395,6 +1754,8 @@ function Proposal({ kind, id, onClose }) {
   const proposalRoomId = sentRoomId || currentRoom?.id;
   const proposalAccepted = Boolean(currentRoom?.is_accepted);
   const canSubmitStudentProposal = message.trim().length >= 10;
+  const hasSentStudentProposal = isStudentPostProposal && (currentProposal || sentRoomId);
+  const isProposalStatusLoading = isStudentPostProposal && (proposals.loading || chatRooms.loading);
 
   async function openProposal() {
     if (kind === "teachers") {
@@ -1464,34 +1825,21 @@ function Proposal({ kind, id, onClose }) {
     if (canSubmitStudentProposal) setIsConfirmOpen(true);
   }
 
-  async function cancelProposal() {
-    setBusy(true);
-    try {
-      await api("/tutoring/propose-to-student/", {
-        method: "DELETE",
-        body: { post_id: id },
-      });
-      setSentRoomId(null);
-      setIsCancelConfirmOpen(false);
-      proposals.reload();
-      chatRooms.reload();
-      notify("과외 제안이 취소되었습니다.");
-    } catch (error) {
-      notify(error.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!eligible) return null;
   return (
-    <div className="info-panel">
+    <div className="info-panel" aria-busy={isProposalStatusLoading || undefined}>
       <h3>
-        {kind === "teachers"
+        {isProposalStatusLoading ? <span className="proposal-status-skeleton-title" aria-hidden="true" /> : kind === "teachers"
           ? "지금 과외 상담을 시작해보세요."
-          : "지금 과외 제안을 보내보세요."}
+          : hasSentStudentProposal
+            ? "이미 제안서를 보낸 공고에요."
+            : "지금 과외 제안을 보내보세요."}
       </h3>
-      {isStudentPostProposal && (currentProposal || sentRoomId) ? (
+      {isProposalStatusLoading ? (
+        <div className="proposal-status-skeleton" role="status" aria-label="제안 상태 불러오는 중">
+          <span aria-hidden="true" />
+        </div>
+      ) : hasSentStudentProposal ? (
         <div className="proposal-status-actions">
           {proposalAccepted && proposalRoomId ? (
             <Btn className="primary" onClick={() => go(`chat/${proposalRoomId}`)}>
@@ -1499,14 +1847,9 @@ function Proposal({ kind, id, onClose }) {
               채팅방으로 이동
             </Btn>
           ) : (
-            <>
-              <Btn type="button" disabled={busy} onClick={() => setIsCancelConfirmOpen(true)}>
-                {busy ? "처리 중…" : "제안 취소"}
-              </Btn>
-              <Btn type="button" disabled className="proposal-complete-button">
-                과외 제안 완료
-              </Btn>
-            </>
+            <Btn type="button" disabled className="proposal-complete-button">
+              과외 제안 완료
+            </Btn>
           )}
         </div>
       ) : !open ? (
@@ -1724,17 +2067,6 @@ function Proposal({ kind, id, onClose }) {
           }}
         />
       )}
-      {isCancelConfirmOpen && (
-        <ConfirmDialog
-          title="보낸 과외 제안을 취소할까요?"
-          description="학생이 답장하기 전까지 제안을 취소할 수 있습니다."
-          cancelLabel="아니오"
-          confirmLabel="예"
-          busy={busy}
-          onCancel={() => setIsCancelConfirmOpen(false)}
-          onConfirm={cancelProposal}
-        />
-      )}
     </div>
   );
 }
@@ -1883,23 +2215,6 @@ function TeacherProfile({ id, teacher, item }) {
       })
       .filter(Boolean)
       .join(", ");
-  const compactCount = (value) => {
-    const count = Number(value) || 0;
-    if (count >= 10000) return `${Number((count / 10000).toFixed(1))}만`;
-    if (count >= 1000) return `${Number((count / 1000).toFixed(1))}천`;
-    return String(count);
-  };
-  const timeAgo = (value) => {
-    const createdAt = new Date(value);
-    if (Number.isNaN(createdAt.valueOf())) return "";
-    const minutes = Math.max(0, Math.floor((Date.now() - createdAt.valueOf()) / 60000));
-    if (minutes >= 525600) return `${Math.floor(minutes / 525600)}년 전`;
-    if (minutes >= 43200) return `${Math.floor(minutes / 43200)}달 전`;
-    if (minutes >= 1440) return `${Math.floor(minutes / 1440)}일 전`;
-    if (minutes >= 60) return `${Math.floor(minutes / 60)}시간 전`;
-    if (minutes > 0) return `${minutes}분 전`;
-    return "방금 전";
-  };
   const lectureMeta = (lecture) => (
     <div className="teacher-lecture-meta">
       {lectureSubject(lecture) && (
@@ -1907,14 +2222,16 @@ function TeacherProfile({ id, teacher, item }) {
       )}
       <span className="teacher-lecture-meta-item">
         <Eye size={16} aria-hidden="true" />
-        {compactCount(lecture.view_count)}
+        {formatLectureCount(lecture.view_count)}
       </span>
       <span className="teacher-lecture-meta-item">
         <ThumbsUp size={16} aria-hidden="true" />
-        {compactCount(lecture.like_count)}
+        {formatLectureCount(lecture.like_count)}
       </span>
-      {timeAgo(lecture.created_at) && (
-        <span className="teacher-lecture-meta-item">{timeAgo(lecture.created_at)}</span>
+      {formatLectureTimeAgo(lecture.created_at) && (
+        <span className="teacher-lecture-meta-item">
+          {formatLectureTimeAgo(lecture.created_at)}
+        </span>
       )}
     </div>
   );
@@ -2230,17 +2547,89 @@ function TeacherProfile({ id, teacher, item }) {
     </section>
   );
 }
-function Comments({ id, initialExpandedCommentId }) {
-  const [commentPage, setCommentPage] = useState(1);
+function Comments({
+  id,
+  initialExpandedCommentId,
+  hideTitle = false,
+  composerFirst = false,
+  sheetStyle = false,
+  onCommentsChanged,
+}) {
+  const [commentRows, setCommentRows] = useState([]);
+  const [nextCommentsPath, setNextCommentsPath] = useState("");
+  const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
+  const [loadMoreCommentsError, setLoadMoreCommentsError] = useState("");
+  const [openCommentMenuId, setOpenCommentMenuId] = useState(null);
+  const loadMoreSentinelRef = useRef(null);
+  const commentMenuRef = useRef(null);
   const [expandedCommentIds, setExpandedCommentIds] = useState(() => new Set());
   const [replyThreads, setReplyThreads] = useState({});
   const [loadingReplyIds, setLoadingReplyIds] = useState(() => new Set());
   const [replyErrors, setReplyErrors] = useState({});
   const resource = useLoad(
-    `/lectures/${id}/comments/?page=${commentPage}&lazy_replies=true`,
+    `/lectures/${id}/comments/?page=1&lazy_replies=true`,
   );
   const { notify, user } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setCommentRows([]);
+    setNextCommentsPath("");
+    setLoadMoreCommentsError("");
+  }, [id]);
+
+  useEffect(() => {
+    if (openCommentMenuId === null) return;
+    const closeOnOutsidePointerDown = (event) => {
+      if (!commentMenuRef.current?.contains(event.target)) {
+        setOpenCommentMenuId(null);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [openCommentMenuId]);
+
+  useEffect(() => {
+    if (!resource.data) return;
+    setCommentRows(list(resource.data));
+    setNextCommentsPath(resource.data.next || "");
+    setLoadMoreCommentsError("");
+  }, [resource.data]);
+
+  const loadMoreComments = useCallback(async () => {
+    if (!nextCommentsPath || isLoadingMoreComments) return;
+    setIsLoadingMoreComments(true);
+    setLoadMoreCommentsError("");
+    try {
+      const data = await api(nextCommentsPath);
+      setCommentRows((current) => {
+        const loadedIds = new Set(current.map((comment) => comment.id));
+        return [
+          ...current,
+          ...list(data).filter((comment) => !loadedIds.has(comment.id)),
+        ];
+      });
+      setNextCommentsPath(data.next || "");
+    } catch (error) {
+      setLoadMoreCommentsError(error.message);
+    } finally {
+      setIsLoadingMoreComments(false);
+    }
+  }, [isLoadingMoreComments, nextCommentsPath]);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || !nextCommentsPath || isLoadingMoreComments) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMoreComments();
+      },
+      { rootMargin: "320px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isLoadingMoreComments, loadMoreComments, nextCommentsPath]);
 
   async function loadReplies(commentId, { force = false } = {}) {
     const normalizedCommentId = commentId.toString();
@@ -2284,11 +2673,11 @@ function Comments({ id, initialExpandedCommentId }) {
     if (!initialExpandedCommentId) return;
     const commentId = initialExpandedCommentId.toString();
     setExpandedCommentIds((current) => new Set([...current, commentId]));
-    const parentComment = list(resource.data).find(
+    const parentComment = commentRows.find(
       (comment) => comment.id.toString() === commentId,
     );
     if (parentComment) loadReplies(parentComment.id);
-  }, [initialExpandedCommentId, resource.data]);
+  }, [initialExpandedCommentId, commentRows]);
 
   const toggleReplies = (commentId) => {
     const normalizedCommentId = commentId.toString();
@@ -2320,17 +2709,53 @@ function Comments({ id, initialExpandedCommentId }) {
       });
       form.reset();
       resource.reload();
+      onCommentsChanged?.();
     } catch (e) {
       notify(e.message);
     } finally {
       setBusy(false);
     }
   }
+  const composer = (
+    <form
+      onSubmit={submit}
+      className={`inline-form${sheetStyle ? " comment-sheet-composer" : ""}`}
+    >
+      {sheetStyle && (
+        <Avatar
+          src={user?.profile_image}
+          name={user?.nickname || "나"}
+          size="comment-sheet-avatar"
+        />
+      )}
+      <textarea
+        name="content"
+        aria-label="댓글"
+        placeholder="강의에 대한 생각을 남겨보세요"
+        required
+        maxLength={2000}
+        rows={1}
+      />
+      {sheetStyle ? (
+        <button
+          type="submit"
+          className="comment-sheet-submit"
+          aria-label="댓글 등록"
+          disabled={busy}
+        >
+          <Send size={20} aria-hidden="true" />
+        </button>
+      ) : (
+        <Btn disabled={busy}>등록</Btn>
+      )}
+    </form>
+  );
   return (
-    <div className="comments">
-      <h3>강의 이야기</h3>
+    <div className={`comments${sheetStyle ? " comments-sheet-content" : ""}`}>
+      {!hideTitle && <h3>강의 이야기</h3>}
+      {composerFirst && composer}
       <State resource={resource}>
-        {list(resource.data).map((c) => (
+        {commentRows.map((c) => (
           <CommentRow
             key={c.id}
             comment={c}
@@ -2344,27 +2769,41 @@ function Comments({ id, initialExpandedCommentId }) {
             onToggleReplies={() => toggleReplies(c.id)}
             onRetryReplies={() => loadReplies(c.id, { force: true })}
             onReplyUpdated={refreshReplies}
+            onCommentsChanged={onCommentsChanged}
+            activeMenuId={openCommentMenuId}
+            onMoreMenuChange={(commentId, isOpen) =>
+              setOpenCommentMenuId(isOpen ? commentId : null)
+            }
+            menuRef={openCommentMenuId === c.id ? commentMenuRef : null}
           />
         ))}
       </State>
-      <div className="actions">
-        {commentPage > 1 && (
-          <Btn onClick={() => setCommentPage((p) => p - 1)}>이전 댓글</Btn>
-        )}
-        {resource.data?.next && (
-          <Btn onClick={() => setCommentPage((p) => p + 1)}>다음 댓글</Btn>
-        )}
-      </div>
-      <form onSubmit={submit} className="inline-form">
-        <input
-          name="content"
-          aria-label="댓글"
-          placeholder="강의에 대한 생각을 남겨보세요"
-          required
-          maxLength={2000}
-        />
-        <Btn disabled={busy}>등록</Btn>
-      </form>
+      {(nextCommentsPath || loadMoreCommentsError) && (
+        <div className="comments-load-more">
+          {loadMoreCommentsError ? (
+            <p>
+              {loadMoreCommentsError}{" "}
+              <button type="button" className="text-button" onClick={loadMoreComments}>
+                다시 시도
+              </button>
+            </p>
+          ) : (
+            <div
+              ref={loadMoreSentinelRef}
+              className="comments-load-sentinel"
+              aria-live="polite"
+            >
+              {isLoadingMoreComments && (
+                <>
+                  <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                  댓글을 불러오는 중...
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {!composerFirst && composer}
     </div>
   );
 }
@@ -2381,12 +2820,37 @@ function CommentRow({
   onToggleReplies,
   onRetryReplies,
   onReplyUpdated,
+  onCommentsChanged,
+  activeMenuId,
+  onMoreMenuChange,
+  menuRef,
 }) {
   const { notify, user } = useContext(Ctx),
     [mode, setMode] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
   const replyTargetName = c.referenced_person_name || "";
+  const isMoreOpen = activeMenuId === c.id;
+  const startEditing = () => {
+    setMode("edit");
+    setText(c.content);
+    onMoreMenuChange?.(c.id, false);
+  };
+  async function deleteComment() {
+    if (!window.confirm("댓글을 삭제할까요?")) return;
+    onMoreMenuChange?.(c.id, false);
+    setBusy(true);
+    try {
+      await api(`/lectures/comments/${c.id}/`, { method: "DELETE" });
+      if (reply) onReplyUpdated?.(rootCommentId || c.id);
+      else reload();
+      onCommentsChanged?.();
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -2397,13 +2861,16 @@ function CommentRow({
           : `/lectures/${lecture}/comments/`,
         {
           method: mode === "edit" ? "PATCH" : "POST",
-          body: {
-            content: text,
-            author_role: user?.role,
-            ...(mode === "reply"
-              ? { parent: c.parent || c.id, reply_to: c.id }
-              : {}),
-          },
+          body:
+            mode === "edit"
+              ? { content: text }
+              : {
+                  content: text,
+                  author_role: user?.role,
+                  ...(mode === "reply"
+                    ? { parent: c.parent || c.id, reply_to: c.id }
+                    : {}),
+                },
         },
       );
       setMode("");
@@ -2412,6 +2879,7 @@ function CommentRow({
       } else {
         reload();
       }
+      onCommentsChanged?.();
     } catch (e) {
       notify(e.message);
     } finally {
@@ -2420,10 +2888,50 @@ function CommentRow({
   }
   return (
     <article className="comment">
+      <Avatar
+        src={c.author_profile_image || c.author?.profile_image}
+        name={c.author_name || "수강생"}
+        size="comment-avatar"
+      />
       <div className="comment-header">
         <div className="comment-identity">
           <b>{c.author_name || "수강생"}</b>
-          <small>{date(c.created_at)}</small>
+          <small>{formatLectureTimeAgo(c.created_at)}</small>
+        </div>
+        <div className="comment-more" ref={isMoreOpen ? menuRef : null}>
+          <button
+            type="button"
+            className="comment-more-button"
+            aria-label="댓글 더보기"
+            aria-expanded={isMoreOpen}
+            aria-haspopup="menu"
+            onClick={() => onMoreMenuChange?.(c.id, !isMoreOpen)}
+          >
+            <MoreVertical size={20} aria-hidden="true" />
+          </button>
+          {isMoreOpen && (
+            <div className="comment-more-menu" role="menu">
+              {c.is_mine ? (
+                <>
+                  <button type="button" role="menuitem" onClick={startEditing}>
+                    <Pencil size={16} aria-hidden="true" />
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    onClick={deleteComment}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                    삭제
+                  </button>
+                </>
+              ) : (
+                <ReportForm source="comment" id={c.id} label="신고" />
+              )}
+            </div>
+          )}
         </div>
       </div>
       <p>
@@ -2462,40 +2970,6 @@ function CommentRow({
           <span>답글 달기</span>
         </button>
       </div>
-      {c.is_mine && (
-        <div className="actions">
-            <button
-              className="text-button"
-              onClick={() => {
-                setMode("edit");
-                setText(c.content);
-              }}
-            >
-              수정
-            </button>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={async () => {
-                if (!window.confirm("댓글을 삭제할까요?")) return;
-                setBusy(true);
-                try {
-                  await api(`/lectures/comments/${c.id}/`, {
-                    method: "DELETE",
-                  });
-                  if (reply) onReplyUpdated?.(rootCommentId || c.id);
-                  else reload();
-                } catch (e) {
-                  notify(e.message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              삭제
-            </button>
-        </div>
-      )}
       {mode && (
         <>
           {mode === "reply" && (
@@ -2504,7 +2978,7 @@ function CommentRow({
             </p>
           )}
           <form className="inline-form" onSubmit={save}>
-            <input
+            <textarea
               aria-label={mode === "edit" ? "댓글 수정" : "답글 내용"}
               placeholder={
                 mode === "edit"
@@ -2515,6 +2989,7 @@ function CommentRow({
               onChange={(e) => setText(e.target.value)}
               required
               maxLength={2000}
+              rows={1}
             />
             <Btn disabled={busy}>저장</Btn>
             <Btn type="button" onClick={() => setMode("")}>
@@ -2523,7 +2998,6 @@ function CommentRow({
           </form>
         </>
       )}
-      {!c.is_mine && <ReportForm source="comment" id={c.id} />}{" "}
       {!reply && repliesExpanded && repliesLoading && <ReplyThreadSkeleton />}
       {!reply && repliesExpanded && repliesError && (
         <div className="comment-reply-load-error" role="alert">
@@ -2533,18 +3007,25 @@ function CommentRow({
           </button>
         </div>
       )}
-      {!reply && repliesExpanded && !repliesLoading && !repliesError &&
-        replies.map((r) => (
-          <CommentRow
-            key={r.id}
-            comment={r}
-            lecture={lecture}
-            reload={reload}
-            reply
-            rootCommentId={rootCommentId || c.id}
-            onReplyUpdated={onReplyUpdated}
-          />
-        ))}
+      {!reply && repliesExpanded && !repliesLoading && !repliesError && (
+        <div className="comment-reply-list" aria-label="답글 목록">
+          {replies.map((r) => (
+            <CommentRow
+              key={r.id}
+              comment={r}
+              lecture={lecture}
+              reload={reload}
+              reply
+              rootCommentId={rootCommentId || c.id}
+              onReplyUpdated={onReplyUpdated}
+              onCommentsChanged={onCommentsChanged}
+              activeMenuId={activeMenuId}
+              onMoreMenuChange={onMoreMenuChange}
+              menuRef={activeMenuId === r.id ? menuRef : null}
+            />
+          ))}
+        </div>
+      )}
     </article>
   );
 }

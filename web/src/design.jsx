@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Search,
   Heart,
+  Eye,
+  ThumbsUp,
   Bell,
   BookOpen,
   MapPin,
@@ -31,6 +33,8 @@ import {
   Subjects,
   money,
   date,
+  formatLectureCount,
+  formatLectureTimeAgo,
   RegionFields,
 } from "./shared";
 import { api, list } from "./api";
@@ -62,7 +66,7 @@ export const pageNames = {
   studio: "강의 스튜디오",
   cash: "캐시 관리",
   settlement: "수익 및 정산",
-  verification: "강사 인증",
+  verification: "인증 서류 관리",
   account: "계정 관리",
   "tutoring-manage": "과외 관리",
   "tutoring-post": "모집 공고 작성",
@@ -72,6 +76,7 @@ export const pageNames = {
   support: "고객센터",
   notices: "공지사항",
   "teacher-profile": "선생님 프로필",
+  lecture: "강의 상세",
 };
 
 const subjectCategories = [
@@ -309,11 +314,13 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
   } catch {}
   const selected = (id) =>
     id === page ||
+    (id === "lectures" && page === "lecture") ||
     (id === tutoring && ["teachers", "posts", "tutoring-post-detail"].includes(page)) ||
     (id === "teachers" && page === "teacher-profile") ||
     (id === "profile" && [
       "profile",
       "cash",
+      "verification",
       "tutoring-manage",
       "account",
       "saved",
@@ -1598,9 +1605,16 @@ export function Card({ item, kind, onClick }) {
           <div className="lecture-meta">
             <Subjects values={item.subjects} />
             <span>
-              <Heart size={13} />
-              {item.like_count || 0}
+              <Eye size={14} aria-hidden="true" />
+              {formatLectureCount(item.view_count)}
             </span>
+            <span>
+              <ThumbsUp size={14} aria-hidden="true" />
+              {formatLectureCount(item.like_count)}
+            </span>
+            {formatLectureTimeAgo(item.created_at) && (
+              <span>{formatLectureTimeAgo(item.created_at)}</span>
+            )}
           </div>
           <strong className="lecture-price">
             {item.is_preview
@@ -1743,7 +1757,7 @@ export function Profile({ onLogout }) {
               ? [
                   ["studio", "강의 스튜디오"],
                   ["settlement", "수익 및 정산"],
-                  ["verification", "강사 인증"],
+                  ["verification", "인증 서류 관리"],
                 ]
               : [["cash", "캐시 관리"]]
             )

@@ -39,6 +39,37 @@ export const date = (d) => {
   return `${values.year}.${values.month}.${values.day}`;
 };
 
+/** 강의 조회·추천·댓글 수를 앱 목록과 같은 천/만 단위로 표시한다. */
+export const formatLectureCount = (value) => {
+  const count = Number(value) || 0;
+  if (count >= 10000) {
+    const result = count / 10000;
+    return `${result === Math.trunc(result) ? result : result.toFixed(1)}만`;
+  }
+  if (count >= 1000) {
+    const result = count / 1000;
+    return `${result === Math.trunc(result) ? result : result.toFixed(1)}천`;
+  }
+  return String(count);
+};
+
+/** 강의 업로드 시각을 앱 목록과 같은 상대 시간으로 표시한다. */
+export const formatLectureTimeAgo = (value) => {
+  const createdAt = new Date(value);
+  if (Number.isNaN(createdAt.valueOf())) return "";
+
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - createdAt.valueOf()) / 60000),
+  );
+  if (minutes >= 525600) return `${Math.floor(minutes / 525600)}년 전`;
+  if (minutes >= 43200) return `${Math.floor(minutes / 43200)}달 전`;
+  if (minutes >= 1440) return `${Math.floor(minutes / 1440)}일 전`;
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}시간 전`;
+  if (minutes > 0) return `${minutes}분 전`;
+  return "방금 전";
+};
+
 /** 입력 필드 제목과 필수 여부를 함께 표시한다. */
 export function FieldLabel({ children, required = false }) {
   return (
@@ -438,13 +469,18 @@ export function FilePicker({
   trailing,
   inputRef,
   className = "",
+  selectedFileNames = [],
   ...inputProps
 }) {
+  const selectedFileLabel = selectedFileNames.filter(Boolean).join(", ");
+
   return (
     <label
       className={`file-picker ${disabled ? "disabled" : ""} ${className}`.trim()}
     >
-      <span className="file-picker-placeholder">{placeholder}</span>
+      <span className="file-picker-placeholder">
+        {selectedFileLabel || placeholder}
+      </span>
       {trailing && <span className="file-picker-trailing">{trailing}</span>}
       <input
         {...inputProps}

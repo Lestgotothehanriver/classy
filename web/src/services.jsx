@@ -1,5 +1,5 @@
-import React, { useContext, useRef, useState } from "react";
-import { BookOpen, ChevronDown, Eye, Flag, ImagePlus, PauseCircle, PenLine, PlayCircle, Star, X } from "lucide-react";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { BookOpen, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, CircleHelp, Eye, Flag, Hourglass, ImagePlus, PauseCircle, PenLine, PlayCircle, ShieldCheck, Star, X } from "lucide-react";
 import { api, downloadProtectedFile, list } from "./api";
 import {
   Ctx,
@@ -20,6 +20,8 @@ import {
 import { Avatar, PageHeading, pageNames } from "./design";
 import { ClassHistory } from "./contracts";
 import { StudentPostFormFields, toStudentPostPayload } from "./student-post-form";
+
+const VERIFICATION_SUBMIT_PATH = "#verification/submit";
 
 export function ActionForm({
   title,
@@ -95,8 +97,6 @@ export function Services({ page, onLogout }) {
           <Cash />
         ) : page === "settlement" ? (
           <Settlement />
-        ) : page === "verification" ? (
-          <Verification />
         ) : page === "account" ? (
           <Account onLogout={onLogout} />
         ) : page === "tutoring-manage" ? (
@@ -289,56 +289,80 @@ function Settlement() {
     </State>
   );
 }
-function Verification() {
-  const resource = useLoad("/pending/"),
+export function VerificationPage() {
+  const { go, user } = useContext(Ctx);
+  const resource = useLoad(user?.role === "instructor" ? "/pending/" : null),
     d = resource.data || {};
-  const [editing, setEditing] = useState(false);
+  const [view, setView] = useState(() =>
+    location.hash === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
+  );
   const statusCode = d.status || "NOT_SUBMITTED";
-  const status = {
-    VERIFIED: "인증 완료",
-    PENDING: "심사 중",
-    RESUBMIT_REQUIRED: "재제출 필요",
-    SUSPENDED: "보완 필요",
-    REJECTED: "보완 필요",
-    NOT_SUBMITTED: "미제출",
-  };
   const canEditAcademicInfo = statusCode !== "PENDING";
   const canSubmitDocuments = !["VERIFIED", "PENDING"].includes(statusCode);
+  const submitLabel = statusCode === "NOT_SUBMITTED"
+    ? "제출하러 가기"
+    : "재제출하러 가기";
   const currentStudentNumber = String(d.student_number || "");
+  const [isReasonOpen, setIsReasonOpen] = useState(false);
+  const [proofFileCount, setProofFileCount] = useState(0);
+  const [proofFileName, setProofFileName] = useState("");
+  const statusCopy = {
+    NOT_SUBMITTED: [CircleAlert, "아직 인증 서류를 제출하지 않았어요", "alert"],
+    VERIFIED: [CheckCircle2, "대학 인증이 완료되었습니다.", "success"],
+    PENDING: [Hourglass, "서류를 성실히 검토하고 있어요. 검토는 최대 24시간 내에 완료돼요.", "pending"],
+    RESUBMIT_REQUIRED: [CircleAlert, "학력 정보가 수정되었어요. 서류를 다시 제출해 주세요.", "alert"],
+    SUSPENDED: [CircleAlert, "인증 서류가 반려되었어요. 내용을 확인한 뒤 서류를 다시 제출해 주세요.", "alert"],
+    REJECTED: [CircleAlert, "인증 서류가 반려되었어요. 내용을 확인한 뒤 다시 제출해 주세요.", "alert"],
+  };
 
-  return (
-    <State resource={resource}>
-      <section className="service-section">
-        <h2>{status[statusCode] || "인증 서류를 제출해 주세요"}</h2>
-        <h3>선생님 학력 정보</h3>
-        <dl className="class-info-list">
-          <div>
-            <dt>학교</dt>
-            <dd>{d.university || "미입력"}</dd>
-          </div>
-          <div>
-            <dt>학과/전공</dt>
-            <dd>{d.field || "미입력"}</dd>
-          </div>
-          <div>
-            <dt>입학연도</dt>
-            <dd>{currentStudentNumber ? `${currentStudentNumber}년` : "미입력"}</dd>
-          </div>
-        </dl>
-        {canEditAcademicInfo ? (
-          <Btn type="button" onClick={() => setEditing((value) => !value)}>
-            {editing ? "수정 취소" : "학력 정보 수정"}
-          </Btn>
-        ) : (
-          <p className="form-note">
-            인증 서류 검토 중에는 학력 정보를 수정할 수 없습니다.
-          </p>
-        )}
-        {d.rejection_reason && <p className="error">{d.rejection_reason}</p>}
-      </section>
-      {editing && (
+  useEffect(() => {
+    if (
+      location.hash === VERIFICATION_SUBMIT_PATH &&
+      !history.state?.verificationSubmit
+    ) {
+      history.replaceState({ verificationManage: true }, "", "#verification");
+      history.pushState({ verificationSubmit: true }, "", VERIFICATION_SUBMIT_PATH);
+    }
+
+    const syncViewFromRoute = () => {
+      setView(
+        location.hash === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
+      );
+    };
+    window.addEventListener("hashchange", syncViewFromRoute);
+    return () => window.removeEventListener("hashchange", syncViewFromRoute);
+  }, []);
+
+  function openSubmitView() {
+    if (location.hash !== VERIFICATION_SUBMIT_PATH) {
+      history.pushState({ verificationSubmit: true }, "", VERIFICATION_SUBMIT_PATH);
+    }
+    setView("submit");
+  }
+
+  function returnToManageView() {
+    setProofFileCount(0);
+    setProofFileName("");
+    if (
+      location.hash === VERIFICATION_SUBMIT_PATH &&
+      history.state?.verificationSubmit
+    ) {
+      history.back();
+      return;
+    }
+    history.replaceState(null, "", "#verification");
+    setView("manage");
+  }
+
+  if (user?.role !== "instructor") {
+    return <VerificationPageFrame title="인증 서류 관리" onBack={() => go("profile")}><Empty title="선생님 전용 메뉴입니다" /></VerificationPageFrame>;
+  }
+
+  if (view === "edit") {
+    return (
+      <VerificationPageFrame title="학력 정보 수정" onBack={() => setView("manage")}>
         <ActionForm
-          title="학교 정보 수정"
+          title="내 학적 정보"
           path="/accounts/signup/instructor/"
           method="PATCH"
           submit="저장"
@@ -348,7 +372,7 @@ function Verification() {
             student_number: form.get("student_number").trim(),
           })}
           onDone={() => {
-            setEditing(false);
+            setView("manage");
             resource.reload();
           }}
         >
@@ -358,39 +382,142 @@ function Verification() {
             studentNumber={currentStudentNumber}
           />
           {statusCode === "VERIFIED" && (
-            <p className="form-note">
-              인증 완료 후 학력 정보를 변경하면 인증 서류를 다시 제출해야 합니다.
-            </p>
+            <p className="form-note">학력 정보를 변경하면 인증 서류를 다시 제출해야 합니다.</p>
           )}
         </ActionForm>
-      )}
-      {canSubmitDocuments && (
+      </VerificationPageFrame>
+    );
+  }
+
+  if (view === "submit") {
+    return (
+      <VerificationPageFrame
+        title="학력 인증"
+        onBack={returnToManageView}
+        backLabel="인증 서류 관리로"
+      >
         <ActionForm
-          title="학력 인증 서류"
           path={d.exists ? "/pending/upload/" : "/pending/"}
           multipart
-          submit={d.exists ? "서류 다시 제출" : "인증 신청"}
+          submit={d.exists ? "인증 서류 다시 제출하기" : "인증 서류 제출하기"}
           onDone={() => {
-            setEditing(false);
+            returnToManageView();
             resource.reload();
           }}
         >
-          <label>
-            재학·졸업 등 증빙 서류
-            <input
-              name="files"
-              type="file"
-              multiple
-              accept="application/pdf,image/*"
-              required
-            />
-          </label>
-          <p className="form-note">
-            본인의 학교와 이름을 확인할 수 있는 서류를 선택해 주세요.
-          </p>
+          <div className="verification-submit-form">
+            <h2>학력 정보를 확인할 수 있는 자료를 제출해주세요.</h2>
+            <div className="verification-submit-file">
+              <div className="verification-submit-file-head">
+                <p>증명 자료 제출</p>
+                <span>({proofFileCount}/1)</span>
+              </div>
+              <FilePicker
+                name="files"
+                accept="application/pdf,image/*"
+                multiple={false}
+                required
+                placeholder="PDF 혹은 JPG, PNG 파일을 업로드 해주세요"
+                trailing={<ImagePlus size={24} aria-hidden="true" />}
+                selectedFileNames={[proofFileName]}
+                onChange={(event) => {
+                  const [file] = event.target.files || [];
+                  setProofFileCount(event.target.files?.length ?? 0);
+                  setProofFileName(file?.name || "");
+                }}
+              />
+            </div>
+            <p className="verification-submit-note">
+              증명 자료 제출은 학생증, 재학증명서, 졸업증명서 등으로 가능해요.<br />
+              합격증명서는 증명 자료로 사용할 수 없어요.<br /><br />
+              주민등록번호, 카드번호, QR코드 또는 바코드, 거주지 등은 가린 상태로 등록해 주세요. 단, 기본정보(이름, 사진 등), 학력정보(학과, 학번, 학적상태 등)는 반드시 표시되어야 해요.
+            </p>
+            <div className="verification-reason">
+              <button
+                type="button"
+                className="verification-reason-toggle"
+                aria-expanded={isReasonOpen}
+                aria-controls="verification-reason-description"
+                onClick={() => setIsReasonOpen((isOpen) => !isOpen)}
+              >
+                <CircleHelp size={16} aria-hidden="true" />
+                인증 서류는 왜 제출하나요?
+                <ChevronDown
+                  size={16}
+                  aria-hidden="true"
+                  className={isReasonOpen ? "open" : ""}
+                />
+              </button>
+              {isReasonOpen && (
+                <p id="verification-reason-description" className="verification-reason-description">
+                  클래씨는 학생과 선생님 간의 신뢰를 위해 선생님이 해당 학교의 재학생, 졸업생인지를 확인하고 있어요. 제출해주신 자료는 인증 목적으로만 사용되며 개인정보 처리방침에 따라 안전하게 보호 및 관리돼요.
+                </p>
+              )}
+            </div>
+          </div>
         </ActionForm>
-      )}
+      </VerificationPageFrame>
+    );
+  }
+
+  return (
+    <State resource={resource}>
+      <VerificationPageFrame title="인증 서류 관리" onBack={() => go("profile")}>
+        <section className="verification-guide-card">
+          <ShieldCheck aria-hidden="true" />
+          <div>
+            <p>서비스 이용을 위해 학적 상태를 확인할 수 있는 학생증, 재학·휴학·재적·졸업증명서 등이 필요해요.</p>
+          </div>
+        </section>
+        <section className="verification-section">
+          <h2>인증 상태</h2>
+          {(() => {
+            const [Icon, message, tone] = statusCopy[statusCode] || statusCopy.NOT_SUBMITTED;
+            return (
+              <div className={`verification-status-card ${tone}`}>
+                <Icon aria-hidden="true" />
+                <p>{message}</p>
+                {canSubmitDocuments && (
+                  <Btn type="button" className="verification-status-action" onClick={openSubmitView}>
+                    {submitLabel}<ChevronRight size={16} aria-hidden="true" />
+                  </Btn>
+                )}
+              </div>
+            );
+          })()}
+          {statusCode === "REJECTED" && d.rejection_reason && (
+            <p className="verification-rejection-reason">{d.rejection_reason}</p>
+          )}
+        </section>
+        <section className="verification-section">
+          <div className="verification-section-head">
+            <h2>내 학적 정보</h2>
+            {canEditAcademicInfo ? <Btn type="button" className="button" onClick={() => setView("edit")}><PenLine size={16} aria-hidden="true" />수정</Btn> : null}
+          </div>
+          <dl className="verification-academic-card">
+            <div><dt>대학교/대학원</dt><dd>{d.university || "-"}</dd></div>
+            <div><dt>학과(부)/전공</dt><dd>{d.field || "-"}</dd></div>
+            <div><dt>학번</dt><dd>{currentStudentNumber ? `${currentStudentNumber.slice(-2)}학번` : "-"}</dd></div>
+          </dl>
+          {!canEditAcademicInfo && <p className="form-note">인증 서류 검토 중에는 학력 정보를 수정할 수 없습니다.</p>}
+        </section>
+      </VerificationPageFrame>
     </State>
+  );
+}
+
+function VerificationPageFrame({ title, onBack, backLabel = "마이페이지로", children }) {
+  return (
+    <main className="student-post-editor-page verification-page">
+      <div className="student-post-editor-content">
+        <PageHeading title={title}>
+          <MobileBackAction type="button" onClick={onBack}>
+            {backLabel}
+          </MobileBackAction>
+        </PageHeading>
+        <div className="verification-content">{children}</div>
+      </div>
+    </main>
   );
 }
 function Account({ onLogout }) {

@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { ChevronLeft, CircleAlert, Download, Hourglass, Plus, Search } from "lucide-react";
+import { ChevronLeft, CircleAlert, Download, Hourglass, ImagePlus, Search, X } from "lucide-react";
 import { api } from "./api";
 import {
   BANKS,
@@ -433,21 +433,25 @@ export function RegistrationPage({ roomId }) {
                   multiple
                   disabled={proofFiles.length >= 3}
                   placeholder="JPG, 혹은 PNG 파일을 업로드 해주세요"
-                  trailing={<Plus size={28} aria-hidden="true" />}
+                  trailing={<ImagePlus size={18} aria-hidden="true" />}
                   onChange={addProofFiles}
                 />
               </div>
               {proofFiles.length > 0 && (
                 <ul className="registration-proof-files" aria-label="선택한 증명 자료">
                   {proofFiles.map((file, index) => (
-                    <li key={`${file.name}-${file.lastModified}`}>
+                    <li
+                      className="report-attachment-row"
+                      key={`${file.name}-${file.lastModified}`}
+                    >
                       <span>{file.name}</span>
                       <button
                         type="button"
-                        className="text-button"
+                        className="icon-button"
+                        aria-label={`${file.name} 삭제`}
                         onClick={() => setProofFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
                       >
-                        삭제
+                        <X size={16} aria-hidden="true" />
                       </button>
                     </li>
                   ))}

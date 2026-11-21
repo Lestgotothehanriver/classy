@@ -259,7 +259,7 @@ export function Studio({ upload = false }) {
               업로드
             </button>
             <button onClick={() => go("settlement")}>수익 및 정산</button>
-            <button onClick={() => go("verification")}>강사 인증</button>
+            <button onClick={() => go("verification")}>인증 서류 관리</button>
           </nav>
         </aside>
         <section>
