@@ -966,9 +966,19 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
 }
 /** 앱 강의 플레이어 상세 구조를 웹의 전용 페이지로 옮긴 화면이다. */
 function LecturePage({ id, initialExpandedCommentId }) {
-  const { go, notify, refreshUser, user } = useContext(Ctx);
+  const { go, notify, refreshUser, subjects, user } = useContext(Ctx);
   const resource = useLoad(
     Number.isInteger(id) && id > 0 ? `/lectures/${id}/` : null,
+    [id],
+  );
+  const detail = resource.data || {};
+  const instructorId = detail.lecture_info?.instructor?.id;
+  const instructorLecturesResource = useLoad(
+    instructorId ? `/lectures/?instructor=${instructorId}&page=1` : null,
+    [instructorId],
+  );
+  const otherLecturesResource = useLoad(
+    Number.isInteger(id) && id > 0 ? "/lectures/?page=1" : null,
     [id],
   );
   const [busy, setBusy] = useState(false);
@@ -989,7 +999,6 @@ function LecturePage({ id, initialExpandedCommentId }) {
     );
   }
 
-  const detail = resource.data || {};
   const lecture = detail.lecture_info || {};
   const instructor = lecture.instructor || {};
   const rentalStatus = rented ? "valid" : detail.rental_status;
@@ -1009,7 +1018,9 @@ function LecturePage({ id, initialExpandedCommentId }) {
     instructor.university,
     [
       instructor.department,
-      instructor.student_number ? `${instructor.student_number}학번` : "",
+      instructor.student_number
+        ? `${String(instructor.student_number).slice(-2)}학번`
+        : "",
     ]
       .filter(Boolean)
       .join(" "),
@@ -1017,6 +1028,31 @@ function LecturePage({ id, initialExpandedCommentId }) {
   const recommended = list(detail.recommended).filter(
     (item) => Number(item.id) !== id,
   );
+  const loadedInstructorLectures = list(instructorLecturesResource.data)
+    .filter((item) => Number(item.id) !== id)
+    .slice(0, 4);
+  const instructorLectures = (
+    loadedInstructorLectures.length
+      ? loadedInstructorLectures
+      : recommended.filter(
+          (item) => Number(item.instructor?.id) === Number(instructor.id),
+        )
+  ).slice(0, 4);
+  const otherLectures = list(otherLecturesResource.data)
+    .filter(
+      (item) =>
+        Number(item.id) !== id && Number(item.instructor?.id) !== Number(instructor.id),
+    )
+    .slice(0, 4);
+  const subjectLabels = (lecture.subjects || [])
+    .map(
+      (subject) =>
+        typeof subject === "object"
+          ? subject.label || subject.name
+          : subjects.find((item) => item.number === Number(subject))?.name ||
+            `과목 ${subject}`,
+    )
+    .filter(Boolean);
 
   async function action(work) {
     setBusy(true);
@@ -1104,7 +1140,6 @@ function LecturePage({ id, initialExpandedCommentId }) {
             </section>
 
             <section className="lecture-detail-metadata">
-              <Subjects values={lecture.subjects} />
               <div className="lecture-detail-title-row">
                 <h1>{lecture.title || "강의"}</h1>
                 {isRented && <span className="lecture-rental-badge">대여 중</span>}
@@ -1114,6 +1149,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                   <Eye size={15} aria-hidden="true" />
                   {formatLectureCount(lecture.view_count)}회
                 </span>
+                {subjectLabels.length > 0 && <span>{subjectLabels.join(" · ")}</span>}
                 <span>
                   <ThumbsUp size={15} aria-hidden="true" />
                   {formatLectureCount(likeCount)}
@@ -1125,101 +1161,95 @@ function LecturePage({ id, initialExpandedCommentId }) {
             </section>
 
             {instructor.id && (
-              <button
-                type="button"
-                className="lecture-instructor"
-                onClick={() => go(`teacher-profile/${instructor.id}`)}
-              >
-                <Avatar
-                  src={instructor.profile_image}
-                  name={instructor.user_name || "선생님"}
-                />
-                <span className="lecture-instructor-copy">
-                  <strong>{instructor.user_name || "선생님"}</strong>
-                  {academicInfo.length > 0 && (
-                    <small>{academicInfo.join(" · ")}</small>
-                  )}
-                </span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
+              <section className="lecture-channel" aria-label="강의 채널">
+                <button
+                  type="button"
+                  className="lecture-instructor"
+                  onClick={() => go(`teacher-profile/${instructor.id}`)}
+                >
+                  <Avatar
+                    src={instructor.profile_image}
+                    name={instructor.user_name || "선생님"}
+                  />
+                  <span className="lecture-instructor-copy">
+                    <strong>{instructor.user_name || "선생님"}</strong>
+                    {academicInfo.length > 0 && (
+                      <small>{academicInfo.join(" · ")}</small>
+                    )}
+                  </span>
+                  <ChevronRight className="lecture-channel-arrow" size={18} aria-hidden="true" />
+                </button>
+                <div className="lecture-detail-actions">
+                  <Btn
+                    className={`compact-action-button lecture-recommend-button${isLiked ? " is-recommended" : ""}`}
+                    disabled={busy}
+                    aria-pressed={isLiked}
+                    onClick={toggleLike}
+                  >
+                    <ThumbsUp size={17} fill={isLiked ? "currentColor" : "none"} />
+                    추천
+                  </Btn>
+                  <ReportForm
+                    source="lecture"
+                    id={id}
+                    label="신고"
+                    className="compact-action-button lecture-report-button"
+                  />
+                </div>
+              </section>
             )}
 
-            <section className="lecture-comments-inline" aria-label="댓글">
-              <h2>댓글 {formatLectureCount(lecture.comment_count)}개</h2>
-              <Comments
-                id={id}
-                initialExpandedCommentId={initialExpandedCommentId}
-                hideTitle
-                composerFirst
-                sheetStyle
-                onCommentsChanged={resource.reload}
-              />
-            </section>
-          </main>
-
-          <aside className="lecture-detail-sidebar" aria-label="강의 수강 및 추천">
             <section className="lecture-purchase-panel">
-              <dl className="lecture-facts">
-                <div>
-                  <dt>수강료</dt>
-                  <dd>{isPaid ? `${money(lecture.price)} 캐시` : "무료"}</dd>
+              <div className="lecture-purchase-layout">
+                <dl className="lecture-facts">
+                  <div>
+                    <dt>수강료</dt>
+                    <dd>{isPaid ? `${money(lecture.price)} 캐시` : "무료"}</dd>
+                  </div>
+                  <div>
+                    <dt>대여 기간</dt>
+                    <dd>{lecture.rental_period || 30}일</dd>
+                  </div>
+                  <div>
+                    <dt>강의 길이</dt>
+                    <dd>{formatVideoDuration(lecture.video_duration) || "확인 중"}</dd>
+                  </div>
+                </dl>
+                <div className="lecture-purchase-actions">
+                  {isPaid && !isRented && (
+                    <Btn
+                      className="primary lecture-rent-button"
+                      disabled={busy}
+                      onClick={() =>
+                        user?.role === "instructor"
+                          ? setInstructorPurchaseNotice(true)
+                          : setRentConfirm(true)
+                      }
+                    >
+                      대여하기
+                    </Btn>
+                  )}
+                  {(!isPaid || isRented) && (
+                    <Btn
+                      className="primary lecture-play-button"
+                      disabled={busy}
+                      onClick={() => play("stream")}
+                    >
+                      <Play size={16} />
+                      강의 재생
+                    </Btn>
+                  )}
+                  {detail.sample_preview && isPaid && !isRented && (
+                    <Btn
+                      className="lecture-preview-button"
+                      disabled={busy}
+                      onClick={() => play("preview")}
+                    >
+                      무료 미리보기 재생
+                    </Btn>
+                  )}
                 </div>
-                <div>
-                  <dt>대여 기간</dt>
-                  <dd>{lecture.rental_period || 30}일</dd>
-                </div>
-                <div>
-                  <dt>강의 길이</dt>
-                  <dd>{formatVideoDuration(lecture.video_duration) || "확인 중"}</dd>
-                </div>
-              </dl>
-              <Btn
-                className="primary lecture-play-button"
-                disabled={busy}
-                onClick={() => play("stream")}
-              >
-                <Play size={16} />
-                강의 재생
-              </Btn>
-              <div className="lecture-detail-actions">
-                <Btn
-                  className={`lecture-recommend-button${isLiked ? " is-recommended" : ""}`}
-                  disabled={busy}
-                  aria-pressed={isLiked}
-                  onClick={toggleLike}
-                >
-                  <ThumbsUp size={17} fill={isLiked ? "currentColor" : "none"} />
-                  추천
-                </Btn>
-                <ReportForm
-                  source="lecture"
-                  id={id}
-                  label="신고"
-                  className="lecture-report-button"
-                />
               </div>
-              {isPaid && !isRented && (
-                <Btn
-                  className="lecture-rent-button"
-                  disabled={busy}
-                  onClick={() =>
-                    user?.role === "instructor"
-                      ? setInstructorPurchaseNotice(true)
-                      : setRentConfirm(true)
-                  }
-                >
-                  캐시로 대여
-                </Btn>
-              )}
-              {detail.sample_preview && isPaid && (
-                <Btn
-                  className="lecture-preview-button"
-                  disabled={busy}
-                  onClick={() => play("preview")}
-                >
-                  무료 미리보기 재생
-                </Btn>
-              )}
               {rentConfirm && (
                 <div className="confirm-box">
                   <b>
@@ -1252,39 +1282,117 @@ function LecturePage({ id, initialExpandedCommentId }) {
               </p>
             </section>
 
+            <section className="lecture-comments-inline" aria-label="댓글">
+              <h2>댓글 {formatLectureCount(lecture.comment_count)}개</h2>
+              <Comments
+                id={id}
+                initialExpandedCommentId={initialExpandedCommentId}
+                hideTitle
+                composerFirst
+                sheetStyle
+                onCommentsChanged={resource.reload}
+              />
+            </section>
+          </main>
+
+          <aside className="lecture-detail-sidebar" aria-label="추천 강의">
             <section className="lecture-recommendations">
-              <h2>다른 강의 찾아보기</h2>
-              {recommended.length ? (
-                <div className="lecture-recommendation-list">
-                  {recommended.slice(0, 4).map((item) => (
-                    <button
-                      type="button"
-                      key={item.id}
-                      className="lecture-recommendation"
-                      onClick={() => go(`lecture/${item.id}`)}
-                    >
-                      {item.thumbnail ? (
-                        <img src={item.thumbnail} alt="" />
-                      ) : (
-                        <span className="lecture-recommendation-placeholder">
-                          <Play size={18} aria-hidden="true" />
-                        </span>
-                      )}
-                      <span>
-                        <strong>{item.title}</strong>
-                        <small>{item.instructor?.user_name || "선생님"}</small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="lecture-recommendation-empty">조회된 강의가 없어요</p>
+              {instructor.id && (
+                <section className="lecture-recommendation-section">
+                  <h2>{instructor.user_name || "선생님"}의 다른 강의</h2>
+                  <LectureRecommendationList
+                    lectures={instructorLectures}
+                    loading={instructorLecturesResource.loading}
+                    onSelect={(lectureId) => go(`lecture/${lectureId}`)}
+                    subjectLabel={(item) =>
+                      (item.subjects || [])
+                        .map(
+                          (subject) =>
+                            typeof subject === "object"
+                              ? subject.label || subject.name
+                              : subjects.find(
+                                  (entry) => entry.number === Number(subject),
+                                )?.name || `과목 ${subject}`,
+                        )
+                        .filter(Boolean)
+                        .join(" · ")
+                    }
+                  />
+                </section>
               )}
+              <section className="lecture-recommendation-section">
+                <h2>다른 강의 찾아보기</h2>
+                <LectureRecommendationList
+                  lectures={otherLectures}
+                  loading={otherLecturesResource.loading}
+                  onSelect={(lectureId) => go(`lecture/${lectureId}`)}
+                  subjectLabel={(item) =>
+                    (item.subjects || [])
+                      .map(
+                        (subject) =>
+                          typeof subject === "object"
+                            ? subject.label || subject.name
+                            : subjects.find(
+                                (entry) => entry.number === Number(subject),
+                              )?.name || `과목 ${subject}`,
+                      )
+                      .filter(Boolean)
+                      .join(" · ")
+                  }
+                />
+              </section>
             </section>
 
           </aside>
         </div>
       </State>
+    </div>
+  );
+}
+
+function LectureRecommendationList({ lectures, loading, onSelect, subjectLabel }) {
+  if (loading) {
+    return <p className="lecture-recommendation-empty">강의를 불러오는 중이에요</p>;
+  }
+  if (!lectures.length) {
+    return <p className="lecture-recommendation-empty">조회된 강의가 없어요</p>;
+  }
+  return (
+    <div className="lecture-recommendation-list">
+      {lectures.map((item) => (
+        <button
+          type="button"
+          key={item.id}
+          className="lecture-recommendation"
+          onClick={() => onSelect(item.id)}
+        >
+          {item.thumbnail ? (
+            <img src={item.thumbnail} alt="" />
+          ) : (
+            <span className="lecture-recommendation-placeholder">
+              <Play size={18} aria-hidden="true" />
+            </span>
+          )}
+          <span className="lecture-recommendation-copy">
+            <strong>{item.title}</strong>
+            <span className="lecture-recommendation-meta">
+              {subjectLabel(item) && <span>{subjectLabel(item)}</span>}
+              <span>
+                <Eye size={13} aria-hidden="true" />
+                {formatLectureCount(item.view_count)}
+              </span>
+              <span>
+                <ThumbsUp size={13} aria-hidden="true" />
+                {formatLectureCount(item.like_count)}
+              </span>
+              {item.created_at && <span>{formatLectureTimeAgo(item.created_at)}</span>}
+            </span>
+            <small>
+              {Number(item.price) > 0 ? `${money(item.price)} 캐시` : "무료 강의"}
+            </small>
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -2731,7 +2839,7 @@ function Comments({
       <textarea
         name="content"
         aria-label="댓글"
-        placeholder="강의에 대한 생각을 남겨보세요"
+        placeholder="댓글을 입력하세요."
         required
         maxLength={2000}
         rows={1}
