@@ -61,6 +61,7 @@ export const pageNames = {
   "saved-teachers": "찜한 선생님",
   chat: "채팅",
   profile: "마이페이지",
+  "profile-edit": "내 정보 수정",
   notifications: "알림",
   upload: "강의 등록",
   studio: "강의 스튜디오",
@@ -301,9 +302,10 @@ export function Avatar({ src, name = "", size = "" }) {
 export function Shell({ page, activeRole, setActiveRole, children, fullBleed = false }) {
   const { user, go, login, unreadNotificationCount } = useContext(Ctx);
   const tutoring = user?.role === "instructor" ? "posts" : "teachers";
+  const lectureDestination = user?.role === "instructor" ? "studio" : "lectures";
   const nav = [
     ["home", "홈", "home"],
-    ["lectures", "강의", "lecture"],
+    [lectureDestination, "강의", "lecture"],
     [tutoring, "과외", "tutoring"],
     ["chat", "채팅", "chat"],
     ["profile", "마이", "my_page"],
@@ -314,7 +316,8 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
   } catch {}
   const selected = (id) =>
     id === page ||
-    (id === "lectures" && page === "lecture") ||
+    ((id === "lectures" && page === "lecture") ||
+      (id === "studio" && ["studio", "upload"].includes(page))) ||
     (id === tutoring && ["teachers", "posts", "tutoring-post-detail"].includes(page)) ||
     (id === "teachers" && page === "teacher-profile") ||
     (id === "profile" && [
@@ -580,7 +583,10 @@ export function HomePage() {
               </span>
             </button>
           </section>
-          <button className="rented-link" onClick={() => go("learning")}>
+          <button
+            className="rented-link"
+            onClick={() => go(teacher ? "studio" : "learning")}
+          >
             <Play size={18} />
             {teacher ? "내 강의 관리" : "대여 강의 관리"}
             <ChevronRight size={18} />
@@ -1707,125 +1713,292 @@ export function Card({ item, kind, onClick }) {
   );
 }
 
-// MyPageHomeView: account identity and balance, flat menu, separate edit area.
+// MyPageHomeView: 앱과 같은 프로필 허브이며, 상세 입력은 전용 화면에서 처리한다.
 export function Profile({ onLogout }) {
-  const { user, refreshUser, notify, go } = useContext(Ctx);
-  const [busy, setBusy] = useState(false);
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api("/accounts/me/", {
-        method: "PATCH",
-        body: Object.fromEntries(new FormData(e.currentTarget)),
-      });
-      await refreshUser();
-      notify("프로필을 저장했습니다.");
-    } catch (e) {
-      notify(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { user, go } = useContext(Ctx);
+  const isInstructor = user.role === "instructor";
+  const quickMenus = isInstructor
+    ? [
+        ["tutoring-manage", "수업 관리", "진행 중인 과외와 성사 내역을 확인해요.", UserRound],
+        ["studio", "강의 관리·정산", "등록한 강의와 수익을 관리해요.", BookOpen],
+        ["tutoring-profile", "과외 프로필", "학생에게 보여 줄 과외 정보를 수정해요.", Play],
+      ]
+    : [
+        ["tutoring-manage", "수업 관리", "진행 중인 과외와 성사 내역을 확인해요.", UserRound],
+        ["tutoring-manage", "수업 공고", "내 수업 공고를 확인하고 관리해요.", MessageCircle],
+        ["learning", "내 강의", "대여한 강의를 이어서 학습해요.", Play],
+        ["cash", "캐시 관리", "캐시 잔액과 사용 내역을 확인해요.", BookOpen],
+      ];
+  const allMenus = [
+    ["notifications", "알림", Bell],
+    ["saved", "찜한 강의", Heart],
+    ["notices", "공지사항", Bell],
+    ["support", "고객센터", MessageCircle],
+    ["account", "계정 관리", UserRound],
+  ];
   return (
     <>
       <PageHeading title="마이페이지" />
-      <div className="profile-grid">
-        <aside className="profile-summary">
+      <main className="profile-hub">
+        <section className="profile-hub-identity" aria-label="내 프로필">
           <div className="profile-identity">
-            <Avatar src={user.profile_image} />
+            <Avatar src={user.profile_image} name={user.nickname} size="profile-avatar" />
             <div>
               <h2>{user.nickname}</h2>
               <span className="muted">
-                {user.role === "instructor" ? "선생님 계정" : "학생 계정"}
+                {isInstructor ? "선생님 계정" : "학생 계정"}
               </span>
             </div>
           </div>
+          <button className="profile-edit-link" onClick={() => go("profile-edit")}>
+            내 정보 수정
+            <ChevronRight size={17} />
+          </button>
           <div className="balance">
             <span>보유 캐시</span>
             <strong>
               {money(user.cash)} <small>캐시</small>
             </strong>
           </div>
-          <button className="rented-link" onClick={() => go("learning")}>
-            <Play size={18} />
-            대여 강의 관리
-            <ChevronRight size={17} />
-          </button>
-          <nav className="profile-menu" aria-label="나의 메뉴">
-            {(user.role === "instructor"
-              ? [
-                  ["studio", "강의 스튜디오"],
-                  ["settlement", "수익 및 정산"],
-                  ["verification", "인증 서류 관리"],
-                ]
-              : [["cash", "캐시 관리"]]
-            )
-              .concat([
-                ["tutoring-manage", "과외 관리"],
-                ["account", "계정 관리"],
-                ["notices", "공지사항"],
-              ])
-              .map(([id, label]) => (
-                <button key={id} onClick={() => go(id)}>
-                  {label}
-                  <ChevronRight size={16} />
-                </button>
-              ))}
-            <button onClick={() => go("saved")}>
-              <Heart size={18} />
-              찜한 강의
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => go("notifications")}>
-              <Bell size={18} />
-              알림
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => go("support")}>
-              <MessageCircle size={18} />
-              고객센터
-              <ChevronRight size={16} />
-            </button>
+        </section>
+
+        <section className="profile-hub-section" aria-labelledby="profile-quick-menu">
+          <div className="profile-section-title">
+            <h2 id="profile-quick-menu">빠른 메뉴</h2>
+            <span>자주 찾는 기능을 바로 열어 보세요.</span>
+          </div>
+          <div className="profile-quick-grid">
+            {quickMenus.map(([id, label, description, Icon]) => (
+              <button key={label} onClick={() => go(id)}>
+                <Icon size={21} aria-hidden="true" />
+                <span>
+                  <b>{label}</b>
+                  <small>{description}</small>
+                </span>
+                <ChevronRight size={17} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="profile-hub-section" aria-labelledby="profile-all-menu">
+          <div className="profile-section-title">
+            <h2 id="profile-all-menu">전체 메뉴</h2>
+          </div>
+          <nav className="profile-menu" aria-label="전체 메뉴">
+            {allMenus.map(([id, label, Icon]) => (
+              <button key={id} onClick={() => go(id)}>
+                <Icon size={19} aria-hidden="true" />
+                <span>{label}</span>
+                <ChevronRight size={17} aria-hidden="true" />
+              </button>
+            ))}
             <button onClick={onLogout}>
-              <LogOut size={18} />
-              로그아웃
+              <LogOut size={19} aria-hidden="true" />
+              <span>로그아웃</span>
             </button>
           </nav>
-        </aside>
-        <section className="profile-editor">
-          <h2>내 정보 수정</h2>
-          <p className="muted">변경한 정보는 CLASSY 앱에도 함께 적용됩니다.</p>
-          <form onSubmit={submit} className="form">
+        </section>
+      </main>
+    </>
+  );
+}
+
+/** 계정의 수정 가능한 프로필과 휴대전화 인증을 한곳에서 처리한다. */
+export function ProfileEdit() {
+  const { user, refreshUser, notify, go } = useContext(Ctx);
+  const [busy, setBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [phoneSent, setPhoneSent] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [imageError, setImageError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const displayName =
+    [user.last_name, user.first_name].filter(Boolean).join("") ||
+    user.name ||
+    "등록된 이름 없음";
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    setBusy(true);
+    setProfileError("");
+    try {
+      const values = Object.fromEntries(new FormData(event.currentTarget));
+      await api("/accounts/me/", {
+        method: "PATCH",
+        body: {
+          user_name: values.user_name,
+          region: values.region,
+          field: values.field,
+        },
+      });
+      await refreshUser();
+      notify("프로필을 저장했습니다.");
+    } catch (error) {
+      setProfileError(error.message);
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadImage(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const image = form.profile_image.files?.[0];
+    if (!image) return;
+    setImageBusy(true);
+    setImageError("");
+    try {
+      const body = new FormData();
+      body.append("profile_image", image);
+      await api("/accounts/me/image/", { method: "PATCH", body });
+      await refreshUser();
+      form.reset();
+      notify("프로필 사진을 변경했습니다.");
+    } catch (error) {
+      setImageError(error.message);
+      notify(error.message);
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  async function requestPhoneVerification(event) {
+    event.preventDefault();
+    setPhoneBusy(true);
+    setPhoneError("");
+    try {
+      await api("/accounts/me/phone/request/", {
+        method: "POST",
+        body: { phone },
+      });
+      setPhoneSent(true);
+      notify("인증번호를 보냈습니다.");
+    } catch (error) {
+      setPhoneError(error.message);
+      notify(error.message);
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  async function verifyPhone(event) {
+    event.preventDefault();
+    setPhoneBusy(true);
+    setPhoneError("");
+    try {
+      await api("/accounts/me/phone/verify/", {
+        method: "POST",
+        body: { phone, code: verificationCode },
+      });
+      await refreshUser();
+      setPhoneSent(false);
+      setVerificationCode("");
+      notify("휴대전화 번호를 변경했습니다.");
+    } catch (error) {
+      setPhoneError(error.message);
+      notify(error.message);
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <PageHeading title="내 정보 수정" />
+      <main className="profile-edit-page">
+        <button className="profile-edit-back" onClick={() => go("profile")}>
+          <ChevronRight size={18} aria-hidden="true" />
+          마이페이지로
+        </button>
+        <section className="profile-edit-section">
+          <h2>프로필 사진</h2>
+          <div className="profile-image-editor">
+            <Avatar src={user.profile_image} name={user.nickname} size="profile-avatar" />
+            <form onSubmit={uploadImage} className="profile-image-form">
+              <label>
+                새 사진
+                <input name="profile_image" type="file" accept="image/*" required />
+              </label>
+              {imageError && <p className="error" role="alert">{imageError}</p>}
+              <Btn disabled={imageBusy}>{imageBusy ? "업로드 중…" : "사진 변경"}</Btn>
+            </form>
+          </div>
+        </section>
+
+        <section className="profile-edit-section">
+          <h2>기본 정보</h2>
+          <p className="muted">이름과 이메일은 고객센터를 통해서만 변경할 수 있어요.</p>
+          <form onSubmit={saveProfile} className="form">
             <label>
               닉네임
-              <input
-                name="user_name"
-                defaultValue={user.nickname}
-                required
-                maxLength={30}
-              />
+              <input name="user_name" defaultValue={user.nickname} required maxLength={30} />
+            </label>
+            <label>
+              이름
+              <input value={displayName} readOnly aria-readonly="true" />
             </label>
             <label>
               이메일
-              <input value={user.email || ""} readOnly />
+              <input value={user.email || "등록된 이메일 없음"} readOnly aria-readonly="true" />
             </label>
             <RegionFields label="지역" value={user.region || ""} />
             <label>
               관심 분야
-              <input
-                name="field"
-                defaultValue={user.field || ""}
-                placeholder="관심 분야를 입력해 주세요"
-              />
+              <input name="field" defaultValue={user.field || ""} placeholder="관심 분야를 입력해 주세요" />
             </label>
+            {profileError && <p className="error" role="alert">{profileError}</p>}
             <Btn className="primary" disabled={busy}>
-              변경사항 저장
-              <Check size={16} />
+              {busy ? "저장 중…" : "변경사항 저장"}
+              {!busy && <Check size={16} />}
             </Btn>
           </form>
         </section>
-      </div>
+
+        <section className="profile-edit-section">
+          <h2>휴대전화 변경</h2>
+          <p className="muted">현재 등록된 번호: {user.phonenumber || "등록된 번호 없음"}</p>
+          <form onSubmit={requestPhoneVerification} className="form profile-phone-form">
+            <label>
+              새 휴대전화 번호
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phone}
+                onChange={(event) => {
+                  setPhone(event.target.value.replace(/\D/g, ""));
+                  setPhoneSent(false);
+                  setVerificationCode("");
+                }}
+                required
+              />
+            </label>
+            <Btn disabled={phoneBusy || !phone}>{phoneBusy ? "요청 중…" : "인증번호 받기"}</Btn>
+          </form>
+          {phoneSent && (
+            <form onSubmit={verifyPhone} className="form profile-phone-form">
+              <label>
+                인증번호
+                <input
+                  inputMode="numeric"
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ""))}
+                  maxLength={6}
+                  required
+                />
+              </label>
+              <Btn className="primary" disabled={phoneBusy || !verificationCode}>
+                {phoneBusy ? "확인 중…" : "휴대전화 변경 확정"}
+              </Btn>
+            </form>
+          )}
+          {phoneError && <p className="error" role="alert">{phoneError}</p>}
+        </section>
+      </main>
     </>
   );
 }

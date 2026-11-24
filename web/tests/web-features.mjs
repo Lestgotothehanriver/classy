@@ -9,12 +9,14 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }),
   errors = [],
-  writes = [];
+  writes = [],
+  apiPaths = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console",m=>{if(m.type()==="error")errors.push(m.text());});
 let role = "student",
   created = false,
-  settleableRevenue = 1000;
+  settleableRevenue = 1000,
+  lectureCatalogRequests = 0;
 const subjects = [
   { number: 36, name: "미적분 I" },
   { number: 196, name: "Python" },
@@ -35,9 +37,39 @@ const lecture = {
   is_active: true,
   view_count: 3,
 };
+const officialCreator = {
+  id: 99,
+  user: 99,
+  user_name: "클래씨 운영자",
+  profile_image: "https://example.invalid/official.png",
+  is_official_creator: true,
+};
+const chatSummary = {
+  id: 42,
+  opponent_info: {
+    user_id: 2,
+    user_name: "채팅 상대",
+  },
+  last_message: { text: "안녕하세요" },
+  initiated_by: 2,
+  is_accepted: true,
+};
+const chatDetail = {
+  ...chatSummary,
+  messages: [
+    {
+      id: 1,
+      sender: 2,
+      sender_nickname: "채팅 상대",
+      text: "안녕하세요",
+      created_at: "2026-01-01T09:00:00Z",
+    },
+  ],
+};
 await page.route("**/api/**", async (route) => {
   const req = route.request(),
     path = new URL(req.url()).pathname.replace("/api", "");
+  apiPaths.push(path);
   let d = [],
     status = 200;
   if (req.method() !== "GET")
@@ -71,8 +103,14 @@ await page.route("**/api/**", async (route) => {
     };
   else if (path === "/accounts/profile-check/")
     d = { available_roles: [{ role }] };
-  else if (path === "/lectures/")
+  else if (path === "/chatrooms/") d = [chatSummary];
+  else if (path === "/chatrooms/42/") d = chatDetail;
+  else if (path === "/support/conversations/") d = [];
+  else if (path === "/tutoring/resources/") d = [];
+  else if (path === "/lectures/") {
+    lectureCatalogRequests += 1;
     d = { count: 1, results: [lecture], next: null };
+  } else if (path === "/tutoring/instructors/99/") d = officialCreator;
   else if (path === "/mypage/instructor/uploaded-lectures/")
     d = created ? [lecture] : [];
   else if (path === "/lectures/write/") {
@@ -198,6 +236,31 @@ try {
   assert.equal(signup.body.agreed_terms, true);
   assert.equal(signup.body.agreed_privacy, true);
   assert.equal(signup.body.agreed_marketing, false);
+  await page.goto(origin + "/#profile");
+  await page.getByRole("heading", { name: "마이페이지" }).waitFor();
+  assert.equal(await page.getByText("빠른 메뉴", { exact: true }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: /수업 관리/ }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: /내 강의/ }).count(), 1);
+  await page.getByRole("button", { name: "내 정보 수정" }).click();
+  await page.getByRole("heading", { name: "내 정보 수정" }).waitFor();
+  assert.equal(page.url().endsWith("/#profile-edit"), true);
+  assert.equal(await page.getByLabel("이름", { exact: true }).isEditable(), false);
+  assert.equal(await page.getByLabel("이메일", { exact: true }).isEditable(), false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(origin + "/#chat");
+  await page.getByRole("heading", { name: "채팅" }).waitFor();
+  await page.getByRole("button", { name: "채팅 상대" }).click();
+  await page.waitForURL("**/#chat/42");
+  await page.getByText("안녕하세요", { exact: true }).waitFor();
+  assert.equal(await page.locator(".room-list").isVisible(), false);
+  await page.getByLabel("대화 더보기").click();
+  await page.getByRole("dialog", { name: "대화 관리" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "대화 찜하기" }).count(), 1);
+  await page.getByRole("dialog", { name: "대화 관리" }).getByLabel("닫기").click();
+  await page.getByLabel("대화 목록으로 돌아가기").click();
+  await page.waitForURL("**/#chat");
+  assert.equal(await page.locator(".room-list").isVisible(), true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   // Use mocked identity, never create or mutate production accounts.
   role = "instructor";
   await page.evaluate(() => {
@@ -209,24 +272,44 @@ try {
   });
   await page.goto(origin+"/#upload");
   await page.reload();
-  await page.getByRole("heading", { name: "강사 스튜디오" }).waitFor();
+  await page.getByRole("heading", { name: "강의 스튜디오" }).waitFor();
+  const catalogRequestCountBeforeInstructorRedirect = lectureCatalogRequests;
   await page.goto(origin + "/#lectures");
-  await page.getByRole("heading", { name: "실제 형식의 강의" }).waitFor();
-  const instructorBrowseMenu = page.getByRole("navigation", {
-    name: "목록 메뉴",
-  });
+  await page.getByRole("heading", { name: "강의 스튜디오" }).waitFor();
   assert.equal(
-    await instructorBrowseMenu
-      .getByRole("link", { name: "선생님 찾기" })
-      .count(),
-    0,
+    page.url().endsWith("/#studio"),
+    true,
   );
   assert.equal(
-    await instructorBrowseMenu.getByRole("link", { name: "학생 찾기" }).count(),
+    lectureCatalogRequests,
+    catalogRequestCountBeforeInstructorRedirect,
+    "instructors must not request the public lecture catalog",
+  );
+  await page.goto(origin + "/#teacher-profile/99");
+  await page.getByText("클래씨 운영자", { exact: true }).waitFor();
+  assert.equal(await page.getByText("운영자", { exact: true }).count(), 1);
+  assert.equal(
+    await page.getByText("클래씨 운영자 계정입니다.", { exact: true }).count(),
     1,
   );
+  assert.equal(
+    await page.getByRole("tab", { name: "강의", exact: true }).count(),
+    1,
+  );
+  assert.equal(await page.getByRole("tab", { name: "과외 정보" }).count(), 0);
+  assert.equal(await page.getByRole("tab", { name: "과외 리뷰" }).count(), 0);
+  assert.equal(await page.locator(".teacher-profile-sidebar").count(), 0);
+  assert.equal(
+    apiPaths.some((path) =>
+      [
+        "/tutoring/instructors/99/info/",
+        "/tutoring/instructors/99/reviews/",
+      ].includes(path),
+    ),
+    false,
+  );
   await page.goto(origin + "/#upload");
-  await page.getByRole("heading", { name: "강사 스튜디오" }).waitFor();
+  await page.getByRole("heading", { name: "강의 스튜디오" }).waitFor();
   await page.getByLabel("강의 제목").fill("임시 저장 제목");
   await page.reload();
   await page.getByLabel("강의 제목").waitFor();

@@ -40,7 +40,6 @@ import {
   RefreshCw,
   LockKeyhole,
   LoaderCircle,
-  Check,
   Upload,
   Leaf,
   MoreVertical,
@@ -79,6 +78,7 @@ import {
   NoticePage,
   Catalog,
   Profile,
+  ProfileEdit,
   Avatar,
   endpoints,
   pageNames,
@@ -126,8 +126,15 @@ function App() {
     [toast, setToast] = useState("");
   const [pendingChatRoomId, setPendingChatRoomId] = useState(null);
   const [postListItem, setPostListItem] = useState(null);
+  const [teacherProfileReturn, setTeacherProfileReturn] = useState(null);
   const pageRef = useRef(page);
+  const pendingTeacherProfileNavigation = useRef(null);
   pageRef.current = page;
+  const activeUserRole = activeRole || user?.role;
+  // A teacher's lecture destination is their own Studio, never the public catalog.
+  // Resolve it before rendering so a direct #lectures URL cannot mount Catalog first.
+  const displayPage =
+    activeUserRole === "instructor" && page === "lectures" ? "studio" : page;
   const subjects = useLoad("/accounts/subjects/");
   const hasAuthenticatedSession = Boolean(
     user && sessionStorage.getItem("classy_token"),
@@ -183,7 +190,16 @@ function App() {
         notify("강의 등록이 완료될 때까지 기다려 주세요.");
         return;
       }
-      const next = location.hash.slice(1).split("/")[0];
+      const route = location.hash.slice(1).split("/");
+      const next = route[0];
+      const targetInstructorId = Number(route[1]);
+      if (
+        next !== "teacher-profile" ||
+        targetInstructorId !== pendingTeacherProfileNavigation.current
+      ) {
+        setTeacherProfileReturn(null);
+      }
+      pendingTeacherProfileNavigation.current = null;
       setPage(pageNames[next] ? next : "home");
       setModal(null);
       window.scrollTo(0, 0);
@@ -192,8 +208,18 @@ function App() {
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
-    document.title = (pageNames[page] || "홈") + " | CLASSY";
-  }, [page]);
+    if (displayPage === page) return;
+
+    // Preserve the existing hash router while canonicalizing an instructor's
+    // manually-entered or browser-restored public lecture URL.
+    history.replaceState(null, "", `#${displayPage}`);
+    setPage(displayPage);
+    setModal(null);
+    window.scrollTo(0, 0);
+  }, [displayPage, page]);
+  useEffect(() => {
+    document.title = (pageNames[displayPage] || "홈") + " | CLASSY";
+  }, [displayPage]);
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(""), 5000);
@@ -214,15 +240,37 @@ function App() {
     };
   }, [hasAuthenticatedSession, user?.id]);
   const go = (p) => {
-    location.hash = p;
+    const [targetPage, ...segments] = p.split("/");
+    const destination =
+      activeUserRole === "instructor" && targetPage === "lectures"
+        ? ["studio", ...segments].join("/")
+        : p;
+    location.hash = destination;
   };
   const openChat = (roomId) => {
     setPendingChatRoomId(roomId?.toString() || null);
     go(roomId ? `chat/${roomId}` : "chat");
   };
+  const closeChatRoom = () => {
+    setPendingChatRoomId(null);
+    go("chat");
+  };
   const openPostDetail = (item) => {
     setPostListItem(item || null);
     go(`tutoring-post-detail/${item.id}`);
+  };
+  const openTeacherProfile = (instructorId) => {
+    const numericInstructorId = Number(instructorId);
+    if (!Number.isInteger(numericInstructorId) || numericInstructorId <= 0) {
+      notify("운영자 프로필을 찾을 수 없어요.");
+      return;
+    }
+    setTeacherProfileReturn({
+      instructorId: numericInstructorId,
+      page: location.hash.slice(1) || "home",
+    });
+    pendingTeacherProfileNavigation.current = numericInstructorId;
+    go(`teacher-profile/${numericInstructorId}`);
   };
 
   function openNotificationTarget(notification) {
@@ -287,7 +335,7 @@ function App() {
     }
   }
   const effectiveUser = user
-    ? { ...user, role: activeRole || user.role }
+    ? { ...user, role: activeUserRole }
     : null;
   const unreadNotificationCount = Number(
     unreadNotifications.data?.[effectiveUser?.role],
@@ -299,13 +347,14 @@ function App() {
     subjects: list(subjects.data),
     notify,
     go,
+    openTeacherProfile,
     openChat,
     openPostDetail,
     login: () => location.assign("/login"),
     detail: (kind, id, item) => {
       setToast("");
       if (kind === "teachers") {
-        go(`teacher-profile/${id}`);
+        openTeacherProfile(id);
         return;
       }
       if (kind === "posts") {
@@ -443,25 +492,36 @@ function App() {
   }
   return (
     <Ctx.Provider value={context}>
-      <Shell page={page} activeRole={activeRole} setActiveRole={changeRole}>
+      <Shell page={displayPage} activeRole={activeRole} setActiveRole={changeRole}>
         {!ready ? (
           <div className="loading">
             <LoaderCircle className="spin" />
             계정을 확인하고 있어요
           </div>
-        ) : page === "home" ? (
+        ) : displayPage === "home" ? (
           <HomePage />
-        ) : page === "profile" ? (
+        ) : displayPage === "profile" ? (
           <Gate>
             <Profile onLogout={logout} />
           </Gate>
-        ) : page === "teacher-profile" ? (
+        ) : displayPage === "profile-edit" ? (
+          <Gate>
+            <ProfileEdit />
+          </Gate>
+        ) : displayPage === "teacher-profile" ? (
           <Gate>
             <TeacherProfilePage
               id={Number(location.hash.slice(1).split("/")[1])}
+              officialReturnTo={
+                teacherProfileReturn?.instructorId ===
+                Number(location.hash.slice(1).split("/")[1])
+                  ? teacherProfileReturn.page
+                  : ""
+              }
+              onOfficialReturnHandled={() => setTeacherProfileReturn("")}
             />
           </Gate>
-        ) : page === "lecture" ? (
+        ) : displayPage === "lecture" ? (
           <Gate>
             <LecturePage
               id={Number(location.hash.slice(1).split("/")[1])}
@@ -472,23 +532,23 @@ function App() {
               }
             />
           </Gate>
-        ) : page === "tutoring-post-detail" ? (
+        ) : displayPage === "tutoring-post-detail" ? (
           <Gate>
             <TutoringPostPage
               id={Number(location.hash.slice(1).split("/")[1])}
               listItem={postListItem}
             />
           </Gate>
-        ) : page === "notices" ? (
+        ) : displayPage === "notices" ? (
           <NoticePage />
-        ) : page === "notifications" ? (
+        ) : displayPage === "notifications" ? (
           <>
             <PageHeading title="알림" />
             <Gate>
               <Notifications />
             </Gate>
           </>
-        ) : page === "chat" ? (
+        ) : displayPage === "chat" ? (
           <>
             <PageHeading
               title="채팅"
@@ -499,12 +559,13 @@ function App() {
                 initialRoomId={
                   location.hash.slice(1).split("/")[1] || pendingChatRoomId
                 }
+                onRoomClosed={closeChatRoom}
               />
             </Gate>
           </>
-        ) : ["upload", "studio"].includes(page) ? (
+        ) : ["upload", "studio"].includes(displayPage) ? (
           <Gate>
-            <Studio key={page} upload={page === "upload"} />
+            <Studio key={displayPage} upload={displayPage === "upload"} />
           </Gate>
         ) : [
             "cash",
@@ -512,32 +573,32 @@ function App() {
             "account",
             "tutoring-manage",
             "support",
-          ].includes(page) ? (
+          ].includes(displayPage) ? (
           <Gate>
-            <Services key={page} page={page} onLogout={logoutLocal} />
+            <Services key={displayPage} page={displayPage} onLogout={logoutLocal} />
           </Gate>
         ) : (
           <>
-            <PageHeading title={pageNames[page]} />
-            {page === "lectures" ? (
+            <PageHeading title={pageNames[displayPage]} />
+            {displayPage === "lectures" ? (
               <Gate>
                 <Catalog
-                  key={page + effectiveUser?.role}
+                  key={displayPage + effectiveUser?.role}
                   kind="lectures"
-                  mode={page}
+                  mode={displayPage}
                 />
               </Gate>
             ) : (
               <Catalog
-                key={page + effectiveUser?.role}
+                key={displayPage + effectiveUser?.role}
                 kind={
-                  page === "saved-teachers"
+                  displayPage === "saved-teachers"
                     ? "teachers"
-                    : ["teachers", "posts"].includes(page)
-                      ? page
+                    : ["teachers", "posts"].includes(displayPage)
+                      ? displayPage
                       : "lectures"
                 }
-                mode={page}
+                mode={displayPage}
               />
             )}
           </>
@@ -966,7 +1027,7 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
 }
 /** 앱 강의 플레이어 상세 구조를 웹의 전용 페이지로 옮긴 화면이다. */
 function LecturePage({ id, initialExpandedCommentId }) {
-  const { go, notify, refreshUser, subjects, user } = useContext(Ctx);
+  const { go, notify, refreshUser, subjects, user, openTeacherProfile } = useContext(Ctx);
   const resource = useLoad(
     Number.isInteger(id) && id > 0 ? `/lectures/${id}/` : null,
     [id],
@@ -1165,7 +1226,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                 <button
                   type="button"
                   className="lecture-instructor"
-                  onClick={() => go(`teacher-profile/${instructor.id}`)}
+                  onClick={() => openTeacherProfile(instructor.id)}
                 >
                   <Avatar
                     src={instructor.profile_image}
@@ -1397,7 +1458,11 @@ function LectureRecommendationList({ lectures, loading, onSelect, subjectLabel }
   );
 }
 
-function TeacherProfilePage({ id }) {
+function TeacherProfilePage({
+  id,
+  officialReturnTo = "",
+  onOfficialReturnHandled,
+}) {
   const { go } = useContext(Ctx);
   const resource = useLoad(
     Number.isInteger(id) && id > 0 ? `/tutoring/instructors/${id}/` : null,
@@ -1417,34 +1482,30 @@ function TeacherProfilePage({ id }) {
 
   const teacher = resource.data || {};
   const teacherName = teacher.user_name || "";
+  const isOfficialCreator = teacher.is_official_creator === true;
+  const returnFromOfficialProfile = () => {
+    if (officialReturnTo) {
+      onOfficialReturnHandled?.();
+      go(officialReturnTo);
+      return;
+    }
+    go("lectures");
+  };
   return (
     <div className="teacher-profile-page">
       <State resource={resource}>
         <div className="teacher-profile-mobile-actions">
           <MobileBackAction
             className="teacher-profile-mobile-list"
-            onClick={() => go("teachers")}
+            onClick={
+              isOfficialCreator ? returnFromOfficialProfile : () => go("teachers")
+            }
           >
-            선생님 목록으로
+            {isOfficialCreator ? "강의 목록으로" : "선생님 목록으로"}
           </MobileBackAction>
-          <ProfileSafetyActions
-            className="teacher-profile-compact-safety-actions teacher-profile-mobile-safety-actions"
-            instructorId={id}
-            userId={teacher.user}
-            teacherName={teacherName || "선생님"}
-            onBlocked={() => go("teachers")}
-            reportLabel="신고"
-            blockLabel="차단"
-          />
-        </div>
-        <div className="teacher-profile-page-layout">
-          <div className="teacher-profile-page-content">
-            <TeacherProfile id={id} teacher={teacher} />
-          </div>
-          <aside className="teacher-profile-sidebar" aria-label="선생님 프로필 작업">
-            <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+          {!isOfficialCreator && (
             <ProfileSafetyActions
-              className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
+              className="teacher-profile-compact-safety-actions teacher-profile-mobile-safety-actions"
               instructorId={id}
               userId={teacher.user}
               teacherName={teacherName || "선생님"}
@@ -1452,7 +1513,26 @@ function TeacherProfilePage({ id }) {
               reportLabel="신고"
               blockLabel="차단"
             />
-          </aside>
+          )}
+        </div>
+        <div className="teacher-profile-page-layout">
+          <div className="teacher-profile-page-content">
+            <TeacherProfile id={id} teacher={teacher} />
+          </div>
+          {!isOfficialCreator && (
+            <aside className="teacher-profile-sidebar" aria-label="선생님 프로필 작업">
+              <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+              <ProfileSafetyActions
+                className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
+                instructorId={id}
+                userId={teacher.user}
+                teacherName={teacherName || "선생님"}
+                onBlocked={() => go("teachers")}
+                reportLabel="신고"
+                blockLabel="차단"
+              />
+            </aside>
+          )}
         </div>
       </State>
     </div>
@@ -2210,10 +2290,20 @@ function TeacherRatingGauge({ label, rating }) {
 function TeacherProfile({ id, teacher, item }) {
   const { user, notify, detail, subjects } = useContext(Ctx);
   const [tab, setTab] = useState("info");
-  const info = useLoad(`/tutoring/instructors/${id}/info/`);
-  const reviews = useLoad(`/tutoring/instructors/${id}/reviews/`);
-  const lectures = useLoad(`/lectures/?instructor=${id}`);
   const profile = { ...(item || {}), ...(teacher || {}) };
+  const isOfficialCreator = profile.is_official_creator === true;
+  const selectedTab = isOfficialCreator ? "lectures" : tab;
+  const info = useLoad(
+    isOfficialCreator ? null : `/tutoring/instructors/${id}/info/`,
+    [id, isOfficialCreator],
+  );
+  const reviews = useLoad(
+    !isOfficialCreator && selectedTab === "reviews"
+      ? `/tutoring/instructors/${id}/reviews/`
+      : null,
+    [id, isOfficialCreator, selectedTab],
+  );
+  const lectures = useLoad(`/lectures/?instructor=${id}`, [id]);
   const [liked, setLiked] = useState(Boolean(profile.is_liked));
   const [likeCount, setLikeCount] = useState(Number(profile.like_count || 0));
 
@@ -2359,141 +2449,166 @@ function TeacherProfile({ id, teacher, item }) {
 
   return (
     <section className="teacher-profile-detail">
-      <div className="teacher-profile-header">
-        <Avatar
-          src={profile.profile_image}
-          name={profile.user_name || "선생님"}
-          size="profile-avatar"
-        />
-        <div className="teacher-profile-identity">
-          <h2>
-            {profile.user_name || "선생님"}
-            {profile.is_certified && <ShieldCheck size={17} className="certified" aria-label="인증된 선생님" />}
-          </h2>
-          <p>{[profile.university, profile.department, studentNumber].filter(Boolean).join(" · ")}</p>
-        </div>
-        {user?.role === "student" && (
-          <button
-            type="button"
-            className={"teacher-profile-like " + (liked ? "liked" : "")}
-            aria-label={liked ? "선생님 찜 취소" : "선생님 찜하기"}
-            onClick={toggleLike}
-          >
-            <Heart size={21} fill={liked ? "currentColor" : "none"} />
-            <small>{likeCount}</small>
-          </button>
-        )}
-      </div>
-      <div className="teacher-profile-info">
-        {personalInfo.length > 0 && (
-          <div className="teacher-profile-info-item">
-            <UserRound size={15} aria-hidden="true" />
-            <span className="teacher-profile-personal-info">
-              {personalInfo.map((label, index) => (
-                <React.Fragment key={label}>
-                  {index > 0 && (
-                    <span
-                      className="teacher-profile-info-divider"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span>{label}</span>
-                </React.Fragment>
-              ))}
-            </span>
-          </div>
-        )}
-        {locationLabel && (
-          <div className="teacher-profile-info-item">
-            <MapPin size={15} aria-hidden="true" />
-            <span>{locationLabel}</span>
-          </div>
-        )}
-        {subjectLabels && (
-          <div className="teacher-profile-info-item teacher-profile-subjects">
-            <BookOpen size={15} aria-hidden="true" />
-            <span>{subjectLabels}</span>
-          </div>
-        )}
-      </div>
-      {profile.instruction && (
-        <p className="teacher-profile-introduction">
-          선생님 한 줄 소개: {profile.instruction}
-        </p>
-      )}
-      <State resource={info}>
-        {info.data && (
-          <section className="teacher-profile-stats">
-            <div
-              className={
-                "teacher-profile-status" +
-                (infoData.is_tutoring ? " available" : "")
-              }
-            >
-              <span>과외 상태</span>
-              <strong>{infoData.is_tutoring ? "모집 중" : "구하지 않음"}</strong>
+      {isOfficialCreator ? (
+        <>
+          <div className="teacher-profile-header official-profile-header">
+            <Avatar
+              src={profile.profile_image}
+              name={profile.user_name || "클래씨 운영자"}
+              size="profile-avatar"
+            />
+            <div className="teacher-profile-identity">
+              <h2>
+                {profile.user_name || "클래씨 운영자"}
+                <span className="official-profile-badge">운영자</span>
+              </h2>
             </div>
-            {infoData.is_tutoring && (
-              <>
-                <div>
-                  <span>클래씨에서 과외 구한 건 수</span>
-                  <strong>{infoData.tutoring_count ? `${infoData.tutoring_count}건` : "-"}</strong>
-                </div>
-                <div>
-                  <span>평균 수업료</span>
-                  <strong>{infoData.average_cost ? `${money(infoData.average_cost)}원` : "-"}</strong>
-                </div>
-                <div>
-                  <span>과외 리뷰 평점</span>
-                  <strong>{averageRating ? `${averageRating.toFixed(1)} (${reviewRows.length})` : "-"}</strong>
-                </div>
-                <div>
-                  <span>클래씨 랭킹</span>
-                  <strong>
-                    {Number(infoData.current_rank) > 0
-                      ? `${infoData.current_rank}위`
-                      : "랭킹 외"}
-                  </strong>
-                </div>
-              </>
+          </div>
+          <p className="teacher-profile-introduction">
+            클래씨 운영자 계정입니다.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="teacher-profile-header">
+            <Avatar
+              src={profile.profile_image}
+              name={profile.user_name || "선생님"}
+              size="profile-avatar"
+            />
+            <div className="teacher-profile-identity">
+              <h2>
+                {profile.user_name || "선생님"}
+                {profile.is_certified && <ShieldCheck size={17} className="certified" aria-label="인증된 선생님" />}
+              </h2>
+              <p>{[profile.university, profile.department, studentNumber].filter(Boolean).join(" · ")}</p>
+            </div>
+            {user?.role === "student" && (
+              <button
+                type="button"
+                className={"teacher-profile-like " + (liked ? "liked" : "")}
+                aria-label={liked ? "선생님 찜 취소" : "선생님 찜하기"}
+                onClick={toggleLike}
+              >
+                <Heart size={21} fill={liked ? "currentColor" : "none"} />
+                <small>{likeCount}</small>
+              </button>
             )}
-          </section>
-        )}
-      </State>
+          </div>
+          <div className="teacher-profile-info">
+            {personalInfo.length > 0 && (
+              <div className="teacher-profile-info-item">
+                <UserRound size={15} aria-hidden="true" />
+                <span className="teacher-profile-personal-info">
+                  {personalInfo.map((label, index) => (
+                    <React.Fragment key={label}>
+                      {index > 0 && (
+                        <span
+                          className="teacher-profile-info-divider"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span>{label}</span>
+                    </React.Fragment>
+                  ))}
+                </span>
+              </div>
+            )}
+            {locationLabel && (
+              <div className="teacher-profile-info-item">
+                <MapPin size={15} aria-hidden="true" />
+                <span>{locationLabel}</span>
+              </div>
+            )}
+            {subjectLabels && (
+              <div className="teacher-profile-info-item teacher-profile-subjects">
+                <BookOpen size={15} aria-hidden="true" />
+                <span>{subjectLabels}</span>
+              </div>
+            )}
+          </div>
+          {profile.instruction && (
+            <p className="teacher-profile-introduction">
+              선생님 한 줄 소개: {profile.instruction}
+            </p>
+          )}
+          <State resource={info}>
+            {info.data && (
+              <section className="teacher-profile-stats">
+                <div
+                  className={
+                    "teacher-profile-status" +
+                    (infoData.is_tutoring ? " available" : "")
+                  }
+                >
+                  <span>과외 상태</span>
+                  <strong>{infoData.is_tutoring ? "모집 중" : "구하지 않음"}</strong>
+                </div>
+                {infoData.is_tutoring && (
+                  <>
+                    <div>
+                      <span>클래씨에서 과외 구한 건 수</span>
+                      <strong>{infoData.tutoring_count ? `${infoData.tutoring_count}건` : "-"}</strong>
+                    </div>
+                    <div>
+                      <span>평균 수업료</span>
+                      <strong>{infoData.average_cost ? `${money(infoData.average_cost)}원` : "-"}</strong>
+                    </div>
+                    <div>
+                      <span>과외 리뷰 평점</span>
+                      <strong>{averageRating ? `${averageRating.toFixed(1)} (${reviewRows.length})` : "-"}</strong>
+                    </div>
+                    <div>
+                      <span>클래씨 랭킹</span>
+                      <strong>
+                        {Number(infoData.current_rank) > 0
+                          ? `${infoData.current_rank}위`
+                          : "랭킹 외"}
+                      </strong>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+          </State>
+        </>
+      )}
       <div
         className="registration-tabs detail-tabs"
         role="tablist"
-        aria-label="선생님 프로필 상세"
+        aria-label={isOfficialCreator ? "운영자 프로필 상세" : "선생님 프로필 상세"}
       >
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "lectures"}
-          className={tab === "lectures" ? "active" : ""}
+          aria-selected={selectedTab === "lectures"}
+          className={selectedTab === "lectures" ? "active" : ""}
           onClick={() => setTab("lectures")}
         >
           강의
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "info"}
-          className={tab === "info" ? "active" : ""}
-          onClick={() => setTab("info")}
-        >
-          과외 정보
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "reviews"}
-          className={tab === "reviews" ? "active" : ""}
-          onClick={() => setTab("reviews")}
-        >
-          과외 리뷰
-        </button>
+        {!isOfficialCreator && <>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedTab === "info"}
+            className={selectedTab === "info" ? "active" : ""}
+            onClick={() => setTab("info")}
+          >
+            과외 정보
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedTab === "reviews"}
+            className={selectedTab === "reviews" ? "active" : ""}
+            onClick={() => setTab("reviews")}
+          >
+            과외 리뷰
+          </button>
+        </>}
       </div>
-      {tab === "lectures" && (
+      {selectedTab === "lectures" && (
         <State resource={lectures}>
           {lectureRows.length ? (
             <div className="teacher-profile-lectures">
@@ -2560,7 +2675,7 @@ function TeacherProfile({ id, teacher, item }) {
           )}
         </State>
       )}
-      {tab === "info" && (
+      {!isOfficialCreator && selectedTab === "info" && (
         <State resource={info}>
           {hasTutoringInfo ? (
             <dl className="class-info-list post-detail-list">
@@ -2596,7 +2711,7 @@ function TeacherProfile({ id, teacher, item }) {
           )}
         </State>
       )}
-      {tab === "reviews" && (
+      {!isOfficialCreator && selectedTab === "reviews" && (
         <State resource={reviews}>
           {reviewRows.length ? (
             <>
@@ -2882,7 +2997,11 @@ function Comments({
             onMoreMenuChange={(commentId, isOpen) =>
               setOpenCommentMenuId(isOpen ? commentId : null)
             }
-            menuRef={openCommentMenuId === c.id ? commentMenuRef : null}
+            // Keep the outside-click boundary available to a nested reply menu
+            // as well.  Passing it only when the root comment is open leaves a
+            // reply menu without a ref, so its own pointerdown is mistaken for
+            // an outside click before the edit/delete click handler can run.
+            menuRef={commentMenuRef}
           />
         ))}
       </State>
@@ -2938,6 +3057,16 @@ function CommentRow({
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false);
   const replyTargetName = c.referenced_person_name || "";
+  // Replies are fetched through a separate, paginated endpoint.  Keep the
+  // server-provided flag as the primary source, but fall back to the author
+  // user ID so an older/cached reply response cannot hide its own actions.
+  const commentAuthorId =
+    typeof c.author === "object" ? c.author?.id : c.author;
+  const isMine =
+    c.is_mine === true ||
+    (commentAuthorId != null &&
+      user?.id != null &&
+      String(commentAuthorId) === String(user.id));
   const isMoreOpen = activeMenuId === c.id;
   const startEditing = () => {
     setMode("edit");
@@ -3019,7 +3148,7 @@ function CommentRow({
           </button>
           {isMoreOpen && (
             <div className="comment-more-menu" role="menu">
-              {c.is_mine ? (
+              {isMine ? (
                 <>
                   <button type="button" role="menuitem" onClick={startEditing}>
                     <Pencil size={16} aria-hidden="true" />
@@ -3252,10 +3381,12 @@ function toSupportRoom(conversation) {
   return {
     id: `support:${conversation.id}`,
     is_support: true,
+    official_instructor_id: conversation.official_instructor_id,
     title: conversation.title || "클래씨 공식 계정",
     opponent_info: {
       user_name: conversation.title || "클래씨 공식 계정",
       profile_image: conversation.profile_image || "",
+      official_instructor_id: conversation.official_instructor_id,
     },
     last_message: conversation.last_message
       ? { text: conversation.last_message.content }
@@ -3282,8 +3413,8 @@ function toSupportChatDetail(conversation) {
   };
 }
 
-function Chat({ initialRoomId }) {
-  const { user, notify, go } = useContext(Ctx);
+function Chat({ initialRoomId, onRoomClosed }) {
+  const { user, notify, go, openTeacherProfile } = useContext(Ctx);
   const [likedOnly, setLikedOnly] = useState(false);
   const rooms = useLoad(
     `/chatrooms/?role=${user.role}${likedOnly ? "&liked=true" : ""}`,
@@ -3301,7 +3432,8 @@ function Chat({ initialRoomId }) {
     [classInformation, setClassInformation] = useState(null),
     [failedText, setFailedText] = useState(""),
     [busy, setBusy] = useState(false),
-    [updatingAction, setUpdatingAction] = useState("");
+    [updatingAction, setUpdatingAction] = useState(""),
+    [moreOpen, setMoreOpen] = useState(false);
   const isSupportRoom = isSupportRoomId(selected);
   const selectedSupportConversationId = isSupportRoom
     ? supportConversationId(selected)
@@ -3321,10 +3453,19 @@ function Chat({ initialRoomId }) {
     room &&
       (isSupportRoom || room.is_accepted || Number(room.initiated_by) !== Number(user.id)),
   );
+  const roomName =
+    room?.opponent_info?.nickname ||
+    room?.opponent_info?.user_name ||
+    room?.title ||
+    "대화";
   const end = useRef();
   const lastRead = useRef("");
   useEffect(() => {
-    if (!initialRoomId) return;
+    if (!initialRoomId) {
+      setSelected(null);
+      setRoom(null);
+      return;
+    }
     const targetRoom = chatRooms.find(
       (item) => String(item.id) === String(initialRoomId),
     );
@@ -3332,6 +3473,9 @@ function Chat({ initialRoomId }) {
 
     setSelected(targetRoom.id);
   }, [initialRoomId, rooms.data, supportRooms.data]);
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [selected]);
   useEffect(() => {
     if (!selected) return;
     setText(sessionStorage.getItem(`classy_chat_draft_${selected}`) || "");
@@ -3460,9 +3604,82 @@ function Chat({ initialRoomId }) {
       setBusy(false);
     }
   }
+  function selectRoom(roomId) {
+    setSelected(roomId);
+    go(`chat/${roomId}`);
+  }
+  function closeRoom() {
+    setSelected(null);
+    setRoom(null);
+    setMoreOpen(false);
+    onRoomClosed?.();
+  }
+  function openRegistration() {
+    if (registrationComplete) {
+      setClassInformation(currentClassResource);
+      return;
+    }
+    history.replaceState(null, "", `#chat/${selected}`);
+    go(`tutoring-registration/${selected}`);
+  }
+  async function toggleLiked() {
+    const previous = Boolean(room?.is_liked);
+    const optimisticValue = !previous;
+    setRoom((current) =>
+      current ? { ...current, is_liked: optimisticValue } : current,
+    );
+    setUpdatingAction("like");
+    try {
+      const data = await api(`/chatrooms/${selected}/like/`, {
+        method: "POST",
+        body: {},
+      });
+      const isLiked = data.is_liked ?? optimisticValue;
+      setRoom((current) => (current ? { ...current, is_liked: isLiked } : current));
+      notify(isLiked ? "대화를 찜했습니다." : "찜을 해제했습니다.");
+      rooms.reload();
+    } catch (error) {
+      setRoom((current) => (current ? { ...current, is_liked: previous } : current));
+      notify(error.message);
+    } finally {
+      setUpdatingAction("");
+    }
+  }
+  async function toggleMuted() {
+    const previous = Boolean(room?.is_muted);
+    const optimisticValue = !previous;
+    setRoom((current) =>
+      current ? { ...current, is_muted: optimisticValue } : current,
+    );
+    setUpdatingAction("mute");
+    try {
+      const data = await api(`/chatrooms/${selected}/mute/`, { method: "POST" });
+      const isMuted = data.is_muted ?? optimisticValue;
+      setRoom((current) => (current ? { ...current, is_muted: isMuted } : current));
+      notify(isMuted ? "대화 알림을 껐습니다." : "대화 알림을 켰습니다.");
+      rooms.reload();
+    } catch (error) {
+      setRoom((current) => (current ? { ...current, is_muted: previous } : current));
+      notify(error.message);
+    } finally {
+      setUpdatingAction("");
+    }
+  }
+  async function leaveRoom() {
+    if (!window.confirm("채팅방을 삭제하고 나갈까요? 상대방의 대화도 삭제됩니다.")) {
+      return;
+    }
+    try {
+      await api(`/chatrooms/${selected}/out/`, { method: "DELETE" });
+      closeRoom();
+      rooms.reload();
+    } catch (error) {
+      notify(error.message);
+    }
+  }
   return (
     <>
-      <div className="chat-layout">
+      <div className={"chat-layout " + (selected ? "chat-room-selected" : "")}>
         <div className="room-list">
           <div className="room-list-head">
             <h3>나의 대화</h3>
@@ -3482,9 +3699,7 @@ function Chat({ initialRoomId }) {
               <button
                 key={r.id}
                 className={selected === r.id ? "selected" : ""}
-                onClick={() => {
-                  setSelected(r.id);
-                }}
+                onClick={() => selectRoom(r.id)}
               >
                 <Avatar src={r.opponent_info?.profile_image} name={roomName} />
                 <span>
@@ -3513,161 +3728,57 @@ function Chat({ initialRoomId }) {
           ) : (
             <>
               <div className="conversation-head">
-                <b>
-                  {room?.opponent_info?.nickname ||
-                    room?.opponent_info?.user_name ||
-                    room?.title ||
-                    "대화"}
-                </b>
-                {!isSupportRoom && <div className="actions">
+                <button
+                  type="button"
+                  className="chat-mobile-back"
+                  onClick={closeRoom}
+                  aria-label="대화 목록으로 돌아가기"
+                >
+                  <ChevronLeft size={22} aria-hidden="true" />
+                </button>
+                {isSupportRoom && Number(room?.official_instructor_id) > 0 ? (
+                  <button
+                    type="button"
+                    className="support-profile-link"
+                    onClick={() => openTeacherProfile(room.official_instructor_id)}
+                    aria-label={`${room?.opponent_info?.user_name || room?.title || "클래씨 공식 계정"} 프로필 보기`}
+                  >
+                    <Avatar
+                      src={room?.opponent_info?.profile_image}
+                      name={room?.opponent_info?.user_name || room?.title || "클래씨 공식 계정"}
+                    />
+                    <b>
+                      {room?.opponent_info?.nickname ||
+                        room?.opponent_info?.user_name ||
+                        room?.title ||
+                        "대화"}
+                    </b>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <b className="conversation-title">{roomName}</b>
+                )}
+                {!isSupportRoom && (
+                  <div className="conversation-main-actions">
                   <Btn
                     className={registrationComplete ? "compact-action-button" : ""}
                     disabled={!room || classResources.loading}
-                    onClick={() => {
-                      if (registrationComplete) {
-                        setClassInformation(currentClassResource);
-                        return;
-                      }
-                      history.replaceState(null, "", `#chat/${selected}`);
-                      go(`tutoring-registration/${selected}`);
-                    }}
+                    onClick={openRegistration}
                   >
                     {registrationComplete && <Info size={16} aria-hidden="true" />}
                     {registrationComplete ? "수업 정보" : "성사 등록"}
                   </Btn>
-                  <Btn
-                    className="compact-action-button chat-action-primary"
-                    disabled={!room || updatingAction === "like"}
-                    onClick={async () => {
-                      const previous = Boolean(room?.is_liked);
-                      const optimisticValue = !previous;
-                      setRoom((current) =>
-                        current ? { ...current, is_liked: optimisticValue } : current,
-                      );
-                      setUpdatingAction("like");
-                      try {
-                        const d = await api(`/chatrooms/${selected}/like/`, {
-                          method: "POST",
-                          body: {},
-                        });
-                        const isLiked = d.is_liked ?? optimisticValue;
-                        setRoom((current) =>
-                          current
-                            ? { ...current, is_liked: isLiked }
-                            : current,
-                        );
-                        notify(
-                          isLiked
-                            ? "대화를 찜했습니다."
-                            : "찜을 해제했습니다.",
-                        );
-                        rooms.reload();
-                      } catch (e) {
-                        setRoom((current) =>
-                          current ? { ...current, is_liked: previous } : current,
-                        );
-                        notify(e.message);
-                      } finally {
-                        setUpdatingAction("");
-                      }
-                    }}
+                  <button
+                    type="button"
+                    className="chat-more-button"
+                    onClick={() => setMoreOpen(true)}
+                    aria-label="대화 더보기"
+                    aria-haspopup="dialog"
                   >
-                    <Star
-                      size={16}
-                      fill={room?.is_liked ? "currentColor" : "none"}
-                      aria-hidden="true"
-                    />
-                    {room?.is_liked ? "찜 해제" : "찜"}
-                  </Btn>
-                  <Btn
-                    className="compact-action-button chat-action-warning"
-                    disabled={!room || updatingAction === "mute"}
-                    onClick={async () => {
-                      const previous = Boolean(room?.is_muted);
-                      const optimisticValue = !previous;
-                      setRoom((current) =>
-                        current ? { ...current, is_muted: optimisticValue } : current,
-                      );
-                      setUpdatingAction("mute");
-                      try {
-                        const d = await api(`/chatrooms/${selected}/mute/`, {
-                          method: "POST",
-                        });
-                        const isMuted = d.is_muted ?? optimisticValue;
-                        setRoom((current) =>
-                          current
-                            ? { ...current, is_muted: isMuted }
-                            : current,
-                        );
-                        notify(
-                          isMuted
-                            ? "대화 알림을 껐습니다."
-                            : "대화 알림을 켰습니다.",
-                        );
-                        rooms.reload();
-                      } catch (e) {
-                        setRoom((current) =>
-                          current ? { ...current, is_muted: previous } : current,
-                        );
-                        notify(e.message);
-                      } finally {
-                        setUpdatingAction("");
-                      }
-                    }}
-                  >
-                    {room?.is_muted ? (
-                      <Bell size={16} aria-hidden="true" />
-                    ) : (
-                      <BellOff size={16} aria-hidden="true" />
-                    )}
-                    {room?.is_muted ? "알림 켜기" : "알림 끄기"}
-                  </Btn>
-                  <ReportForm
-                    source="chat"
-                    id={selected}
-                    label="신고"
-                    className="compact-action-button chat-action-danger"
-                  />
-                  <BlockUserButton
-                    userId={room?.opponent_info?.user_id}
-                    targetName={
-                      room?.opponent_info?.nickname ||
-                      room?.opponent_info?.user_name ||
-                      "상대방"
-                    }
-                    targetLabel={user.role === "instructor" ? "학생" : "선생님"}
-                    label="차단"
-                    className="chat-action-danger"
-                    onBlocked={() => {
-                      setSelected(null);
-                      rooms.reload();
-                    }}
-                  />
-                  <Btn
-                    className="compact-action-button chat-action-danger"
-                    disabled={!room}
-                    onClick={async () => {
-                      if (
-                        !window.confirm(
-                          "채팅방을 삭제하고 나갈까요? 상대방의 대화도 삭제됩니다.",
-                        )
-                      )
-                        return;
-                      try {
-                        await api(`/chatrooms/${selected}/out/`, {
-                          method: "DELETE",
-                        });
-                        setSelected(null);
-                        rooms.reload();
-                      } catch (e) {
-                        notify(e.message);
-                      }
-                    }}
-                  >
-                    <LogOut size={16} aria-hidden="true" />
-                    나가기
-                  </Btn>
-                </div>}
+                    <MoreVertical size={20} aria-hidden="true" />
+                  </button>
+                  </div>
+                )}
               </div>
               {error && (
                 <p className="error" role="alert">
@@ -3755,6 +3866,56 @@ function Chat({ initialRoomId }) {
           )}
         </div>
       </div>
+      {moreOpen && room && !isSupportRoom && (
+        <Modal
+          title="대화 관리"
+          onClose={() => setMoreOpen(false)}
+          className="chat-actions-sheet"
+        >
+          <div className="chat-more-actions">
+            <Btn
+              disabled={updatingAction === "like"}
+              onClick={toggleLiked}
+            >
+              <Star
+                size={17}
+                fill={room.is_liked ? "currentColor" : "none"}
+                aria-hidden="true"
+              />
+              {room.is_liked ? "찜 해제" : "대화 찜하기"}
+            </Btn>
+            <Btn disabled={updatingAction === "mute"} onClick={toggleMuted}>
+              {room.is_muted ? (
+                <Bell size={17} aria-hidden="true" />
+              ) : (
+                <BellOff size={17} aria-hidden="true" />
+              )}
+              {room.is_muted ? "알림 켜기" : "알림 끄기"}
+            </Btn>
+            <ReportForm
+              source="chat"
+              id={selected}
+              label="신고"
+              className="chat-action-danger"
+            />
+            <BlockUserButton
+              userId={room.opponent_info?.user_id}
+              targetName={roomName}
+              targetLabel={user.role === "instructor" ? "학생" : "선생님"}
+              label="차단"
+              className="chat-action-danger"
+              onBlocked={() => {
+                closeRoom();
+                rooms.reload();
+              }}
+            />
+            <Btn className="chat-action-danger" onClick={leaveRoom}>
+              <LogOut size={17} aria-hidden="true" />
+              채팅방 나가기
+            </Btn>
+          </div>
+        </Modal>
+      )}
       {classInformation && (
         <ClassInformationModal
           resource={classInformation}

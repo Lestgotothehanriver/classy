@@ -2474,6 +2474,28 @@ dialog.teacher-profile-modal {
 .conversation-head b {
   font-weight: 500;
 }
+.support-profile-link {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.support-profile-link .avatar {
+  width: 32px;
+  height: 32px;
+}
+.support-profile-link b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .conversation-head .muted {
   font-size: 11px;
 }
@@ -3963,6 +3985,18 @@ dialog.teacher-profile-modal {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.official-profile-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--tint);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
 }
 .teacher-profile-header .profile-avatar,
 .teacher-review-author .avatar {
@@ -6537,4 +6571,284 @@ progress {
   .notice-banner { min-height: 128px; padding: 18px; border-radius: 12px; }
   .notice-banner { min-height: 0; padding: 0; }
   .notice-detail h2 { font-size: 23px; }
+}
+
+/* 마이페이지: 앱과 동일한 프로필 허브 구조 */
+.profile-hub {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 24px;
+  max-width: 1040px;
+}
+.profile-hub-identity {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 24px;
+  padding: 26px 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tint), #fff 72%);
+}
+.profile-hub-identity .profile-identity .avatar {
+  width: 56px;
+  height: 56px;
+}
+.profile-edit-link {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  align-self: center;
+  gap: 5px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.profile-hub-identity .balance {
+  grid-column: 1 / -1;
+  padding: 16px 0 0;
+  border-top: 1px solid rgba(0, 0, 0, .08);
+}
+.profile-hub-section {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  background: #fff;
+}
+.profile-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.profile-section-title h2,
+.profile-edit-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.profile-section-title span,
+.profile-edit-section > .muted {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.profile-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.profile-quick-grid button {
+  display: flex;
+  min-width: 0;
+  min-height: 112px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  text-align: left;
+  background: #fff;
+}
+.profile-quick-grid button:hover,
+.profile-quick-grid button:focus-visible {
+  border-color: var(--primary);
+  background: var(--tint);
+}
+.profile-quick-grid button > svg:first-child {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.profile-quick-grid button > span {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.profile-quick-grid b { font-size: 14px; }
+.profile-quick-grid small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.profile-quick-grid button > svg:last-child {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  color: var(--muted);
+}
+.profile-hub .profile-menu {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.profile-hub .profile-menu button {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.profile-hub .profile-menu button > span { min-width: 0; }
+.profile-hub .profile-menu button > svg:last-child { margin-left: auto; }
+.profile-edit-page {
+  display: grid;
+  gap: 20px;
+  width: min(720px, 100%);
+}
+.profile-edit-back {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 48px;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.profile-edit-back svg { transform: rotate(180deg); }
+.profile-edit-section {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.profile-edit-section > .form { margin: 0; }
+.profile-image-editor {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.profile-image-editor .profile-avatar {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+}
+.profile-image-form,
+.profile-phone-form {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: end;
+  gap: 10px;
+}
+.profile-image-form label,
+.profile-phone-form label { flex: 1; min-width: 0; }
+.profile-phone-form { margin-top: 0; }
+
+/* 채팅: 좁은 화면은 목록과 대화 중 하나만 노출한다. */
+.chat-mobile-back { display: none; }
+.conversation-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-main-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.chat-more-button {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.chat-more-button:hover,
+.chat-more-button:focus-visible { background: var(--gray); color: var(--text); }
+.chat-more-actions { display: grid; gap: 8px; }
+.chat-more-actions .btn,
+.chat-more-actions > button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 48px;
+}
+@media (max-width: 640px) {
+  .profile-hub {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .profile-hub-identity {
+    grid-column: auto;
+    padding: 20px;
+  }
+  .profile-hub-section,
+  .profile-edit-section { padding: 20px; }
+  .profile-quick-grid,
+  .profile-hub .profile-menu { grid-template-columns: 1fr; }
+  .profile-quick-grid button { min-height: 76px; }
+  .profile-quick-grid small { white-space: nowrap; text-overflow: ellipsis; }
+  .profile-image-editor { align-items: flex-start; flex-direction: column; }
+  .profile-image-form,
+  .profile-phone-form { width: 100%; align-items: stretch; flex-direction: column; }
+  .profile-image-form .btn,
+  .profile-phone-form .btn { width: 100%; }
+
+  .chat-layout {
+    height: calc(100dvh - 210px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-layout:not(.chat-room-selected) .conversation,
+  .chat-layout.chat-room-selected .room-list { display: none; }
+  .chat-layout:not(.chat-room-selected) .room-list {
+    display: block;
+    max-height: none;
+    flex: 1;
+    border-bottom: 0;
+  }
+  .chat-layout.chat-room-selected .conversation { display: flex; height: 100%; }
+  .chat-mobile-back {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    margin: -10px 0 -10px -12px;
+  }
+  .conversation-head {
+    min-height: 64px;
+    padding: 12px 16px;
+    gap: 6px;
+  }
+  .conversation-head .support-profile-link { flex: 1; }
+  .conversation-main-actions { gap: 2px; }
+  .conversation-main-actions .btn {
+    min-height: 44px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+  .chat-more-button { width: 44px; height: 44px; }
+  .messages {
+    min-height: 0;
+    padding: 16px;
+    overscroll-behavior: contain;
+  }
+  .message { max-width: 88%; }
+  .message-form {
+    flex: 0 0 auto;
+    padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .message-form .btn { min-width: 48px; min-height: 48px; }
+  dialog.chat-actions-sheet {
+    width: min(100%, 420px);
+    margin: auto 0 0;
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+    border-radius: 16px 16px 0 0;
+  }
 }

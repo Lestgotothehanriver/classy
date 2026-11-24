@@ -8,8 +8,8 @@ const errors=[],writes=[];page.on('pageerror',e=>errors.push(e.stack));
 const lecture={id:7,title:'테스트 미적분 강의',content:'학습 목표와 기본 개념',subjects:[36],price:2000,rental_period:30,video_duration:900,instructor:{user_name:'테스트 선생님'}};
 const profile={id:1,email:'test@example.invalid',nickname:'테스트 학생',role:'student',cash:5000};
 const parentComment={id:101,lecture:7,author:2,author_name:'댓글 작성자',author_role:'student',is_mine:false,content:'원댓글',is_blocked:false,is_edited:false,parent:null,reply_to:null,referenced_person:null,referenced_person_name:null,created_at:'2026-10-30T09:00:00Z',reply_count:0};
-const replyComment={id:102,lecture:7,author:1,author_name:'테스트 학생',author_role:'student',is_mine:true,content:'답글 테스트',is_blocked:false,is_edited:false,parent:101,reply_to:101,referenced_person:2,referenced_person_name:'댓글 작성자',created_at:'2026-10-30T09:01:00Z'};
-let replyCreated=false,replyLoadCount=0;
+const replyComment={id:102,lecture:7,author:1,author_name:'테스트 학생',author_role:'student',is_mine:false,content:'답글 테스트',is_blocked:false,is_edited:false,parent:101,reply_to:101,referenced_person:2,referenced_person_name:'댓글 작성자',created_at:'2026-10-30T09:01:00Z'};
+let replyCreated=false,replyExists=true,replyContent='답글 테스트',replyLoadCount=0;
 await page.route('**/api/**',async route=>{
  const req=route.request(),url=new URL(req.url()),p=url.pathname.replace('/api','');let data=[];let status=200;
  if(req.method()!=='GET')writes.push({path:p,body:req.postDataJSON()});
@@ -24,9 +24,17 @@ await page.route('**/api/**',async route=>{
  }
  else if(p==='/lectures/7/comments/'&&url.searchParams.has('parent_id')){
    replyLoadCount++;
-   data={count:replyCreated?1:0,next:null,previous:null,results:replyCreated?[replyComment]:[]};
+   data={count:replyCreated&&replyExists?1:0,next:null,previous:null,results:replyCreated&&replyExists?[{...replyComment,content:replyContent}]:[]};
  }
- else if(p==='/lectures/7/comments/')data={count:1,next:null,previous:null,results:[{...parentComment,reply_count:replyCreated?1:0}]};
+ else if(p==='/lectures/7/comments/')data={count:1,next:null,previous:null,results:[{...parentComment,reply_count:replyCreated&&replyExists?1:0}]};
+ else if(p==='/lectures/comments/102/'&&req.method()==='PATCH'){
+   replyContent=req.postDataJSON().content;
+   data={...replyComment,content:replyContent,is_edited:true};
+ }
+ else if(p==='/lectures/comments/102/'&&req.method()==='DELETE'){
+   replyExists=false;
+   data=null;
+ }
  else if(p==='/lectures/7/like/')data={is_liked:true};
  else if(p==='/cash/rentals/')data={remaining_cash:3000};
  else if(p==='/chatrooms/')data=[{id:4,title:'테스트 상담',opponent_info:{user_name:'테스트 선생님'},last_message:{text:'안녕하세요'}}];
@@ -68,6 +76,18 @@ await page.getByText('답글 테스트').waitFor().catch(async error=>{
 });
 assert.deepEqual(writes.find(w=>w.path==='/lectures/7/comments/'&&w.body.content==='답글 테스트').body,{content:'답글 테스트',author_role:'student',parent:101,reply_to:101});
 assert.equal(replyLoadCount,1,'답글 저장 뒤에만 답글 목록을 갱신한다');
+const replyList=page.locator('.comment-reply-list');
+await replyList.getByLabel('댓글 더보기').click();
+await replyList.getByRole('button',{name:'수정',exact:true}).click();
+await replyList.getByLabel('댓글 수정').fill('수정한 대댓글');
+await replyList.getByRole('button',{name:'저장',exact:true}).click();
+await replyList.getByText('수정한 대댓글',{exact:true}).waitFor();
+assert.deepEqual(writes.find(w=>w.path==='/lectures/comments/102/'&&w.method==='PATCH').body,{content:'수정한 대댓글'});
+page.once('dialog',dialog=>dialog.accept());
+await replyList.getByLabel('댓글 더보기').click();
+await replyList.getByRole('button',{name:'삭제',exact:true}).click();
+await replyList.getByText('수정한 대댓글',{exact:true}).waitFor({state:'hidden'});
+assert.equal(writes.some(w=>w.path==='/lectures/comments/102/'&&w.method==='DELETE'),true);
 await page.getByRole('button',{name:'찜하기',exact:true}).click();
 await page.getByRole('button',{name:'캐시로 대여',exact:true}).click();
 assert.equal(writes.filter(w=>w.path==='/cash/rentals/').length,0);
