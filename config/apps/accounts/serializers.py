@@ -390,6 +390,12 @@ class StudentUpdateSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True)
     field = serializers.CharField(required=False, allow_blank=True)  # 문과/이과/예체능/기타
 
+    def validate_phone(self, value):
+        """Require SMS verification before changing a phone number."""
+        if self.instance and value != self.instance.phone:
+            raise serializers.ValidationError("전화번호 인증을 먼저 해주세요.")
+        return value
+
     @transaction.atomic
     def update(self, instance, validated_data):
         # instance = request.user

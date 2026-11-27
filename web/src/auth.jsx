@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { api } from "./api";
 import {
@@ -58,6 +58,18 @@ export function Auth({ initial = "login" }) {
   const [sent, setSent] = useState(false),
     [verified, setVerified] = useState(false);
   const [resetToken, setResetToken] = useState("");
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(Date.now());
+  const resendSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
+  useEffect(() => {
+    if (!resendAt) return;
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= resendAt) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
   const [notice, setNotice] = useState(() => {
     const savedNotice = sessionStorage.getItem(authNoticeStorageKey) || "";
     sessionStorage.removeItem(authNoticeStorageKey);
@@ -104,6 +116,7 @@ export function Auth({ initial = "login" }) {
     }
   }
   function sms(verify) {
+    if (!verify && (busy || Date.now() < resendAt)) return;
     run(async () => {
       if (!/^01\d{8,9}$/.test(phone))
         throw new Error("휴대전화 번호를 확인해 주세요.");
@@ -126,6 +139,9 @@ export function Auth({ initial = "login" }) {
         setResetToken(result.reset_token || "");
         setNotice("휴대전화 인증을 완료했습니다.");
       } else {
+        const sentAt = Date.now();
+        setNow(sentAt);
+        setResendAt(sentAt + 60000);
         setSent(true);
         setVerified(false);
         setNotice("인증번호를 보냈습니다. 수신한 문자를 확인해 주세요.");
@@ -311,8 +327,8 @@ export function Auth({ initial = "login" }) {
                   placeholder="'-' 없이 전화번호를 입력해주세요."
                 />
               </label>
-              <Btn type="button" onClick={() => sms(false)}>
-                {sent ? "인증번호 다시 받기" : "인증번호 받기"}
+              <Btn type="button" disabled={busy || resendSeconds > 0} onClick={() => sms(false)}>
+                {resendSeconds > 0 ? `인증번호 다시 받기 (${resendSeconds}초)` : sent ? "인증번호 다시 받기" : "인증번호 받기"}
               </Btn>
               {sent && !verified && (
                 <div className="form">

@@ -205,12 +205,15 @@ class PhoneVerificationTests(APITestCase):
         """전화번호가 제공되면 인증번호가 SMS로 발송(모킹/로그)되고 200 응답과 인증코드를 받아야 합니다."""
         response = self.client.post(self.send_url, {"phone_number": self.phone})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("code", response.data)
+        self.assertNotIn("code", response.data)
         
         from config.apps.accounts.models import PhoneVerification
         verification = PhoneVerification.objects.filter(phone=self.phone).first()
         self.assertIsNotNone(verification)
-        self.assertEqual(verification.code, response.data["code"])
+        from django.contrib.auth.hashers import check_password
+        code = self.mock_send_sms.call_args.args[1]
+        self.assertNotEqual(verification.code, code)
+        self.assertTrue(check_password(code, verification.code))
         self.assertFalse(verification.is_verified)
         self.assertIsNone(verification.user)  # Unregistered user case
 
@@ -231,7 +234,7 @@ class PhoneVerificationTests(APITestCase):
         """올바른 인증코드를 입력하면 인증이 완료되고 200 응답을 받아야 합니다."""
         # 1. Send code
         send_response = self.client.post(self.send_url, {"phone_number": self.phone})
-        code = send_response.data["code"]
+        code = self.mock_send_sms.call_args.args[1]
 
         # 2. Verify code
         verify_response = self.client.post(self.verify_url, {
@@ -265,6 +268,82 @@ class PhoneVerificationTests(APITestCase):
 
         # missing phone_number
         response = self.client.post(self.verify_url, {"code": "123456"})
+        self.assertEqual(response.status_code, 400)
+
+
+class PhoneChangeSecurityTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="phone-change@example.com", email="phone-change@example.com",
+            user_name="phone_change", password="Password!123", phone="01011112222",
+        )
+        self.client.force_authenticate(self.user)
+
+    @patch("rest_framework.throttling.SimpleRateThrottle.allow_request", return_value=True)
+    @patch("config.apps.accounts.views.send_auth_sms", return_value=True)
+    def test_change_sends_sms_and_only_accepts_latest_code(self, sms, throttle):
+        from django.contrib.auth.hashers import check_password
+        from config.apps.accounts.models import PhoneVerification
+
+        with patch("config.apps.accounts.views.secrets.randbelow", side_effect=[11111, 122222]):
+            first = self.client.post("/accounts/me/phone/request/", {"phone": "01033334444"})
+            second = self.client.post("/accounts/me/phone/request/", {"phone": "01033334444"})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertNotIn("code", second.data)
+        self.assertEqual(sms.call_count, 2)
+        record = PhoneVerification.objects.filter(user=self.user).latest("id")
+        self.assertNotEqual(record.code, "222222")
+        self.assertTrue(check_password("222222", record.code))
+        self.assertEqual(self.client.post("/accounts/me/phone/verify/", {"phone": "01033334444", "code": "111111"}).status_code, 400)
+        self.assertEqual(self.client.post("/accounts/me/phone/verify/", {"phone": "01033334444", "code": "222222"}).status_code, 200)
+        self.assertEqual(self.client.post("/accounts/me/phone/verify/", {"phone": "01033334444", "code": "222222"}).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone, "01033334444")
+
+    @patch("config.apps.accounts.views.send_auth_sms", return_value=False)
+    def test_sms_failure_does_not_create_code(self, sms):
+        from config.apps.accounts.models import PhoneVerification
+
+        response = self.client.post("/accounts/me/phone/request/", {"phone": "01033334444"})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PhoneVerification.objects.filter(user=self.user).exists())
+
+    def test_profile_updates_cannot_bypass_verification(self):
+        for path in ("/accounts/me/", "/accounts/signup/student/"):
+            response = self.client.patch(path, {"phone": "01033334444"}, format="json")
+            self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone, "01011112222")
+
+    @patch("rest_framework.throttling.SimpleRateThrottle.allow_request", return_value=True)
+    @patch("config.apps.accounts.views.send_auth_sms", return_value=True)
+    def test_existing_app_verifies_then_updates_profile_once(self, sms, throttle):
+        from config.apps.accounts.models import PhoneVerification
+
+        phone = "01033334444"
+        sent = self.client.post("/accounts/send-auth-sms/", {"phone_number": phone})
+        self.assertEqual(sent.status_code, 200)
+        record = PhoneVerification.objects.get(user=self.user, phone=phone)
+        code = sms.call_args.args[1]
+        verified = self.client.post("/accounts/verify-auth-sms/", {"phone_number": phone, "code": code})
+        self.assertEqual(verified.status_code, 200)
+        saved = self.client.patch("/accounts/me/", {"phone": phone}, format="json")
+        self.assertEqual(saved.status_code, 200)
+        record.refresh_from_db()
+        self.assertIsNotNone(record.used_at)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone, phone)
+
+    @patch("rest_framework.throttling.SimpleRateThrottle.allow_request", return_value=True)
+    @patch("config.apps.accounts.views.send_auth_sms", return_value=True)
+    def test_general_verification_cannot_be_used_by_another_user(self, sms, throttle):
+        phone = "01033334444"
+        self.client.post("/accounts/send-auth-sms/", {"phone_number": phone})
+        self.client.post("/accounts/verify-auth-sms/", {"phone_number": phone, "code": sms.call_args.args[1]})
+        other = User.objects.create_user(username="other@example.com", user_name="otheruser", password="Password!123")
+        self.client.force_authenticate(other)
+        response = self.client.patch("/accounts/me/", {"phone": phone}, format="json")
         self.assertEqual(response.status_code, 400)
 
 
@@ -317,7 +396,7 @@ class PasswordResetAPIViewTests(APITestCase):
         )
         verify_response = self.client.post(
             self.verify_url,
-            {"phone_number": self.phone, "code": verification.code},
+            {"phone_number": self.phone, "code": self.mock_send_sms.call_args.args[1]},
             format="json",
         )
         self.assertEqual(verify_response.status_code, 200)
@@ -411,7 +490,7 @@ class PasswordResetAPIViewTests(APITestCase):
 
         response = self.client.post(
             self.verify_url,
-            {"phone_number": self.phone, "code": verification.code},
+            {"phone_number": self.phone, "code": self.mock_send_sms.call_args.args[1]},
             format="json",
         )
 
@@ -420,8 +499,8 @@ class PasswordResetAPIViewTests(APITestCase):
 
     def test_resending_code_invalidates_previous_code(self):
         with patch(
-            "config.apps.accounts.views.random.randint",
-            side_effect=[111111, 222222],
+            "config.apps.accounts.views.secrets.randbelow",
+            side_effect=[11111, 122222],
         ):
             self.client.post(
                 self.request_url,

@@ -297,7 +297,7 @@ class PhoneVerification(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="phone_verifications")
     phone = models.CharField(max_length=20)
-    code = models.CharField(max_length=6)
+    code = models.CharField(max_length=128)
     created_at = models.DateTimeField(auto_now_add=True)
     is_verified = models.BooleanField(default=False)
     purpose = models.CharField(

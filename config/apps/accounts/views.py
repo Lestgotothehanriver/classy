@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -29,7 +30,7 @@ from .serializers import (
     InstructorRoleAddSerializer,
 )
 import logging
-import random
+import secrets
 from datetime import timedelta
 import re
 
@@ -120,7 +121,6 @@ class StudentSignupAPIView(APIView):
     """
 
     def post(self, request):
-        logger.debug("[BACKEND_DEBUG_AUTH] StudentSignup - START (data: %s)", request.data)
         serializer = StudentSignupSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             logger.warning(f"*** [StudentSignup] Validation failed: {serializer.errors} ***")
@@ -706,6 +706,7 @@ class UserProfileAPIView(APIView):
 
         return Response(data)
 
+    @transaction.atomic
     def patch(self, request):
         user = request.user
         data = request.data
@@ -716,8 +717,22 @@ class UserProfileAPIView(APIView):
                 return Response({"error": "이미 사용 중인 닉네임입니다."}, status=400)
             user.user_name = new_name
 
-        if 'phone' in data:
-            user.phone = data['phone']
+        if 'phone' in data and data['phone'] != user.phone:
+            # Older app versions verify through the general SMS endpoint first.
+            from .models import PhoneVerification
+            phone = data['phone']
+            verification = PhoneVerification.objects.select_for_update().filter(
+                user=user, phone=phone, purpose=PhoneVerification.Purpose.GENERAL,
+                is_verified=True, used_at__isnull=True,
+                created_at__gte=timezone.now() - PHONE_VERIFICATION_EXPIRY,
+            ).order_by('-created_at').first()
+            if not verification:
+                return Response({"error": "전화번호는 인증 후 변경해주세요."}, status=400)
+            if User.objects.filter(phone=phone).exclude(pk=user.pk).exists():
+                return Response({"error": "이미 사용 중인 전화번호입니다."}, status=400)
+            verification.used_at = timezone.now()
+            verification.save(update_fields=['used_at'])
+            user.phone = phone
 
         if 'region' in data:
             user.region = data['region']
@@ -772,7 +787,7 @@ class RequestPhoneChangeAPIView(APIView):
 
     전화번호 변경을 위한 SMS 인증번호 발송을 요청하는 API View입니다.
 
-    POST 요청 시, 변경할 신규 전화번호를 입력받아 이미 다른 계정에서 가입된 번호가 아닌지 중복을 검사하고, 6자리 난수의 인증 코드를 생성하여 PhoneVerification 내역에 기록합니다. 개발 편의를 위해 생성된 코드가 응답에 반환됩니다.
+    변경할 전화번호로 인증번호를 발송합니다.
 
     Request Body:
         phone (str): 변경할 전화번호.
@@ -780,10 +795,10 @@ class RequestPhoneChangeAPIView(APIView):
     Returns:
         Response: {
             "message": "인증번호가 발송되었습니다.",
-            "code": str
         }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [SMSRateThrottle]
 
     def post(self, request):
         phone = request.data.get('phone', '').strip()
@@ -795,23 +810,21 @@ class RequestPhoneChangeAPIView(APIView):
             return Response({"error": "이미 사용 중인 전화번호입니다."}, status=400)
 
         # 6자리 인증번호 생성
-        code = str(random.randint(100000, 999999))
+        code = str(secrets.randbelow(900000) + 100000)
         
         from .models import PhoneVerification
+        if not send_auth_sms(phone, code):
+            return Response({"error": "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."}, status=400)
+        PhoneVerification.objects.filter(user=request.user, purpose=PhoneVerification.Purpose.PHONE_CHANGE, used_at__isnull=True).update(used_at=timezone.now())
         PhoneVerification.objects.create(
             user=request.user,
             phone=phone,
-            code=code,
+            code=make_password(code),
             purpose=PhoneVerification.Purpose.PHONE_CHANGE,
         )
         
-        # 실제 SMS 전송 로직이 들어갈 자리 (현재는 모킹)
-        logger.info(f"*** [PhoneChange] Verification code for {phone}: {code} ***")
-        
-        # 개발 편의를 위해 응답에 코드를 포함 (운영 시에는 제거)
         return Response({
-            "message": "인증번호가 발송되었습니다.",
-            "code": code
+            "message": "인증번호가 발송되었습니다."
         }, status=200)
 
 
@@ -835,6 +848,7 @@ class VerifyPhoneChangeAPIView(APIView):
         }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
         phone = request.data.get('phone', '').strip()
@@ -848,12 +862,12 @@ class VerifyPhoneChangeAPIView(APIView):
         verification = PhoneVerification.objects.filter(
             user=request.user,
             phone=phone,
-            code=code,
             is_verified=False,
+            used_at__isnull=True,
             purpose=PhoneVerification.Purpose.PHONE_CHANGE,
         ).order_by('-created_at').first()
 
-        if not verification:
+        if not verification or not check_password(code, verification.code):
             return Response({"error": "인증번호가 올바르지 않습니다."}, status=400)
 
         # 2) 만료 여부 확인
@@ -866,7 +880,8 @@ class VerifyPhoneChangeAPIView(APIView):
         user.save(update_fields=['phone'])
         
         verification.is_verified = True
-        verification.save(update_fields=['is_verified'])
+        verification.used_at = timezone.now()
+        verification.save(update_fields=['is_verified', 'used_at'])
         
         return Response({
             "message": "전화번호가 성공적으로 변경되었습니다.",
@@ -1084,15 +1099,11 @@ def send_auth_sms(phone_number, auth_code):
         text=f"[Classy] 인증번호: {auth_code}",  # 문자 메시지 내용
     )
     try:
-        response = message_service.send(request)
-        logger.info(f"[SMS] Sent authentication code to {phone_number}: {response}")
+        message_service.send(request)
+        logger.info("[SMS] Authentication message sent")
         return True
     except Exception as e:
-        failed_msgs = getattr(e, 'failed_messages', None)
-        if failed_msgs:
-            logger.error(f"[SMS] Failed to send authentication code to {phone_number}: {e} | Detailed failure: {failed_msgs}")
-        else:
-            logger.error(f"[SMS] Failed to send authentication code to {phone_number}: {e}")
+        logger.error("[SMS] Authentication message failed (%s)", type(e).__name__)
         return False
 
 
@@ -1102,7 +1113,7 @@ class SendAuthSMSAPIView(APIView):
 
     입력한 번호로 가입/본인인증을 위한 6자리 SMS 인증번호를 발송하는 API View입니다.
 
-    POST 요청 시, 전달받은 번호로 솔라피(Solapi) 서비스를 호출하여 인증 문자를 발송하고, 생성된 코드를 PhoneVerification 테이블에 미인증 상태로 저장합니다. 개발용 편의를 위해 발송된 코드가 응답에 함께 반환됩니다.
+    인증 문자를 발송하고 인증번호의 해시를 저장합니다.
 
     Request Body:
         phone_number (str): 문자를 수신할 휴대전화 번호.
@@ -1120,17 +1131,21 @@ class SendAuthSMSAPIView(APIView):
         if not phone_number:
             return Response({"error": "전화번호가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
         
-        fixture_code = review_signup_code(phone_number)
-        auth_code = fixture_code or str(random.randint(100000, 999999))
+        fixture_code = (
+            review_signup_code(phone_number)
+            if not request.user.is_authenticated else None
+        )
+        auth_code = fixture_code or str(secrets.randbelow(900000) + 100000)
         
         if not fixture_code and not send_auth_sms(phone_number, auth_code):
             return Response({"error": "인증번호 발송에 실패했습니다. 발송 정보를 확인해 주세요."}, status=status.HTTP_400_BAD_REQUEST)
         
         from .models import PhoneVerification
+        PhoneVerification.objects.filter(phone=phone_number, purpose=PhoneVerification.Purpose.GENERAL, used_at__isnull=True).update(used_at=timezone.now())
         PhoneVerification.objects.create(
             user=request.user if request.user and request.user.is_authenticated else None,
             phone=phone_number,
-            code=auth_code
+            code=make_password(auth_code)
         )
         
         return Response({
@@ -1157,6 +1172,7 @@ class VerifyAuthSMSAPIView(APIView):
         }
     """
     permission_classes = []
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
         phone_number = request.data.get('phone_number')
@@ -1169,11 +1185,13 @@ class VerifyAuthSMSAPIView(APIView):
         # 1) 코드 일치 여부 먼저 확인 (시간 무관)
         verification = PhoneVerification.objects.filter(
             phone=phone_number,
-            code=code,
+            user=request.user if request.user.is_authenticated else None,
             is_verified=False,
+            used_at__isnull=True,
+            purpose=PhoneVerification.Purpose.GENERAL,
         ).order_by('-created_at').first()
 
-        if not verification:
+        if not verification or not check_password(str(code), verification.code):
             return Response({"error": "인증번호가 올바르지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 2) 만료 여부 확인
@@ -1220,7 +1238,7 @@ class RequestPasswordResetAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        auth_code = str(random.randint(100000, 999999))
+        auth_code = str(secrets.randbelow(900000) + 100000)
         if not send_auth_sms(normalized_phone, auth_code):
             return Response(
                 {"error": "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."},
@@ -1239,7 +1257,7 @@ class RequestPasswordResetAPIView(APIView):
             PhoneVerification.objects.create(
                 user=user,
                 phone=normalized_phone,
-                code=auth_code,
+                code=make_password(auth_code),
                 purpose=PhoneVerification.Purpose.PASSWORD_RESET,
             )
         return Response(
@@ -1278,7 +1296,6 @@ class VerifyPasswordResetCodeAPIView(APIView):
         verification = (
             PhoneVerification.objects.filter(
                 phone=normalized_phone,
-                code=code,
                 is_verified=False,
                 used_at__isnull=True,
                 purpose=PhoneVerification.Purpose.PASSWORD_RESET,
@@ -1289,7 +1306,7 @@ class VerifyPasswordResetCodeAPIView(APIView):
             .order_by("-created_at")
             .first()
         )
-        if verification is None:
+        if verification is None or not check_password(code, verification.code):
             return Response(
                 {"error": "인증번호가 올바르지 않거나 만료되었습니다."},
                 status=status.HTTP_400_BAD_REQUEST,
