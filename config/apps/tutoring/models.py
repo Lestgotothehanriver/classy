@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -112,6 +114,8 @@ class TutoringPost(models.Model):
         view_count (int): 공고 조회수.
         created_at (DateTimeField): 공고 작성 일시.
     """
+    # Stable opaque identifier for public tutoring-post URLs.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="tutoring_posts")
     title = models.CharField(max_length=255, blank=True)
     sex = models.CharField(max_length=10, choices=student_sex_choices, blank=True)

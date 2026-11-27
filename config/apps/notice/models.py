@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -15,6 +17,8 @@ class Notice(models.Model):
         LIST = "LIST", "목록만"
         HOME_BANNER = "HOME_BANNER", "홈 배너 · 앱 공지"
 
+    # Stable opaque identifier for public notice URLs.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     title = models.CharField(max_length=200)
     summary = models.CharField(max_length=300)
     content = models.TextField()
@@ -64,7 +68,7 @@ class Notice(models.Model):
         ]
 
     def __str__(self) -> str:
-        return self.title
+        return str(self.title)
 
     @property
     def effective_status(self) -> str:

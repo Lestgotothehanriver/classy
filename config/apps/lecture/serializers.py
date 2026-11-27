@@ -41,7 +41,7 @@ class LectureInstructorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Instructor
         fields = [
-            "id", "user", "user_name",
+            "id", "public_id", "user", "user_name",
             "university", "department", "student_number",
             "instruction", "profile_image", "is_official_creator",
         ]
@@ -369,7 +369,7 @@ class CommentReplySerializer(_CommentAuthorMixin, serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = [
-            "id", "author", "author_name", "author_profile_image",
+            "id", "public_id", "author", "author_name", "author_profile_image",
             "author_role", "is_mine", "content", "is_blocked", "is_edited",
             "parent", "referenced_person", "referenced_person_name", "reply_to",
             "created_at",
@@ -393,7 +393,7 @@ class CommentThreadSerializer(CommentReplySerializer):
 
     class Meta(CommentReplySerializer.Meta):
         fields = [
-            "id", "lecture", "author", "author_name", "author_profile_image",
+            "id", "public_id", "lecture", "author", "author_name", "author_profile_image",
             "author_role", "is_mine", "content", "is_blocked", "is_edited",
             "parent", "reply_to", "referenced_person", "referenced_person_name",
             "created_at", "reply_count",
@@ -408,7 +408,7 @@ class CommentSerializer(_CommentAuthorMixin, serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = [
-            "id", "lecture", "author", "author_name", "author_profile_image",
+            "id", "public_id", "lecture", "author", "author_name", "author_profile_image",
             "author_role", "is_mine", "content", "is_blocked", "is_edited", "parent", "reply_to",
             "referenced_person", "referenced_person_name", "created_at", "replies",
         ]

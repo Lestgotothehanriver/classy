@@ -75,6 +75,7 @@ class ChatRoomListSerializer(serializers.ModelSerializer):
         model = ChatRoom
         fields = (
             "id",
+            "public_id",
             "title",
             "student",
             "instructor",
@@ -240,6 +241,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         model = ChatRoom
         fields = (
             "id",
+            "public_id",
             "title",
             "student",
             "instructor",

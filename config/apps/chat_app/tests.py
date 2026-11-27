@@ -9,6 +9,59 @@ from config.apps.tutoring.models import TutoringPost
 from config.apps.notification.helpers import notify_tutoring_request
 
 
+class ChatRoomPublicIdApiTests(TestCase):
+    """The browser UUID alias must keep the legacy participant boundary."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student_user = User.objects.create_user(
+            username="student-public-room",
+            user_name="student-public-room",
+            password="pass1234",
+        )
+        self.instructor_user = User.objects.create_user(
+            username="instructor-public-room",
+            user_name="instructor-public-room",
+            password="pass1234",
+        )
+        self.outsider_user = User.objects.create_user(
+            username="outsider-public-room",
+            user_name="outsider-public-room",
+            password="pass1234",
+        )
+        student = Student.objects.create(user=self.student_user)
+        instructor = Instructor.objects.create(user=self.instructor_user)
+        post = TutoringPost.objects.create(student=student)
+        self.room = ChatRoom.objects.create(
+            student=student,
+            instructor=instructor,
+            post=post,
+        )
+
+    def authenticate(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+    def test_participant_reads_room_through_public_uuid(self):
+        self.authenticate(self.student_user)
+
+        response = self.client.get(
+            f"/chatrooms/public/{self.room.public_id}/?role=student"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["public_id"], str(self.room.public_id))
+
+    def test_non_participant_cannot_read_room_through_public_uuid(self):
+        self.authenticate(self.outsider_user)
+
+        response = self.client.get(
+            f"/chatrooms/public/{self.room.public_id}/"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
 class ChatRoomOpponentProfileImageTest(TestCase):
     """채팅방 목록이 현재 사용자가 아닌 상대방 사진을 반환하는지 검증한다."""
 

@@ -64,6 +64,7 @@ class StudentProposeToInstructorAPIView(APIView):
             return Response({
                 "post_id": post.id,
                 "room_id": room.id,
+                "room_public_id": str(room.public_id),
             }, status=status.HTTP_201_CREATED)
         except DuplicateProposalError as e:
             return Response(
@@ -140,6 +141,7 @@ class InstructorProposeToStudentAPIView(APIView):
             return Response({
                 "instructor_id": instructor.id,
                 "room_id": room.id,
+                "room_public_id": str(room.public_id),
             }, status=status.HTTP_201_CREATED)
         except DuplicateProposalError as e:
             return Response(

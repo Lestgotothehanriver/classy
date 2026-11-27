@@ -27,6 +27,13 @@ class NoticeDetailView(RetrieveAPIView):
         return Notice.public_queryset()
 
 
+class NoticePublicDetailView(NoticeDetailView):
+    """UUID-addressable public notice detail for the web route layer."""
+
+    lookup_field = "public_id"
+    lookup_url_kwarg = "public_id"
+
+
 class NoticeExposureView(APIView):
     """GET /notices/exposure/ - 현재 공지 모달 캐러셀 항목을 반환합니다."""
 

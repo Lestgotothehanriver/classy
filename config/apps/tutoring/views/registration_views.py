@@ -5,6 +5,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from config.apps.block.utils import get_blocked_user_ids
+from config.apps.chat_app.models import ChatRoom
 
 from ..models import (
     CommissionInvoice,
@@ -78,6 +79,16 @@ class ChatRoomTutoringRegistrationView(APIView):
         data = serialize_registration(registration, request.user, role)
         data["payment"] = serialize_payment(invoice)
         return Response(data)
+
+
+class PublicChatRoomTutoringRegistrationView(ChatRoomTutoringRegistrationView):
+    """UUID alias for a chat-room registration read used by the web app."""
+
+    def get(self, request, public_id):
+        room = ChatRoom.objects.filter(public_id=public_id).only("pk").first()
+        if room is None:
+            return Response({"detail": "채팅방을 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        return super().get(request, room.pk)
 
 
 class RecentPaybackAccountView(APIView):
@@ -178,6 +189,16 @@ class MyTutoringRegistrationView(APIView):
                 "payment": serialize_payment(result["invoice"]),
             }
         )
+
+
+class PublicMyTutoringRegistrationView(MyTutoringRegistrationView):
+    """UUID alias for the web registration submission flow."""
+
+    def put(self, request, public_id):
+        room = ChatRoom.objects.filter(public_id=public_id).only("pk").first()
+        if room is None:
+            return Response({"detail": "채팅방을 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        return super().put(request, room.pk)
 
 
 class CommissionPaymentView(APIView):

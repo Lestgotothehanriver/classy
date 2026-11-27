@@ -6,6 +6,7 @@ from config.apps.notification.models import DeviceToken
 from .serializers import ChatRoomListSerializer, ChatRoomSerializer, ChatMessageSerializer
 from .services import count_unread_messages, mark_messages_read_through
 from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 from config.apps.block.utils import get_blocked_user_ids
 
 
@@ -248,6 +249,20 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         else:
             room.muted_by.add(request.user)
             return Response({"is_muted": True}, status=200)
+
+
+class PublicChatRoomDetailAPIView(APIView):
+    """Return a participant-owned chat room by its opaque web identifier."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, public_id):
+        # Reuse the ViewSet's participant and block filtering so the UUID alias
+        # cannot widen access compared with the legacy numeric endpoint.
+        view = ChatRoomViewSet()
+        view.request = request
+        room = get_object_or_404(view.get_queryset(), public_id=public_id)
+        return Response(ChatRoomSerializer(room, context={"request": request}).data)
 
 class ImageUploadView(APIView):
     """

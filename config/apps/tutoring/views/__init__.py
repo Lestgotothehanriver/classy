@@ -1,12 +1,16 @@
 from .instructor_views import (
     InstructorListAPIView,
     InstructorDetailAPIView,
+    InstructorPublicDetailAPIView,
     InstructorInfoAPIView,
+    InstructorPublicInfoAPIView,
     InstructorReviewListAPIView,
+    InstructorPublicReviewListAPIView,
 )
 from .post_views import (
     TutoringPostListAPIView,
     TutoringPostDetailAPIView,
+    TutoringPostPublicDetailAPIView,
     TutoringPostViewSet,
     StudentMyPostAPIView,
 )
@@ -31,6 +35,8 @@ from .like_views import (
 )
 from .registration_views import (
     ChatRoomTutoringRegistrationView,
+    PublicChatRoomTutoringRegistrationView,
+    PublicMyTutoringRegistrationView,
     CommissionPaymentView,
     MyTutoringRegistrationView,
     PaymentInfoView,

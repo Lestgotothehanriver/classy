@@ -126,7 +126,7 @@ class InstructorListSerializer(SafeModelSerializer):
     class Meta:
         model = Instructor
         fields = [
-            'id', 'user', 'university', 'department', 'created_at', 
+            'id', 'public_id', 'user', 'university', 'department', 'created_at',
             'instruction', 'student_number', 'is_tutoring', 'last_login', 
             'subjects', 'like_count', 'is_liked', 'average_rate', 
             'review_count', 'current_rank', 'tutoring_count', 'average_cost',
@@ -325,7 +325,7 @@ class TutoringPostListSerializer(serializers.ModelSerializer):
     class Meta:
         model = TutoringPost
         fields = [
-            'id',
+            'id', 'public_id',
             'student_id',
             'student_name',
             'student_profile_image',
@@ -365,7 +365,7 @@ class TutoringPostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = TutoringPost
         fields = [
-            'id', 'student', 'title', 'sex', 'age', 'grade', 'field', 
+            'id', 'public_id', 'student', 'title', 'sex', 'age', 'grade', 'field',
             'subjects', 'method', 'regions', 'cost', 'schedule', 
             'situation', 'etc', 'is_active', 'view_count', 'created_at'
         ]
@@ -767,6 +767,7 @@ class TutoringResourceSerializer(M2MSyncMixin, serializers.ModelSerializer):
             )
             ret['contract_status'] = registration.contract_status
             ret['chat_room_id'] = registration.chat_room_id
+            ret['chat_room_public_id'] = str(registration.chat_room.public_id)
             ret['created_at'] = registration.created_at.isoformat()
             ret['my_submission_finalized'] = bool(
                 mine and mine.is_finalized
@@ -848,6 +849,7 @@ class TutoringResourceListSerializer(serializers.ModelSerializer):
                 )
                 ret['contract_status'] = registration.contract_status
                 ret['chat_room_id'] = registration.chat_room_id
+                ret['chat_room_public_id'] = str(registration.chat_room.public_id)
                 ret['created_at'] = registration.created_at.isoformat()
                 ret['my_submission_finalized'] = bool(
                     mine and mine.is_finalized
@@ -977,7 +979,7 @@ class StudentMyPostSerializer(serializers.ModelSerializer):
     class Meta:
         model = TutoringPost
         fields = [
-            'id', 'title', 'subjects', 'subject', 'view_count', 
+            'id', 'public_id', 'title', 'subjects', 'subject', 'view_count',
             'days_since_upload', 'created_at', 'is_active', 'relative_time',
             'sex', 'age', 'grade', 'field', 'method', 'cost', 'schedule', 'situation', 'etc',
             'student_name', 'user_region', 'regions'

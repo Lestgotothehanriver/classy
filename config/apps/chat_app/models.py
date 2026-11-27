@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 #________________________________________________________________
 
@@ -30,6 +32,8 @@ class ChatRoom(models.Model):
         muted_by (ManyToManyField): 채팅방 알림을 끈 유저 목록.
         created_at (DateTimeField): 채팅방 생성 일시.
     """
+    # Exposed only to the room participants, but still opaque in browser URLs.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     student = models.ForeignKey('accounts.Student', related_name="chat_rooms", on_delete=models.CASCADE)
     instructor = models.ForeignKey('accounts.Instructor', related_name="chat_rooms", on_delete=models.CASCADE)
     post = models.ForeignKey('tutoring.TutoringPost', related_name="chat_rooms", on_delete=models.CASCADE)
@@ -58,7 +62,7 @@ class ChatRoom(models.Model):
         ]
 
     def __str__(self):
-        return self.title or f"Room {self.pk}"
+        return str(self.title or f"Room {self.pk}")
 
 
 #_______________________________________________________________________

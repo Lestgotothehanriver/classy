@@ -226,6 +226,7 @@ class SupportConversationSerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
     profile_image = serializers.SerializerMethodField()
     official_instructor_id = serializers.SerializerMethodField()
+    official_instructor_public_id = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     messages = serializers.SerializerMethodField()
@@ -238,6 +239,7 @@ class SupportConversationSerializer(serializers.ModelSerializer):
             "title",
             "profile_image",
             "official_instructor_id",
+            "official_instructor_public_id",
             "is_muted",
             "last_message",
             "unread_count",
@@ -263,6 +265,10 @@ class SupportConversationSerializer(serializers.ModelSerializer):
     def get_official_instructor_id(self, obj):
         instructor = self._official_instructor
         return instructor.pk if instructor else None
+
+    def get_official_instructor_public_id(self, obj):
+        instructor = self._official_instructor
+        return str(instructor.public_id) if instructor else None
 
     @cached_property
     def _official_instructor(self):

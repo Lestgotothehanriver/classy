@@ -256,6 +256,13 @@ class InstructorDetailAPIView(generics.RetrieveAPIView, InstructorAnnotateMixin)
             qs = qs.exclude(user_id__in=blocked_user_ids)
         return self.annotate_instructor_stats(qs, self.request.user)
 
+
+class InstructorPublicDetailAPIView(InstructorDetailAPIView):
+    """UUID-addressable instructor detail used by the web route layer."""
+
+    lookup_field = "public_id"
+    lookup_url_kwarg = "public_id"
+
 class InstructorInfoAPIView(generics.RetrieveAPIView):
     """
     URL: /tutoring/instructors/<instructor_id>/info/
@@ -342,6 +349,17 @@ class InstructorInfoAPIView(generics.RetrieveAPIView):
 
         return Response(data)
 
+
+class InstructorPublicInfoAPIView(InstructorInfoAPIView):
+    """Resolve a public instructor UUID before reusing the existing info flow."""
+
+    def retrieve(self, request, *args, **kwargs):
+        instructor = get_object_or_404(Instructor, public_id=kwargs["public_id"])
+        # The inherited endpoint reads ``instructor_id`` from the keyword
+        # arguments supplied to ``retrieve``, not only from ``self.kwargs``.
+        kwargs["instructor_id"] = instructor.pk
+        return super().retrieve(request, *args, **kwargs)
+
 class InstructorReviewListAPIView(generics.ListAPIView):
     """
     URL: /tutoring/instructors/<instructor_id>/reviews/
@@ -381,3 +399,12 @@ class InstructorReviewListAPIView(generics.ListAPIView):
             "subjects",
             "resource__subject",
         ).order_by("-id")
+
+
+class InstructorPublicReviewListAPIView(InstructorReviewListAPIView):
+    """UUID-addressable review list that preserves existing access filtering."""
+
+    def get_queryset(self):
+        instructor = get_object_or_404(Instructor, public_id=self.kwargs["public_id"])
+        self.kwargs["instructor_id"] = instructor.pk
+        return super().get_queryset()

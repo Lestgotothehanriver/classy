@@ -647,7 +647,7 @@ class LectureDetailAPIView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, pk):
+    def get(self, request, pk=None, public_id=None):
         """
         강의 상세 페이지에 필요한 모든 데이터를 한 번에 반환합니다.
         - lecture_info: 강의 기본 정보 (제목, 가격, 강사 등)
@@ -655,7 +655,8 @@ class LectureDetailAPIView(APIView):
         - preview_video: 같은 강사의 무료 프리뷰 영상 (없으면 null)
         - recommended: 동일 과목 기반 추천 강의 목록 (최대 10개)
         """
-        logger.debug("[LECTURE_DETAIL] 요청 시작. user_id=%s, lecture_pk=%s", request.user.pk, pk)
+        lookup = {"public_id": public_id} if public_id is not None else {"pk": pk}
+        logger.debug("[LECTURE_DETAIL] 요청 시작. user_id=%s, lecture_lookup=%s", request.user.pk, lookup)
 
         student = None
         if request.user.is_authenticated:
@@ -685,10 +686,10 @@ class LectureDetailAPIView(APIView):
             # 강사 계정이나 비인증 유저는 항상 is_liked=False
             qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
 
-        lecture = get_object_or_404(qs, pk=pk)
+        lecture = get_object_or_404(qs, **lookup)
 
         # 조회수 원자적 증가 (F() expression으로 Race Condition 없이 DB 갱신)
-        Lecture.objects.filter(pk=pk).update(view_count=F("view_count") + 1)
+        Lecture.objects.filter(pk=lecture.pk).update(view_count=F("view_count") + 1)
         lecture.view_count += 1  # 메모리 상의 객체 동기화 (직렬화 응답에 반영)
 
         # 대여 상태 확인: Service Layer에서 판단 ("none" | "valid" | "expired")
@@ -778,6 +779,20 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
     """
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+    def get_lecture(self):
+        """Resolve either the legacy numeric ID or the opaque web UUID."""
+        if "lecture_public_id" in self.kwargs:
+            return get_object_or_404(
+                Lecture,
+                public_id=self.kwargs["lecture_public_id"],
+                is_delete=False,
+            )
+        return get_object_or_404(
+            Lecture,
+            pk=self.kwargs["lecture_id"],
+            is_delete=False,
+        )
+
     def get_serializer_class(self):
         if self.request.method == "POST":
             return CommentWriteSerializer
@@ -788,7 +803,7 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
         return CommentSerializer
 
     def get_queryset(self):
-        lecture_id = self.kwargs["lecture_id"]
+        lecture_id = self.get_lecture().pk
         parent_id = self.request.query_params.get("parent_id")
         use_lazy_replies = self.request.query_params.get(
             "lazy_replies", ""
@@ -851,7 +866,7 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # 소프트 삭제된 강의에는 댓글 작성 불가 (is_delete=False).
-        lecture = get_object_or_404(Lecture, pk=self.kwargs["lecture_id"], is_delete=False)
+        lecture = self.get_lecture()
         if users_have_block_relation(self.request.user, lecture.instructor.user):
             raise PermissionDenied("차단 관계인 사용자의 강의에는 댓글을 작성할 수 없습니다.")
         if not can_comment_on_lecture(self.request.user, lecture):
@@ -866,7 +881,7 @@ class CommentListCreateAPIView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         # lecture 필드를 URL에서 자동 할당하므로, request.data에 lecture가 없어도 처리
         data = request.data.copy()
-        data["lecture"] = self.kwargs["lecture_id"]
+        data["lecture"] = self.get_lecture().pk
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)

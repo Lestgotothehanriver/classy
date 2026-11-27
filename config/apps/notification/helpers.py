@@ -71,10 +71,13 @@ def notify_lecture_comment(comment):
     author_name = comment.author.user_name
     data = {
         "lecture_id": str(comment.lecture_id),
+        "lecture_public_id": str(comment.lecture.public_id),
         "comment_id": str(comment.id),
+        "comment_public_id": str(comment.public_id),
     }
     if is_reply:
         data["parent_comment_id"] = str(parent.id)
+        data["parent_comment_public_id"] = str(parent.public_id)
         data["reply_to_comment_id"] = str(target_comment.id)
         # 직접 대상과 원댓글 작성자는 스레드의 새 답글을 받아야 한다.
         # 동일 사용자에게는 직접 대상 역할을 우선해 한 번만 전송한다.
@@ -130,6 +133,7 @@ def notify_tutoring_request(room):
         body=f'{student_name} 학생으로부터 과외 요청이 도착했어요. 채팅방에서 확인해 보세요.',
         data={
             'room_id': str(room.id),
+            'room_public_id': str(room.public_id),
             'post_id': str(room.post_id),
             'student_id': str(room.student_id),
         },
@@ -151,6 +155,7 @@ def notify_tutoring_proposal(room):
         body=f'{instructor_name} 선생님으로부터 과외 제안이 도착했어요. 채팅방에서 확인해 보세요.',
         data={
             'room_id': str(room.id),
+            'room_public_id': str(room.public_id),
             'post_id': str(room.post_id),
             'instructor_id': str(room.instructor_id),
         },
@@ -260,6 +265,7 @@ def notify_tutoring_accept(room, acceptor):
         body=f'{acceptor_name}님이 과외 요청(제안)을 수락했어요. 지금부터 자유롭게 대화가 가능해요!',
         data={
             'room_id': str(room.id),
+            'room_public_id': str(room.public_id),
             'acceptor_id': str(acceptor.id),
         },
     )

@@ -33,6 +33,9 @@ urlpatterns = [
     path("", LectureListAPIView.as_view(), name="lecture-list"),
 
     # ── 강의 상세 ──────────────────────────────────────────────
+    # Web clients use this opaque UUID path. The numeric route remains for
+    # Flutter and backwards compatibility.
+    path("public/<uuid:public_id>/", LectureDetailAPIView.as_view(), name="lecture-public-detail"),
     path("<int:pk>/", LectureDetailAPIView.as_view(), name="lecture-detail"),
 
     # ── 강의 스트리밍 ──────────────────────────────────────────
@@ -44,6 +47,7 @@ urlpatterns = [
 
 
     # ── 댓글 목록 + 작성 ─────────────────────────────────────
+    path("public/<uuid:lecture_public_id>/comments/", CommentListCreateAPIView.as_view(), name="public-comment-list-create"),
     path("<int:lecture_id>/comments/", CommentListCreateAPIView.as_view(), name="comment-list-create"),
 
     # ── 댓글 수정 + 삭제 ─────────────────────────────────────

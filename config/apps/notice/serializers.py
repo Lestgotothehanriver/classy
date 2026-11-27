@@ -16,6 +16,7 @@ class NoticeListSerializer(serializers.ModelSerializer):
         model = Notice
         fields = [
             "id",
+            "public_id",
             "title",
             "summary",
             "home_banner_image",

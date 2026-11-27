@@ -37,8 +37,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # ────────────────────────── 연결 / 종료 ──────────────────────────
     async def connect(self):
-        # URL 예: /ws/chat/5/ → room_id = 5
-        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
+        # Browser clients use the opaque UUID route. Keep the numeric path for
+        # existing app clients, then use one internal primary key below.
+        route_kwargs = self.scope["url_route"]["kwargs"]
+        self.room_id = route_kwargs.get("room_id")
+        if self.room_id is None:
+            self.room_id = await self.get_room_id_from_public_id(
+                route_kwargs.get("public_id")
+            )
+        if self.room_id is None:
+            await self.close()
+            return
+        self.room_id = str(self.room_id)
         self.room_grp = f"chat_{self.room_id}"
         query_string = self.scope["query_string"].decode()
         query_params = parse_qs(query_string)
@@ -95,6 +105,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         cur = self._get_online_set(self.room_id)
         cur.add(self.user.id)  # 현재 유저 ID를 온라인 목록에 추가
         self._save_online_set(self.room_id, cur)
+
+    @database_sync_to_async
+    def get_room_id_from_public_id(self, public_id):
+        """Resolve a web-facing room UUID to the legacy internal key."""
+        return ChatRoom.objects.filter(public_id=public_id).values_list("pk", flat=True).first()
 
     async def disconnect(self, code):
         await self.channel_layer.group_discard(self.room_grp, self.channel_name)

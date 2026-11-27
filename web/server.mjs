@@ -36,6 +36,11 @@ app.get(['/service-terms', '/service-terms/'], (_req,res) => res.sendFile(curren
 app.get(['/home', '/home/', '/download', '/download/'], (_req, res) =>
   res.sendFile(dist + 'app.html'),
 );
+// Deep application routes need the empty React shell, not the prerendered
+// marketing landing document served at `/`.
+app.get(/^\/(?:lectures|instructors|tutoring-posts|messages|notices|my|studio|tutoring|notifications|support)(?:\/.*)?$/, (_req, res) =>
+  res.sendFile(dist + 'app.html'),
+);
 app.use(express.static(dist, {extensions: ['html']}));
 app.get('/{*path}', (_req, res) => res.sendFile(dist + 'index.html'));
 app.listen(Number(process.env.PORT || 4173), process.env.HOST || '127.0.0.1', () => console.log('Classy Web: http://127.0.0.1:' + (process.env.PORT || 4173)));

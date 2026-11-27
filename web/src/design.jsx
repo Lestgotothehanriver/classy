@@ -40,6 +40,7 @@ import {
 import { api, list } from "./api";
 import regions from "./regions.json";
 import { appDownloadQrUrl, appStoreUrl, playStoreUrl } from "./app_download";
+import { pathFor } from "./router";
 
 export const endpoints = {
   teachers: "/tutoring/instructors/",
@@ -346,17 +347,29 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
       </a>
       <header className="site-header">
         <div className="header-inner">
-          <a href="#home" className="brand" aria-label="CLASSY 홈">
+          <a
+            href="/home"
+            className="brand"
+            aria-label="CLASSY 홈"
+            onClick={(event) => {
+              event.preventDefault();
+              go("home");
+            }}
+          >
             <img src="/app-icons/logo.svg" alt="" />
             <span>CLASSY</span>
           </a>
           <nav className="top-nav" aria-label="주요 메뉴">
             {nav.map(([id, label, icon]) => (
               <a
-                href={"#" + id}
+                href={pathFor(id)}
                 key={id}
                 className={selected(id) ? "active" : ""}
                 aria-current={selected(id) ? "page" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  go(id);
+                }}
               >
                 <AppIcon name={icon} selected={selected(id)} />
                 {label}
@@ -428,9 +441,7 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
             <a href="/service-terms">이용약관</a>
             <a href="/privacy">개인정보처리방침</a>
             <button type="button" className="footer-link" onClick={() => go("notices")}>공지사항</button>
-            <a
-              href="#support"
-            >
+            <a href="/support" onClick={(event) => { event.preventDefault(); go("support"); }}>
               고객센터
             </a>
           </nav>
@@ -458,10 +469,14 @@ export function Shell({ page, activeRole, setActiveRole, children, fullBleed = f
       <nav className="bottom-nav" aria-label="모바일 메뉴">
         {nav.map(([id, label, icon]) => (
           <a
-            href={"#" + id}
+            href={pathFor(id)}
             key={id}
             className={selected(id) ? "active" : ""}
             aria-current={selected(id) ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              go(id);
+            }}
           >
             <AppIcon name={icon} selected={selected(id)} />
             <span>{label}</span>
@@ -850,7 +865,11 @@ export function HomePage() {
             </ol>
             <a
               className="support-link"
-              href="#support"
+              href="/support"
+              onClick={(event) => {
+                event.preventDefault();
+                go("support");
+              }}
             >
               이용 중 궁금한 점이 있나요?
               <span>
@@ -944,8 +963,8 @@ function kstMidnightTimestamp() {
   );
 }
 
-function openNotice(go, id) {
-  go(`notices/${id}`);
+function openNotice(go, notice) {
+  go(`notices/${notice.public_id}`);
 }
 
 function HomeNoticeExposure() {
@@ -988,7 +1007,7 @@ function HomeNoticeExposure() {
           <button
             type="button"
             className="notice-banner"
-            onClick={() => openNotice(go, banner.id)}
+            onClick={() => openNotice(go, banner)}
           >
             {(banner.home_banner_image || banner.banner_image) && <img src={banner.home_banner_image || banner.banner_image} alt="" />}
           </button>
@@ -1021,7 +1040,7 @@ function HomeNoticeExposure() {
               className="notice-modal-link"
               onClick={() => {
                 closeModal();
-                openNotice(go, modal.id);
+                openNotice(go, modal);
               }}
             >
               {(modal.mobile_image || modal.home_banner_image || modal.banner_image) && <img src={modal.mobile_image || modal.home_banner_image || modal.banner_image} alt="" />}
@@ -1059,18 +1078,15 @@ function HomeNoticeExposure() {
 }
 
 export function NoticePage() {
-  const { go } = useContext(Ctx);
-  const parseNoticeId = () => Number(location.hash.slice(1).split("/")[1]) || null;
-  const [selectedId, setSelectedId] = useState(parseNoticeId);
+  const { go, route } = useContext(Ctx);
+  const selectedId = route.params.publicId || "";
   const notices = useLoad("/notices/");
-  const detail = useLoad(selectedId ? `/notices/${selectedId}/` : null, [selectedId]);
-  useEffect(() => {
-    const syncHash = () => setSelectedId(parseNoticeId());
-    window.addEventListener("hashchange", syncHash);
-    return () => window.removeEventListener("hashchange", syncHash);
-  }, []);
+  const detail = useLoad(
+    selectedId ? `/notices/public/${selectedId}/` : null,
+    [selectedId],
+  );
   const closeDetail = () => go("notices");
-  const select = (id) => go(`notices/${id}`);
+  const select = (notice) => go(`notices/${notice.public_id}`);
 
   if (selectedId)
     return (
@@ -1102,7 +1118,7 @@ export function NoticePage() {
                   type="button"
                   className="notice-list-item"
                   key={notice.id}
-                  onClick={() => select(notice.id)}
+                  onClick={() => select(notice)}
                 >
                   <span><strong>{notice.title}</strong><small>{notice.summary}</small></span>
                   <time>{date(notice.publish_at)}</time>
@@ -1118,11 +1134,14 @@ export function NoticePage() {
 
 // TutoringBrowseView / LectureBrowseView: lavender search, filters, list rows.
 export function Catalog({ kind, mode }) {
-  const { user, subjects, detail, go, login } = useContext(Ctx);
-  const [search, setSearch] = useState(""),
-    [query, setQuery] = useState(""),
-    [order, setOrder] = useState("latest"),
-    [page, setPage] = useState(1);
+  const { user, subjects, detail, go, login, route } = useContext(Ctx);
+  const searchParameter = kind === "lectures" ? "q" : "search";
+  const [routeSeed, setRouteSeed] = useState(() => route.query.toString());
+  const [search, setSearch] = useState(() => route.query.get(searchParameter) || ""),
+    [query, setQuery] = useState(() => route.query.get(searchParameter) || ""),
+    [order, setOrder] = useState(() => route.query.get("ordering") || "latest"),
+    [page, setPage] = useState(() => Math.max(1, Number(route.query.get("page")) || 1));
+  const [shouldSyncPath, setShouldSyncPath] = useState(false);
   const [filters, setFilters] = useState(() => defaultFilters(kind));
   const [filterModalTab, setFilterModalTab] = useState(null);
   const [category, setCategory] = useState(() => {
@@ -1147,7 +1166,9 @@ export function Catalog({ kind, mode }) {
     mode === "learning" && user?.role === "instructor"
       ? "/mypage/instructor/uploaded-lectures/"
       : endpoints[mode] || endpoints[kind];
-  const params = new URLSearchParams({ page: String(page), ordering: order });
+  const params = new URLSearchParams(routeSeed);
+  params.set("page", String(page));
+  params.set("ordering", order);
   if (mode === "expired") params.set("status", "expired");
   if (mode === "saved-teachers") params.set("liked", "true");
   if (query) params.set(kind === "lectures" ? "q" : "search", query);
@@ -1228,9 +1249,25 @@ export function Catalog({ kind, mode }) {
     ),
     items = list(resource.data);
   const reset = (fn) => {
+    setRouteSeed("");
     fn();
     setPage(1);
+    setShouldSyncPath(true);
   };
+  const movePage = (nextPage) => {
+    setRouteSeed("");
+    setPage(nextPage);
+    setShouldSyncPath(true);
+  };
+  const requestQuery = params.toString();
+  useEffect(() => {
+    if (!shouldSyncPath) return;
+    const browserQuery = new URLSearchParams(params);
+    if (page === 1) browserQuery.delete("page");
+    if (order === "latest") browserQuery.delete("ordering");
+    const queryString = browserQuery.toString();
+    window.history.replaceState(null, "", `${pathFor(mode)}${queryString ? `?${queryString}` : ""}`);
+  }, [mode, order, page, requestQuery, shouldSyncPath]);
   const removeFilterChip = (updater) =>
     reset(() => setFilters((current) => updater(current)));
   const removeMultiValue = (key, value) =>
@@ -1355,7 +1392,15 @@ export function Catalog({ kind, mode }) {
               ]
             : browseMenu
           ).map(([id, label]) => (
-            <a key={id} href={"#" + id} className={mode === id ? "active" : ""}>
+            <a
+              key={id}
+              href={pathFor(id)}
+              className={mode === id ? "active" : ""}
+              onClick={(event) => {
+                event.preventDefault();
+                go(id);
+              }}
+            >
               {label}
               <ChevronRight size={15} />
             </a>
@@ -1520,14 +1565,14 @@ export function Catalog({ kind, mode }) {
                   <div className="pagination">
                     <Btn
                       disabled={page === 1}
-                      onClick={() => setPage((p) => p - 1)}
+                      onClick={() => movePage(page - 1)}
                     >
                       이전
                     </Btn>
                     <span>{page}</span>
                     <Btn
                       disabled={!resource.data?.next}
-                      onClick={() => setPage((p) => p + 1)}
+                      onClick={() => movePage(page + 1)}
                     >
                       다음
                     </Btn>

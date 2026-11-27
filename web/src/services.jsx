@@ -21,7 +21,7 @@ import { Avatar, PageHeading, pageNames } from "./design";
 import { ClassHistory } from "./contracts";
 import { StudentPostFormFields, toStudentPostPayload } from "./student-post-form";
 
-const VERIFICATION_SUBMIT_PATH = "#verification/submit";
+const VERIFICATION_SUBMIT_PATH = "/studio/verification/submit";
 
 export function ActionForm({
   title,
@@ -294,7 +294,7 @@ export function VerificationPage() {
   const resource = useLoad(user?.role === "instructor" ? "/pending/" : null),
     d = resource.data || {};
   const [view, setView] = useState(() =>
-    location.hash === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
+    location.pathname === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
   );
   const statusCode = d.status || "NOT_SUBMITTED";
   const canEditAcademicInfo = statusCode !== "PENDING";
@@ -317,24 +317,24 @@ export function VerificationPage() {
 
   useEffect(() => {
     if (
-      location.hash === VERIFICATION_SUBMIT_PATH &&
+      location.pathname === VERIFICATION_SUBMIT_PATH &&
       !history.state?.verificationSubmit
     ) {
-      history.replaceState({ verificationManage: true }, "", "#verification");
+      history.replaceState({ verificationManage: true }, "", "/studio/verification");
       history.pushState({ verificationSubmit: true }, "", VERIFICATION_SUBMIT_PATH);
     }
 
     const syncViewFromRoute = () => {
       setView(
-        location.hash === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
+        location.pathname === VERIFICATION_SUBMIT_PATH ? "submit" : "manage",
       );
     };
-    window.addEventListener("hashchange", syncViewFromRoute);
-    return () => window.removeEventListener("hashchange", syncViewFromRoute);
+    window.addEventListener("popstate", syncViewFromRoute);
+    return () => window.removeEventListener("popstate", syncViewFromRoute);
   }, []);
 
   function openSubmitView() {
-    if (location.hash !== VERIFICATION_SUBMIT_PATH) {
+    if (location.pathname !== VERIFICATION_SUBMIT_PATH) {
       history.pushState({ verificationSubmit: true }, "", VERIFICATION_SUBMIT_PATH);
     }
     setView("submit");
@@ -344,13 +344,13 @@ export function VerificationPage() {
     setProofFileCount(0);
     setProofFileName("");
     if (
-      location.hash === VERIFICATION_SUBMIT_PATH &&
+      location.pathname === VERIFICATION_SUBMIT_PATH &&
       history.state?.verificationSubmit
     ) {
       history.back();
       return;
     }
-    history.replaceState(null, "", "#verification");
+    history.replaceState(null, "", "/studio/verification");
     setView("manage");
   }
 
@@ -911,7 +911,7 @@ function Tutoring() {
               </span>
             </button>
             <div className="student-post-management-actions">
-              <Btn onClick={() => go(`tutoring-post/${x.id}`)}>수정</Btn>
+              <Btn onClick={() => go(`tutoring-post/${x.public_id}`)}>수정</Btn>
               <Btn
                 onClick={async () => {
                   try {
@@ -1058,7 +1058,7 @@ export function StudentPostEditorPage({ postId, returnTo = "" }) {
   const posts = useLoad(isNew ? null : "/tutoring/my-posts/", [postId]);
   const post = isNew
     ? {}
-    : list(posts.data).find((item) => String(item.id) === String(postId));
+    : list(posts.data).find((item) => String(item.public_id) === String(postId));
   const content = post ? (
     <StudentPostEditorForm
       key={post.id || "new"}

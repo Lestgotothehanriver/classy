@@ -4,9 +4,13 @@ from rest_framework.routers import SimpleRouter
 from .views import (
     # ── 읽기(기존) ──────────────────────────────────
     InstructorListAPIView,
+    InstructorPublicDetailAPIView,
     InstructorInfoAPIView,
+    InstructorPublicInfoAPIView,
     InstructorReviewListAPIView,
+    InstructorPublicReviewListAPIView,
     TutoringPostListAPIView,
+    TutoringPostPublicDetailAPIView,
     TutoringPostDetailAPIView,
     StudentReviewListAPIView,
 
@@ -28,6 +32,8 @@ from .views import (
     StudentMyPostAPIView,
     InstructorDetailAPIView,
     ChatRoomTutoringRegistrationView,
+    PublicChatRoomTutoringRegistrationView,
+    PublicMyTutoringRegistrationView,
     RecentPaybackAccountView,
     CommissionPaymentView,
     MyTutoringRegistrationView,
@@ -67,6 +73,11 @@ urlpatterns = [
     # 성사 수수료 입금 계좌·수수료율 등 전역 결제 설정 (인보이스 무관 정적 값)
     path("payment-info/", PaymentInfoView.as_view(), name="payment-info"),
     path(
+        "resources/chatrooms/public/<uuid:public_id>/",
+        PublicChatRoomTutoringRegistrationView.as_view(),
+        name="public-chatroom-tutoring-registration",
+    ),
+    path(
         "resources/chatrooms/<int:chat_room_id>/",
         ChatRoomTutoringRegistrationView.as_view(),
         name="chatroom-tutoring-registration",
@@ -75,6 +86,11 @@ urlpatterns = [
         "payback-accounts/recent/",
         RecentPaybackAccountView.as_view(),
         name="recent-payback-account",
+    ),
+    path(
+        "resources/chatrooms/public/<uuid:public_id>/my-registration/",
+        PublicMyTutoringRegistrationView.as_view(),
+        name="public-my-chatroom-tutoring-registration",
     ),
     path(
         "resources/chatrooms/<int:chat_room_id>/my-registration/",
@@ -91,6 +107,9 @@ urlpatterns = [
     # 학생 페이지: 강사 탐색 (읽기)
     # ____________________________________________________________________________________
     path("instructors/", InstructorListAPIView.as_view(), name="instructor-list"),
+    path("instructors/public/<uuid:public_id>/", InstructorPublicDetailAPIView.as_view(), name="instructor-public-detail"),
+    path("instructors/public/<uuid:public_id>/info/", InstructorPublicInfoAPIView.as_view(), name="instructor-public-info"),
+    path("instructors/public/<uuid:public_id>/reviews/", InstructorPublicReviewListAPIView.as_view(), name="instructor-public-reviews"),
     path("instructors/<int:pk>/", InstructorDetailAPIView.as_view(), name="instructor-detail"),
     path("instructors/<int:instructor_id>/info/", InstructorInfoAPIView.as_view(), name="instructor-info-read"),
     path("instructors/<int:instructor_id>/reviews/", InstructorReviewListAPIView.as_view(), name="instructor-reviews"),
@@ -99,6 +118,7 @@ urlpatterns = [
     # 강사 페이지: 공고 탐색 (읽기)
     # ____________________________________________________________________________________
     path("posts/", TutoringPostListAPIView.as_view(), name="tutoringpost-list"),
+    path("posts/public/<uuid:public_id>/", TutoringPostPublicDetailAPIView.as_view(), name="tutoringpost-public-detail"),
     path("posts/<int:pk>/", TutoringPostDetailAPIView.as_view(), name="tutoringpost-detail"),
     path("students/<int:student_id>/reviews/", StudentReviewListAPIView.as_view(), name="student-reviews"),
 

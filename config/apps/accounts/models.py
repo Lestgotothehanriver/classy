@@ -213,6 +213,8 @@ class Instructor(models.Model):
         created_at (DateTimeField): 강사 프로필 생성 일시.
     """
 
+    # Stable opaque identifier for public instructor profile URLs.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

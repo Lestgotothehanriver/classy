@@ -86,6 +86,7 @@ import {
 import { getMobileStoreUrl } from "./app_download";
 import { LandingPage } from "./landing";
 import { getLatestClassResource } from "./tutoring-state";
+import { isPublicId, parseRoute, pathFor, pushPath } from "./router";
 
 const chatNotificationTypes = new Set([
   "message",
@@ -111,6 +112,53 @@ const authPageModes = {
   "/password-reset": "reset",
 };
 
+/** Resolve a historical numeric hash target without ever placing its PK in a new URL. */
+async function resolveLegacyPath(target) {
+  const [page, id, segment, nestedId] = String(target || "").split("/");
+  if (!id || isPublicId(id)) return pathFor(target);
+  try {
+    if (page === "lecture") {
+      const detail = await api(`/lectures/${id}/`);
+      const lectureId = detail.lecture_info?.public_id;
+      if (!lectureId) return "/home";
+      if (segment !== "comment" || !nestedId) return `/lectures/${lectureId}`;
+      const comments = list(await api(`/lectures/${id}/comments/`));
+      const comment = comments
+        .flatMap((row) => [row, ...list(row.replies)])
+        .find((row) => String(row.id) === nestedId);
+      return comment?.public_id
+        ? `/lectures/${lectureId}?comment=${encodeURIComponent(comment.public_id)}`
+        : `/lectures/${lectureId}`;
+    }
+    if (page === "teacher-profile") {
+      const instructor = await api(`/tutoring/instructors/${id}/`);
+      return instructor.public_id ? `/instructors/${instructor.public_id}` : "/instructors";
+    }
+    if (page === "tutoring-post-detail" || page === "tutoring-post") {
+      const post = await api(`/tutoring/posts/${id}/`);
+      if (!post.public_id) return "/tutoring-posts";
+      return page === "tutoring-post"
+        ? `/tutoring-posts/${post.public_id}/edit`
+        : `/tutoring-posts/${post.public_id}`;
+    }
+    if (page === "notices") {
+      const notice = await api(`/notices/${id}/`);
+      return notice.public_id ? `/notices/${notice.public_id}` : "/notices";
+    }
+    if (page === "chat" || page === "tutoring-registration") {
+      const room = await api(`/chatrooms/${id}/`);
+      if (!room.public_id) return "/messages";
+      if (page === "tutoring-registration") {
+        return `/messages/${room.public_id}/registration${segment === "proof" ? "/proof" : ""}`;
+      }
+      return `/messages/${room.public_id}`;
+    }
+  } catch {
+    return "/home";
+  }
+  return pathFor(target);
+}
+
 function App() {
   const uploadLock = useRef(false);
   const [activeRole, setActiveRole] = useState(
@@ -118,10 +166,8 @@ function App() {
   );
   const [user, setUser] = useState(null),
     [ready, setReady] = useState(false);
-  const [page, setPage] = useState(() => {
-    const root = location.hash.slice(1).split("/")[0];
-    return pageNames[root] ? root : "home";
-  });
+  const [route, setRoute] = useState(() => parseRoute());
+  const page = route.page;
   const [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
   const [pendingChatRoomId, setPendingChatRoomId] = useState(null);
@@ -144,6 +190,34 @@ function App() {
     [user?.id],
   );
   const notify = (msg) => setToast(msg);
+  useEffect(() => {
+    const publicId = route.params.publicId;
+    const roomPublicId = route.params.roomPublicId;
+    let legacyTarget = "";
+
+    if (page === "lecture" && publicId && !isPublicId(publicId)) {
+      legacyTarget = `lecture/${publicId}`;
+    } else if (page === "teacher-profile" && publicId && !isPublicId(publicId)) {
+      legacyTarget = `teacher-profile/${publicId}`;
+    } else if (page === "tutoring-post-detail" && publicId && !isPublicId(publicId)) {
+      legacyTarget = `tutoring-post-detail/${publicId}`;
+    } else if (page === "notices" && publicId && !isPublicId(publicId)) {
+      legacyTarget = `notices/${publicId}`;
+    } else if (page === "chat" && roomPublicId && !isPublicId(roomPublicId)) {
+      legacyTarget = `chat/${roomPublicId}`;
+    } else if (page === "tutoring-registration" && roomPublicId && !isPublicId(roomPublicId)) {
+      legacyTarget = `tutoring-registration/${roomPublicId}/${route.params.step === "proof" ? "proof" : ""}`;
+    } else if (page === "tutoring-post" && route.params.postId && route.params.postId !== "new" && !isPublicId(route.params.postId)) {
+      legacyTarget = `tutoring-post/${route.params.postId}`;
+    }
+
+    if (!legacyTarget) return;
+    resolveLegacyPath(legacyTarget).then((destination) => {
+      if (destination !== location.pathname + location.search) {
+        location.replace(destination);
+      }
+    });
+  }, [page, route.params.postId, route.params.publicId, route.params.roomPublicId, route.params.step]);
   useEffect(() => {
     if (location.pathname !== "/download") return;
 
@@ -186,36 +260,30 @@ function App() {
   useEffect(() => {
     const change = () => {
       if (uploadLock.current) {
-        history.replaceState(null, "", "#" + pageRef.current);
+        history.replaceState(null, "", pathFor(pageRef.current));
         notify("강의 등록이 완료될 때까지 기다려 주세요.");
         return;
       }
-      const route = location.hash.slice(1).split("/");
-      const next = route[0];
-      const targetInstructorId = Number(route[1]);
+      const nextRoute = parseRoute();
+      const targetInstructorId = nextRoute.params.publicId || "";
       if (
-        next !== "teacher-profile" ||
+        nextRoute.page !== "teacher-profile" ||
         targetInstructorId !== pendingTeacherProfileNavigation.current
       ) {
         setTeacherProfileReturn(null);
       }
       pendingTeacherProfileNavigation.current = null;
-      setPage(pageNames[next] ? next : "home");
+      setRoute(nextRoute);
       setModal(null);
       window.scrollTo(0, 0);
     };
-    window.addEventListener("hashchange", change);
-    return () => window.removeEventListener("hashchange", change);
+    window.addEventListener("popstate", change);
+    return () => window.removeEventListener("popstate", change);
   }, []);
   useEffect(() => {
-    if (displayPage === page) return;
-
-    // Preserve the existing hash router while canonicalizing an instructor's
-    // manually-entered or browser-restored public lecture URL.
-    history.replaceState(null, "", `#${displayPage}`);
-    setPage(displayPage);
-    setModal(null);
-    window.scrollTo(0, 0);
+    if (displayPage !== page) {
+      pushPath(pathFor(displayPage), { replace: true });
+    }
   }, [displayPage, page]);
   useEffect(() => {
     document.title = (pageNames[displayPage] || "홈") + " | CLASSY";
@@ -239,17 +307,24 @@ function App() {
       window.removeEventListener("focus", refresh);
     };
   }, [hasAuthenticatedSession, user?.id]);
-  const go = (p) => {
+  const go = async (p) => {
+    if (String(p).startsWith("/")) {
+      pushPath(p);
+      return;
+    }
     const [targetPage, ...segments] = p.split("/");
     const destination =
       activeUserRole === "instructor" && targetPage === "lectures"
         ? ["studio", ...segments].join("/")
         : p;
-    location.hash = destination;
+    const path = await resolveLegacyPath(destination);
+    pushPath(path);
   };
-  const openChat = (roomId) => {
-    setPendingChatRoomId(roomId?.toString() || null);
-    go(roomId ? `chat/${roomId}` : "chat");
+  const openChat = (room) => {
+    const publicId =
+      typeof room === "object" ? room?.public_id : isPublicId(room) ? room : "";
+    setPendingChatRoomId(publicId || null);
+    go(publicId ? `chat/${publicId}` : "chat");
   };
   const closeChatRoom = () => {
     setPendingChatRoomId(null);
@@ -257,20 +332,25 @@ function App() {
   };
   const openPostDetail = (item) => {
     setPostListItem(item || null);
-    go(`tutoring-post-detail/${item.id}`);
+    go(`tutoring-post-detail/${item.public_id}`);
   };
-  const openTeacherProfile = (instructorId) => {
-    const numericInstructorId = Number(instructorId);
-    if (!Number.isInteger(numericInstructorId) || numericInstructorId <= 0) {
+  const openTeacherProfile = (instructor) => {
+    const publicId =
+      typeof instructor === "object"
+        ? instructor?.public_id
+        : isPublicId(instructor)
+          ? instructor
+          : "";
+    if (!publicId) {
       notify("운영자 프로필을 찾을 수 없어요.");
       return;
     }
     setTeacherProfileReturn({
-      instructorId: numericInstructorId,
-      page: location.hash.slice(1) || "home",
+      instructorId: publicId,
+      page: location.pathname || "/home",
     });
-    pendingTeacherProfileNavigation.current = numericInstructorId;
-    go(`teacher-profile/${numericInstructorId}`);
+    pendingTeacherProfileNavigation.current = publicId;
+    go(`teacher-profile/${publicId}`);
   };
 
   function openNotificationTarget(notification) {
@@ -286,9 +366,10 @@ function App() {
     }
 
     if (chatNotificationTypes.has(notification?.type)) {
+      const roomPublicId = notification?.data?.room_public_id?.toString();
       const roomId = notification?.data?.room_id?.toString();
-      if (!roomId) return false;
-      openChat(roomId);
+      if (!roomPublicId && !roomId) return false;
+      openChat(roomPublicId || roomId);
       return true;
     }
 
@@ -308,10 +389,14 @@ function App() {
     }
 
     if (lectureCommentNotificationTypes.has(notification?.type)) {
-      const lectureId = notification?.data?.lecture_id?.toString();
+      const lectureId =
+        notification?.data?.lecture_public_id?.toString() ||
+        notification?.data?.lecture_id?.toString();
       if (!lectureId) return false;
       setToast("");
       const commentId =
+        notification?.data?.parent_comment_public_id?.toString() ||
+        notification?.data?.comment_public_id?.toString() ||
         notification?.data?.parent_comment_id?.toString() ||
         notification?.data?.comment_id?.toString();
       go(commentId ? `lecture/${lectureId}/comment/${commentId}` : `lecture/${lectureId}`);
@@ -342,6 +427,7 @@ function App() {
   ) || 0;
   const context = {
     user: effectiveUser,
+    route,
     setUser,
     toast,
     subjects: list(subjects.data),
@@ -354,14 +440,14 @@ function App() {
     detail: (kind, id, item) => {
       setToast("");
       if (kind === "teachers") {
-        openTeacherProfile(id);
+        openTeacherProfile(item || { public_id: id });
         return;
       }
       if (kind === "posts") {
-        openPostDetail(item || { id });
+        openPostDetail(item || { public_id: id });
         return;
       }
-      go(`lecture/${id}`);
+      go(`lecture/${item?.public_id || id}`);
     },
     refreshUser: () => api("/accounts/me/").then(setUser),
     unreadNotificationCount,
@@ -390,11 +476,8 @@ function App() {
       </Ctx.Provider>
     );
   if (page === "tutoring-post") {
-    const route = location.hash.slice(1).split("/");
-    const returnTo =
-      route[2] === "teacher-profile" && Number(route[3]) > 0
-        ? `teacher-profile/${route[3]}`
-        : "";
+    const postId = route.params.postId || "new";
+    const returnTo = route.query.get("returnTo") || "";
     return (
       <Ctx.Provider value={context}>
         <Shell
@@ -411,7 +494,7 @@ function App() {
           ) : (
             <Gate>
               <StudentPostEditorPage
-                postId={route[1] || "new"}
+                postId={postId}
                 returnTo={returnTo}
               />
             </Gate>
@@ -421,7 +504,6 @@ function App() {
     );
   }
   if (page === "tutoring-registration") {
-    const route = location.hash.slice(1).split("/");
     return (
       <Ctx.Provider value={context}>
         <Shell
@@ -437,7 +519,7 @@ function App() {
             </div>
           ) : (
             <Gate>
-              <RegistrationPage roomId={route[1]} />
+              <RegistrationPage roomId={route.params.roomPublicId} />
             </Gate>
           )}
         </Shell>
@@ -511,10 +593,10 @@ function App() {
         ) : displayPage === "teacher-profile" ? (
           <Gate>
             <TeacherProfilePage
-              id={Number(location.hash.slice(1).split("/")[1])}
+              id={route.params.publicId}
               officialReturnTo={
                 teacherProfileReturn?.instructorId ===
-                Number(location.hash.slice(1).split("/")[1])
+                route.params.publicId
                   ? teacherProfileReturn.page
                   : ""
               }
@@ -524,18 +606,14 @@ function App() {
         ) : displayPage === "lecture" ? (
           <Gate>
             <LecturePage
-              id={Number(location.hash.slice(1).split("/")[1])}
-              initialExpandedCommentId={
-                location.hash.slice(1).split("/")[2] === "comment"
-                  ? location.hash.slice(1).split("/")[3]
-                  : null
-              }
+              id={route.params.publicId}
+              initialExpandedCommentId={route.query.get("comment")}
             />
           </Gate>
         ) : displayPage === "tutoring-post-detail" ? (
           <Gate>
             <TutoringPostPage
-              id={Number(location.hash.slice(1).split("/")[1])}
+              id={route.params.publicId}
               listItem={postListItem}
             />
           </Gate>
@@ -557,12 +635,19 @@ function App() {
             <Gate>
               <Chat
                 initialRoomId={
-                  location.hash.slice(1).split("/")[1] || pendingChatRoomId
+                  route.params.roomPublicId || pendingChatRoomId
                 }
                 onRoomClosed={closeChatRoom}
               />
             </Gate>
           </>
+        ) : displayPage === "not-found" ? (
+          <Empty
+            title="페이지를 찾을 수 없어요"
+            text="주소를 다시 확인하거나 홈으로 돌아가 주세요."
+          >
+            <Btn className="primary" onClick={() => go("home")}>홈으로</Btn>
+          </Empty>
         ) : ["upload", "studio"].includes(displayPage) ? (
           <Gate>
             <Studio key={displayPage} upload={displayPage === "upload"} />
@@ -1029,7 +1114,7 @@ function Detail({ kind, id, item, initialExpandedCommentId, onClose }) {
 function LecturePage({ id, initialExpandedCommentId }) {
   const { go, notify, refreshUser, subjects, user, openTeacherProfile } = useContext(Ctx);
   const resource = useLoad(
-    Number.isInteger(id) && id > 0 ? `/lectures/${id}/` : null,
+    isPublicId(id) ? `/lectures/public/${id}/` : null,
     [id],
   );
   const detail = resource.data || {};
@@ -1049,7 +1134,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
   const [rentConfirm, setRentConfirm] = useState(false);
   const [instructorPurchaseNotice, setInstructorPurchaseNotice] = useState(false);
 
-  if (!Number.isInteger(id) || id <= 0) {
+  if (!isPublicId(id)) {
     return (
       <Empty
         title="강의를 찾을 수 없어요"
@@ -1061,6 +1146,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
   }
 
   const lecture = detail.lecture_info || {};
+  const lectureId = lecture.id;
   const instructor = lecture.instructor || {};
   const rentalStatus = rented ? "valid" : detail.rental_status;
   const isRented = ["active", "valid"].includes(rentalStatus);
@@ -1087,10 +1173,10 @@ function LecturePage({ id, initialExpandedCommentId }) {
       .join(" "),
   ].filter(Boolean);
   const recommended = list(detail.recommended).filter(
-    (item) => Number(item.id) !== id,
+    (item) => item.public_id !== id,
   );
   const loadedInstructorLectures = list(instructorLecturesResource.data)
-    .filter((item) => Number(item.id) !== id)
+    .filter((item) => item.public_id !== id)
     .slice(0, 4);
   const instructorLectures = (
     loadedInstructorLectures.length
@@ -1102,7 +1188,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
   const otherLectures = list(otherLecturesResource.data)
     .filter(
       (item) =>
-        Number(item.id) !== id && Number(item.instructor?.id) !== Number(instructor.id),
+        item.public_id !== id && Number(item.instructor?.id) !== Number(instructor.id),
     )
     .slice(0, 4);
   const subjectLabels = (lecture.subjects || [])
@@ -1128,14 +1214,14 @@ function LecturePage({ id, initialExpandedCommentId }) {
 
   function play(path) {
     action(async () => {
-      const response = await api(`/lectures/${id}/${path}/`);
+      const response = await api(`/lectures/${lectureId}/${path}/`);
       setVideo(response.video);
     });
   }
 
   function toggleLike() {
     action(async () => {
-      const response = await api(`/lectures/${id}/like/`, { method: "POST" });
+      const response = await api(`/lectures/${lectureId}/like/`, { method: "POST" });
       setLiked(response.is_liked ?? !isLiked);
     });
   }
@@ -1149,7 +1235,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
       }
       await api("/cash/rentals/", {
         method: "POST",
-        body: { lecture_id: id },
+        body: { lecture_id: lectureId },
       });
       setRented(true);
       setRentConfirm(false);
@@ -1226,7 +1312,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                 <button
                   type="button"
                   className="lecture-instructor"
-                  onClick={() => openTeacherProfile(instructor.id)}
+                  onClick={() => openTeacherProfile(instructor)}
                 >
                   <Avatar
                     src={instructor.profile_image}
@@ -1252,7 +1338,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                   </Btn>
                   <ReportForm
                     source="lecture"
-                    id={id}
+                    id={lectureId}
                     label="신고"
                     className="compact-action-button lecture-report-button"
                   />
@@ -1346,7 +1432,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
             <section className="lecture-comments-inline" aria-label="댓글">
               <h2>댓글 {formatLectureCount(lecture.comment_count)}개</h2>
               <Comments
-                id={id}
+                id={lecture.public_id || id}
                 initialExpandedCommentId={initialExpandedCommentId}
                 hideTitle
                 composerFirst
@@ -1364,7 +1450,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                   <LectureRecommendationList
                     lectures={instructorLectures}
                     loading={instructorLecturesResource.loading}
-                    onSelect={(lectureId) => go(`lecture/${lectureId}`)}
+                    onSelect={(lecture) => go(`lecture/${lecture.public_id}`)}
                     subjectLabel={(item) =>
                       (item.subjects || [])
                         .map(
@@ -1386,7 +1472,7 @@ function LecturePage({ id, initialExpandedCommentId }) {
                 <LectureRecommendationList
                   lectures={otherLectures}
                   loading={otherLecturesResource.loading}
-                  onSelect={(lectureId) => go(`lecture/${lectureId}`)}
+                    onSelect={(lecture) => go(`lecture/${lecture.public_id}`)}
                   subjectLabel={(item) =>
                     (item.subjects || [])
                       .map(
@@ -1425,7 +1511,7 @@ function LectureRecommendationList({ lectures, loading, onSelect, subjectLabel }
           type="button"
           key={item.id}
           className="lecture-recommendation"
-          onClick={() => onSelect(item.id)}
+          onClick={() => onSelect(item)}
         >
           {item.thumbnail ? (
             <img src={item.thumbnail} alt="" />
@@ -1465,11 +1551,11 @@ function TeacherProfilePage({
 }) {
   const { go } = useContext(Ctx);
   const resource = useLoad(
-    Number.isInteger(id) && id > 0 ? `/tutoring/instructors/${id}/` : null,
+    isPublicId(id) ? `/tutoring/instructors/public/${id}/` : null,
     [id],
   );
 
-  if (!Number.isInteger(id) || id <= 0) {
+  if (!isPublicId(id)) {
     return (
       <Empty
         title="선생님 프로필을 찾을 수 없어요"
@@ -1506,7 +1592,7 @@ function TeacherProfilePage({
           {!isOfficialCreator && (
             <ProfileSafetyActions
               className="teacher-profile-compact-safety-actions teacher-profile-mobile-safety-actions"
-              instructorId={id}
+              instructorId={teacher.id}
               userId={teacher.user}
               teacherName={teacherName || "선생님"}
               onBlocked={() => go("teachers")}
@@ -1521,10 +1607,10 @@ function TeacherProfilePage({
           </div>
           {!isOfficialCreator && (
             <aside className="teacher-profile-sidebar" aria-label="선생님 프로필 작업">
-              <Proposal kind="teachers" id={id} onClose={() => go("teachers")} />
+              <Proposal kind="teachers" id={teacher.id} onClose={() => go("teachers")} />
               <ProfileSafetyActions
                 className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
-                instructorId={id}
+                instructorId={teacher.id}
                 userId={teacher.user}
                 teacherName={teacherName || "선생님"}
                 onBlocked={() => go("teachers")}
@@ -1543,11 +1629,11 @@ function TeacherProfilePage({
 function TutoringPostPage({ id, listItem }) {
   const { go, user } = useContext(Ctx);
   const resource = useLoad(
-    Number.isInteger(id) && id > 0 ? `/tutoring/posts/${id}/` : null,
+    isPublicId(id) ? `/tutoring/posts/public/${id}/` : null,
     [id],
   );
 
-  if (!Number.isInteger(id) || id <= 0) {
+  if (!isPublicId(id)) {
     return (
       <Empty
         title="과외 공고를 찾을 수 없어요"
@@ -1561,13 +1647,13 @@ function TutoringPostPage({ id, listItem }) {
   const post = resource.data || {};
   const isOwnPost = Number(post.student?.user) === Number(user?.id);
   const profileImage =
-    Number(listItem?.id) === id
+    listItem?.public_id === id
       ? listItem.student_profile_image
       : isOwnPost
         ? user?.profile_image
         : null;
   const studentName =
-    Number(listItem?.id) === id
+    listItem?.public_id === id
       ? listItem.student_name
       : isOwnPost
         ? user?.nickname
@@ -1598,7 +1684,7 @@ function TutoringPostPage({ id, listItem }) {
             />
           </main>
           <aside className="teacher-profile-sidebar" aria-label="과외 공고 작업">
-            <Proposal kind="posts" id={id} onClose={() => go("posts")} />
+            <Proposal kind="posts" id={post.id} onClose={() => go("posts")} />
             <TutoringPostSafetyActions
               className="teacher-profile-compact-safety-actions teacher-profile-desktop-safety-actions"
               post={post}
@@ -1939,7 +2025,7 @@ function Proposal({ kind, id, onClose }) {
   const currentRoom = list(chatRooms.data).find(
     (room) => Number(room.post) === Number(id),
   );
-  const proposalRoomId = sentRoomId || currentRoom?.id;
+  const proposalRoomId = sentRoomId || currentRoom?.public_id;
   const proposalAccepted = Boolean(currentRoom?.is_accepted);
   const canSubmitStudentProposal = message.trim().length >= 10;
   const hasSentStudentProposal = isStudentPostProposal && (currentProposal || sentRoomId);
@@ -1982,10 +2068,10 @@ function Proposal({ kind, id, onClose }) {
       );
       notify("과외 제안을 보냈습니다. 채팅에서 확인해 주세요.");
       if (isStudentPostProposal) {
-        setSentRoomId(result.room_id);
+        setSentRoomId(result.room_public_id || result.room_id);
         proposals.reload();
         chatRooms.reload();
-        go(`chat/${result.room_id}`);
+        go(`chat/${result.room_public_id || result.room_id}`);
       } else {
         onClose();
         go("chat");
@@ -2073,7 +2159,7 @@ function Proposal({ kind, id, onClose }) {
                   <Btn
                     className="proposal-post-create"
                     type="button"
-                    onClick={() => go(`tutoring-post/new/teacher-profile/${id}`)}
+                    onClick={() => go("tutoring-post/new")}
                   >
                     새 모집 공고 작성하러 가기
                   </Btn>
@@ -2111,7 +2197,7 @@ function Proposal({ kind, id, onClose }) {
                 <Btn
                   className="proposal-post-create"
                   type="button"
-                  onClick={() => go(`tutoring-post/new/teacher-profile/${id}`)}
+                  onClick={() => go("tutoring-post/new")}
                 >
                   새 모집 공고 작성하러 가기
                 </Btn>
@@ -2294,16 +2380,19 @@ function TeacherProfile({ id, teacher, item }) {
   const isOfficialCreator = profile.is_official_creator === true;
   const selectedTab = isOfficialCreator ? "lectures" : tab;
   const info = useLoad(
-    isOfficialCreator ? null : `/tutoring/instructors/${id}/info/`,
+    isOfficialCreator ? null : `/tutoring/instructors/public/${id}/info/`,
     [id, isOfficialCreator],
   );
   const reviews = useLoad(
     !isOfficialCreator && selectedTab === "reviews"
-      ? `/tutoring/instructors/${id}/reviews/`
+      ? `/tutoring/instructors/public/${id}/reviews/`
       : null,
     [id, isOfficialCreator, selectedTab],
   );
-  const lectures = useLoad(`/lectures/?instructor=${id}`, [id]);
+  const lectures = useLoad(
+    profile.id ? `/lectures/?instructor=${profile.id}` : null,
+    [profile.id],
+  );
   const [liked, setLiked] = useState(Boolean(profile.is_liked));
   const [likeCount, setLikeCount] = useState(Number(profile.like_count || 0));
 
@@ -2436,7 +2525,7 @@ function TeacherProfile({ id, teacher, item }) {
 
   async function toggleLike() {
     try {
-      const result = await api(`/tutoring/instructors/${id}/like/`, {
+      const result = await api(`/tutoring/instructors/${profile.id}/like/`, {
         method: "POST",
       });
       const next = result.is_liked ?? !liked;
@@ -2789,8 +2878,11 @@ function Comments({
   const [replyThreads, setReplyThreads] = useState({});
   const [loadingReplyIds, setLoadingReplyIds] = useState(() => new Set());
   const [replyErrors, setReplyErrors] = useState({});
+  const commentsPath = isPublicId(id)
+    ? `/lectures/public/${id}/comments/`
+    : `/lectures/${id}/comments/`;
   const resource = useLoad(
-    `/lectures/${id}/comments/?page=1&lazy_replies=true`,
+    `${commentsPath}?page=1&lazy_replies=true`,
   );
   const { notify, user } = useContext(Ctx);
   const [busy, setBusy] = useState(false);
@@ -2872,7 +2964,7 @@ function Comments({
     });
     try {
       const data = await api(
-        `/lectures/${id}/comments/?lazy_replies=true&parent_id=${encodeURIComponent(commentId)}`,
+        `${commentsPath}?lazy_replies=true&parent_id=${encodeURIComponent(commentId)}`,
       );
       setReplyThreads((current) => ({
         ...current,
@@ -2926,7 +3018,7 @@ function Comments({
     if (!content) return;
     setBusy(true);
     try {
-      await api(`/lectures/${id}/comments/`, {
+      await api(commentsPath, {
         method: "POST",
         body: { content, author_role: user?.role },
       });
@@ -3068,6 +3160,9 @@ function CommentRow({
       user?.id != null &&
       String(commentAuthorId) === String(user.id));
   const isMoreOpen = activeMenuId === c.id;
+  const commentsPath = isPublicId(lecture)
+    ? `/lectures/public/${lecture}/comments/`
+    : `/lectures/${lecture}/comments/`;
   const startEditing = () => {
     setMode("edit");
     setText(c.content);
@@ -3095,7 +3190,7 @@ function CommentRow({
       await api(
         mode === "edit"
           ? `/lectures/comments/${c.id}/`
-          : `/lectures/${lecture}/comments/`,
+          : commentsPath,
         {
           method: mode === "edit" ? "PATCH" : "POST",
           body:
@@ -3382,11 +3477,13 @@ function toSupportRoom(conversation) {
     id: `support:${conversation.id}`,
     is_support: true,
     official_instructor_id: conversation.official_instructor_id,
+    official_instructor_public_id: conversation.official_instructor_public_id,
     title: conversation.title || "클래씨 공식 계정",
     opponent_info: {
       user_name: conversation.title || "클래씨 공식 계정",
       profile_image: conversation.profile_image || "",
       official_instructor_id: conversation.official_instructor_id,
+      official_instructor_public_id: conversation.official_instructor_public_id,
     },
     last_message: conversation.last_message
       ? { text: conversation.last_message.content }
@@ -3442,6 +3539,11 @@ function Chat({ initialRoomId, onRoomClosed }) {
     ...list(rooms.data).sort((left, right) => Number(right.is_liked) - Number(left.is_liked)),
     ...list(supportRooms.data).map(toSupportRoom),
   ];
+  const selectedPublicId = isSupportRoom
+    ? ""
+    : room?.public_id ||
+      chatRooms.find((item) => String(item.id) === String(selected))?.public_id ||
+      (isPublicId(initialRoomId) ? initialRoomId : "");
   const currentClassResource =
     selected && !isSupportRoom
       ? getLatestClassResource(list(classResources.data), selected)
@@ -3467,7 +3569,7 @@ function Chat({ initialRoomId, onRoomClosed }) {
       return;
     }
     const targetRoom = chatRooms.find(
-      (item) => String(item.id) === String(initialRoomId),
+      (item) => String(item.public_id) === String(initialRoomId),
     );
     if (!targetRoom) return;
 
@@ -3497,7 +3599,9 @@ function Chat({ initialRoomId, onRoomClosed }) {
       if (document.hidden) return;
       const detailPath = isSupportRoom
         ? `/support/conversations/${selectedSupportConversationId}/`
-        : `/chatrooms/${selected}/?role=${user.role}`;
+        : selectedPublicId
+          ? `/chatrooms/public/${selectedPublicId}/?role=${user.role}`
+          : `/chatrooms/${selected}/?role=${user.role}`;
       api(detailPath, {
         signal: controller.signal,
       })
@@ -3546,7 +3650,9 @@ function Chat({ initialRoomId, onRoomClosed }) {
     const unsubscribeNotifications = subscribeWebSocket("/ws/notifications/", refresh);
     const roomSocketPath = isSupportRoom
       ? `/ws/support/conversations/${selectedSupportConversationId}/`
-      : `/ws/chat/${selected}/`;
+      : selectedPublicId
+        ? `/ws/chat/public/${selectedPublicId}/`
+        : `/ws/chat/${selected}/`;
     const unsubscribeRoom = subscribeWebSocket(roomSocketPath, refresh);
     return () => {
       alive = false;
@@ -3554,7 +3660,7 @@ function Chat({ initialRoomId, onRoomClosed }) {
       unsubscribeNotifications();
       unsubscribeRoom();
     };
-  }, [selected, user.role]);
+  }, [selected, selectedPublicId, user.role]);
   useEffect(() => {
     if (!selected || isSupportRoom || registrationComplete) return undefined;
     const timer = window.setInterval(() => classResources.reload(), 10000);
@@ -3604,9 +3710,9 @@ function Chat({ initialRoomId, onRoomClosed }) {
       setBusy(false);
     }
   }
-  function selectRoom(roomId) {
-    setSelected(roomId);
-    go(`chat/${roomId}`);
+  function selectRoom(roomItem) {
+    setSelected(roomItem.id);
+    go(`chat/${roomItem.public_id}`);
   }
   function closeRoom() {
     setSelected(null);
@@ -3619,8 +3725,11 @@ function Chat({ initialRoomId, onRoomClosed }) {
       setClassInformation(currentClassResource);
       return;
     }
-    history.replaceState(null, "", `#chat/${selected}`);
-    go(`tutoring-registration/${selected}`);
+    if (!selectedPublicId) {
+      notify("채팅방 정보를 불러오는 중이에요. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    go(`tutoring-registration/${selectedPublicId}`);
   }
   async function toggleLiked() {
     const previous = Boolean(room?.is_liked);
@@ -3699,7 +3808,7 @@ function Chat({ initialRoomId, onRoomClosed }) {
               <button
                 key={r.id}
                 className={selected === r.id ? "selected" : ""}
-                onClick={() => selectRoom(r.id)}
+                onClick={() => selectRoom(r)}
               >
                 <Avatar src={r.opponent_info?.profile_image} name={roomName} />
                 <span>
@@ -3736,11 +3845,11 @@ function Chat({ initialRoomId, onRoomClosed }) {
                 >
                   <ChevronLeft size={22} aria-hidden="true" />
                 </button>
-                {isSupportRoom && Number(room?.official_instructor_id) > 0 ? (
+                {isSupportRoom && room?.official_instructor_public_id ? (
                   <button
                     type="button"
                     className="support-profile-link"
-                    onClick={() => openTeacherProfile(room.official_instructor_id)}
+                    onClick={() => openTeacherProfile(room.official_instructor_public_id)}
                     aria-label={`${room?.opponent_info?.user_name || room?.title || "클래씨 공식 계정"} 프로필 보기`}
                   >
                     <Avatar
@@ -3932,13 +4041,12 @@ function Chat({ initialRoomId, onRoomClosed }) {
 }
 const legacyHash = location.hash.slice(1);
 const legacyPage = legacyHash.split("/")[0];
-const isLegacyAppRoute =
-  location.pathname === "/" && Boolean(legacyHash) && pageNames[legacyPage];
+const isLegacyAppRoute = Boolean(legacyHash) && pageNames[legacyPage];
 
 if (isLegacyAppRoute) {
-  const destination =
-    legacyPage === "home" ? "/home" : `/home#${legacyHash}`;
-  location.replace(destination);
+  // URL fragments never reach Nginx, so legacy link canonicalization must be
+  // performed in the browser after the existing numeric API resolves it.
+  resolveLegacyPath(legacyHash).then((destination) => location.replace(destination));
 } else {
   const root = document.getElementById("root");
   const isPublicLanding = location.pathname === "/" && !location.hash;

@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -30,6 +32,9 @@ class Lecture(models.Model):
         is_delete (bool): 강사에 의해 삭제(Soft Delete) 처리되었는지 여부.
         deleted_at (DateTimeField): 삭제 처리된 일시.
     """
+    # Public web URLs use this stable opaque identifier.  The integer primary
+    # key remains the internal relational and legacy-client identifier.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     video = models.FileField(upload_to="lectures/videos/")
     video_duration = models.PositiveIntegerField(default=0)
     # 유료 강의 원본에서 생성되는 A 전용 무료 미리보기 클립이다.
@@ -88,6 +93,8 @@ class Comment(models.Model):
         referenced_person (ForeignKey): "@멘션" 기능을 통해 지목된 사용자.
         created_at (DateTimeField): 댓글 작성 일시.
     """
+    # A comment can be the target of a browser URL from a notification.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True, editable=False)
     lecture = models.ForeignKey(
         Lecture, on_delete=models.CASCADE, related_name="comments"
     )

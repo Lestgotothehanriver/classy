@@ -55,7 +55,7 @@ function appendRegistrationPayload(formData, payload) {
 /** 앱과 같은 성사 등록 전용 페이지다. */
 export function RegistrationPage({ roomId }) {
   const { go, notify, subjects, user } = useContext(Ctx);
-  const path = `/tutoring/resources/chatrooms/${roomId}/`;
+  const path = `/tutoring/resources/chatrooms/public/${roomId}/`;
   const resource = useLoad(path, [roomId], { keepDataOnReload: true });
   const data = resource.data || {};
   const isTeacher = user?.role === "instructor";
@@ -78,17 +78,17 @@ export function RegistrationPage({ roomId }) {
   const resolvedSavedProof = useRef(false);
 
   function proofPath() {
-    return `#tutoring-registration/${roomId}/proof`;
+    return `/messages/${roomId}/registration/proof`;
   }
 
   function enterProofStep() {
-    if (location.hash !== proofPath())
+    if (location.pathname !== proofPath())
       history.pushState(null, "", proofPath());
     setStep("proof");
   }
 
   function returnToBasicStep() {
-    if (location.hash === proofPath()) history.back();
+    if (location.pathname === proofPath()) history.back();
     else setStep("basic");
   }
 
@@ -146,12 +146,12 @@ export function RegistrationPage({ roomId }) {
 
   useEffect(() => {
     const syncStepFromRoute = () => {
-      const [, routeRoomId, routeStep] = location.hash.slice(1).split("/");
-      if (String(routeRoomId) === String(roomId))
-        setStep(routeStep === "proof" ? "proof" : "basic");
+      const parts = location.pathname.split("/").filter(Boolean);
+      if (parts[0] === "messages" && String(parts[1]) === String(roomId))
+        setStep(parts[3] === "proof" ? "proof" : "basic");
     };
-    window.addEventListener("hashchange", syncStepFromRoute);
-    return () => window.removeEventListener("hashchange", syncStepFromRoute);
+    window.addEventListener("popstate", syncStepFromRoute);
+    return () => window.removeEventListener("popstate", syncStepFromRoute);
   }, [roomId]);
 
   const submittedRegistration = submitted?.registration;

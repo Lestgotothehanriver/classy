@@ -171,6 +171,13 @@ class TutoringPostDetailAPIView(generics.RetrieveAPIView):
 
         return Response(data)
 
+
+class TutoringPostPublicDetailAPIView(TutoringPostDetailAPIView):
+    """UUID-addressable tutoring-post detail for browser routes."""
+
+    lookup_field = "public_id"
+    lookup_url_kwarg = "public_id"
+
 class TutoringPostViewSet(mixins.CreateModelMixin,
                           mixins.UpdateModelMixin,
                           mixins.DestroyModelMixin,

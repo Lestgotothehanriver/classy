@@ -533,8 +533,8 @@ export function ClassHistory() {
                 ) : (
                   <Btn
                     className="primary full"
-                    disabled={!x.chat_room_id}
-                    onClick={() => go(`tutoring-registration/${x.chat_room_id}`)}
+                    disabled={!x.chat_room_public_id}
+                    onClick={() => go(`tutoring-registration/${x.chat_room_public_id}`)}
                   >
                     {status.tone === "rejected" ? "성사 등록 다시 하기" : "성사 등록"}
                   </Btn>
